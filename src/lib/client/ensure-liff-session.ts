@@ -25,6 +25,15 @@ export async function ensureLiffSession(): Promise<EnsureSessionResult> {
   const liff = (await import("@line/liff")).default;
   await liff.init({ liffId });
 
+  // 既にサーバーセッション(sengoku_session)が有効な場合は、LINEのIDトークン再検証を
+  // スキップする。LIFFが保持するIDトークンはセッションCookieより先に期限切れになる
+  // ことがあり、毎回の画面遷移で再検証させるとセッション自体は有効なのに失敗しうる。
+  const sessionRes = await fetch("/api/auth/session", { method: "POST" });
+  const sessionBody = await sessionRes.json().catch(() => ({ authenticated: false }));
+  if (sessionBody.authenticated) {
+    return { status: "ready" };
+  }
+
   if (!liff.isLoggedIn()) {
     liff.login();
     return { status: "redirecting" }; // LINEログイン画面へリダイレクトされる
