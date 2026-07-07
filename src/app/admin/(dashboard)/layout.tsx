@@ -22,6 +22,9 @@ export default function AdminDashboardLayout({ children }: { children: React.Rea
             <Link href="/admin/agents" className="hover:text-zinc-900 dark:hover:text-zinc-50">
               代理店管理
             </Link>
+            <Link href="/admin/links" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+              送客導線
+            </Link>
           </nav>
           <LogoutButton />
         </div>

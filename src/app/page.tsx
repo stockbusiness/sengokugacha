@@ -5,11 +5,13 @@ import { useEffect, useState } from "react";
 import type { PassportData } from "@/lib/passport";
 
 type Status = "initializing" | "ready" | "error";
+type ExternalLink = { key: string; label: string; url: string };
 
 export default function Home() {
   const [status, setStatus] = useState<Status>("initializing");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [passport, setPassport] = useState<PassportData | null>(null);
+  const [externalLinks, setExternalLinks] = useState<ExternalLink[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -84,6 +86,24 @@ export default function Home() {
     };
   }, []);
 
+  useEffect(() => {
+    if (status !== "ready") return;
+    let cancelled = false;
+
+    fetch("/api/links")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: ExternalLink[]) => {
+        if (!cancelled) setExternalLinks(data);
+      })
+      .catch(() => {
+        /* 送客導線はおまけ機能のため、取得失敗してもパスポート表示自体は継続する */
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [status]);
+
   return (
     <div className="flex flex-1 items-center justify-center bg-zinc-50 px-4 py-16 font-sans dark:bg-black">
       <main className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
@@ -142,6 +162,22 @@ export default function Home() {
             >
               日本地図(国盗り進捗)
             </Link>
+          </div>
+        )}
+
+        {externalLinks.length > 0 && (
+          <div className="mt-6 space-y-2 border-t border-zinc-200 pt-6 dark:border-zinc-800">
+            {externalLinks.map((link) => (
+              <a
+                key={link.key}
+                href={link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="block rounded-lg border border-zinc-300 px-4 py-3 text-center text-sm font-semibold text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
+              >
+                {link.label} ↗
+              </a>
+            ))}
           </div>
         )}
       </main>
