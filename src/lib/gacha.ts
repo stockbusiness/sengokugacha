@@ -63,6 +63,15 @@ async function getConqueredProvinceCount(userId: string): Promise<number> {
   return count ?? 0;
 }
 
+// 開始/終了どちらかが未指定なら、その境界は「制限なし」として扱う
+// (03_gacha_game_design 15章: 「適用期間の開始・終了日時を指定可能(未指定なら手動で戻すまで持続)」)。
+function isEventWindowActive(startAt: string | null, endAt: string | null): boolean {
+  const now = new Date();
+  if (startAt && now < new Date(startAt)) return false;
+  if (endAt && now > new Date(endAt)) return false;
+  return true;
+}
+
 // gacha_config は1行運用。行が無い場合はカラムのデフォルト値と同じ値にフォールバックする。
 async function getEffectiveFreeLimit(): Promise<number> {
   const supabase = createSupabaseServerClient();
@@ -76,14 +85,7 @@ async function getEffectiveFreeLimit(): Promise<number> {
   if (error) throw error;
   if (!config) return 1;
 
-  const now = new Date();
-  const eventActive =
-    config.event_start_at &&
-    config.event_end_at &&
-    now >= new Date(config.event_start_at) &&
-    now <= new Date(config.event_end_at);
-
-  if (eventActive && config.event_free_limit_override != null) {
+  if (config.event_free_limit_override != null && isEventWindowActive(config.event_start_at, config.event_end_at)) {
     return config.event_free_limit_override;
   }
   return config.base_daily_free_limit;
