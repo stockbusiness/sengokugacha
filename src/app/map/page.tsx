@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
 import type { ProvinceProgress, ProvinceProgressSummary } from "@/lib/provinces";
 
 type Status = "loading" | "ready" | "error";
@@ -18,6 +19,9 @@ export default function MapPage() {
 
     async function run() {
       try {
+        const session = await ensureLiffSession();
+        if (session.status === "redirecting") return;
+
         const res = await fetch("/api/map");
         if (!res.ok) throw new Error("進捗の取得に失敗しました。");
         const data: ProvinceProgressSummary = await res.json();

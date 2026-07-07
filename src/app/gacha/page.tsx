@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
 
 type DrawResult = {
   warlord: {
@@ -24,14 +25,33 @@ type DrawResult = {
 };
 
 type Mode = "free" | "paid";
-type Status = "idle" | "drawing" | "done" | "error";
+type Status = "initializing" | "idle" | "drawing" | "done" | "error";
 
 export default function GachaPage() {
-  const [status, setStatus] = useState<Status>("idle");
+  const [status, setStatus] = useState<Status>("initializing");
   const [mode, setMode] = useState<Mode>("free");
   const [result, setResult] = useState<DrawResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [needsTickets, setNeedsTickets] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    ensureLiffSession()
+      .then((session) => {
+        if (cancelled || session.status === "redirecting") return;
+        setStatus("idle");
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setErrorMessage(error instanceof Error ? error.message : "予期しないエラーが発生しました。");
+        setStatus("error");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function handleDraw(drawMode: Mode) {
     setStatus("drawing");
@@ -67,7 +87,11 @@ export default function GachaPage() {
           ガチャ
         </h1>
 
-        {status !== "done" && (
+        {status === "initializing" && (
+          <p className="text-center text-zinc-500 dark:text-zinc-400">読み込み中...</p>
+        )}
+
+        {(status === "idle" || status === "drawing") && (
           <div className="space-y-2">
             <button
               onClick={() => handleDraw("free")}
