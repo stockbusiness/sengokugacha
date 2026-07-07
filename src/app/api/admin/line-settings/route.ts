@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminSession } from "@/lib/admin-session";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
+function last4(value: string | null): string | null {
+  if (!value) return null;
+  return value.slice(-4);
+}
+
 export async function GET() {
   if (!(await getAdminSession())) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -17,7 +22,14 @@ export async function GET() {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  return NextResponse.json(data ?? { id: null, liff_id: null, channel_id: null });
+  return NextResponse.json({
+    id: data?.id ?? null,
+    liff_id: data?.liff_id ?? null,
+    channel_id: data?.channel_id ?? null,
+    messaging_channel_access_token_set: !!data?.messaging_channel_access_token,
+    messaging_channel_access_token_last4: last4(data?.messaging_channel_access_token ?? null),
+    rich_menu_id: data?.rich_menu_id ?? null,
+  });
 }
 
 export async function PUT(request: NextRequest) {
@@ -30,11 +42,16 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "invalid body" }, { status: 400 });
   }
 
-  const fields = {
+  const fields: Record<string, unknown> = {
     liff_id: body.liff_id || null,
     channel_id: body.channel_id || null,
     updated_at: new Date().toISOString(),
   };
+
+  // 空文字は「変更しない」を意味する(GETでは値そのものを返さないため)。
+  if (typeof body.messaging_channel_access_token === "string" && body.messaging_channel_access_token.length > 0) {
+    fields.messaging_channel_access_token = body.messaging_channel_access_token;
+  }
 
   const supabase = createSupabaseServerClient();
   const { data: existing, error: fetchError } = await supabase
