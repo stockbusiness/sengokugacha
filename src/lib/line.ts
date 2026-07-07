@@ -30,8 +30,10 @@ export async function verifyLineIdToken(idToken: string): Promise<LineVerifyResp
   });
 
   if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    console.error("LINE IDトークン検証エラー", res.status, detail);
     throw new LineIdTokenVerificationError(
-      `LINE IDトークンの検証に失敗しました (status: ${res.status})`
+      `LINE IDトークンの検証に失敗しました (status: ${res.status})${detail ? `: ${detail}` : ""}`
     );
   }
 
