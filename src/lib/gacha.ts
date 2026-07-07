@@ -19,6 +19,7 @@ export type GachaDrawResult = {
   provinceConquered: boolean;
   regionCompleted: string | null;
   minoUnlocked: boolean;
+  tenkaToitsuTriggered: boolean;
   remainingFreeDrawsToday: number;
 };
 
@@ -312,12 +313,14 @@ export async function drawFreeGacha(userId: string): Promise<GachaDrawResult> {
 
   let regionCompleted: string | null = null;
   let minoUnlocked = false;
+  let tenkaToitsuTriggered = false;
 
   if (provinceConquered) {
     const newConqueredCount = conqueredCount + 1;
     const regionJustCompleted = await maybeCompleteRegion(userId, chosenProvince.region, allProvinces);
     if (regionJustCompleted) regionCompleted = chosenProvince.region;
     minoUnlocked = didJustUnlockMino(conqueredCount, newConqueredCount, allProvinces);
+    tenkaToitsuTriggered = chosenProvince.is_final_province;
   }
 
   const province = warlord.provinces as unknown as { id: string; name: string };
@@ -335,6 +338,7 @@ export async function drawFreeGacha(userId: string): Promise<GachaDrawResult> {
     provinceConquered,
     regionCompleted,
     minoUnlocked,
+    tenkaToitsuTriggered,
     remainingFreeDrawsToday: Math.max(freeLimit - (todaysCount + 1), 0),
   };
 }

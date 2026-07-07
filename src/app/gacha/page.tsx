@@ -16,6 +16,7 @@ type DrawResult = {
   provinceConquered: boolean;
   regionCompleted: string | null;
   minoUnlocked: boolean;
+  tenkaToitsuTriggered: boolean;
   remainingFreeDrawsToday: number;
 };
 
@@ -89,6 +90,15 @@ export default function GachaPage() {
               </p>
             )}
 
+            {result.tenkaToitsuTriggered && (
+              <Link
+                href="/tenka-toitsu"
+                className="block rounded-lg bg-gradient-to-r from-amber-500 to-red-700 p-4 text-center text-sm font-bold text-white shadow"
+              >
+                天下統一達成!代表武将を選ぶ →
+              </Link>
+            )}
+
             <div className="rounded-xl border border-zinc-200 p-5 text-center dark:border-zinc-800">
               <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">{result.province.name}国</p>
               <p className="mt-1 text-xl font-bold text-zinc-900 dark:text-zinc-50">{result.warlord.name}</p>
@@ -118,6 +128,12 @@ export default function GachaPage() {
             className="block text-zinc-500 underline hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
           >
             日本地図(国盗り進捗)を見る
+          </Link>
+          <Link
+            href="/tenka-toitsu"
+            className="block text-zinc-500 underline hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+          >
+            天下統一の状況を見る
           </Link>
           <Link
             href="/"
