@@ -10,13 +10,34 @@ export type PassportData = {
   conqueredProvinceCount: number;
 };
 
+// 04_mvp_spec 3.3: 紹介リンク(?ref=AGENT_CODE)経由の代理店を解決する。
+// 一致する代理店が無い場合(コード誤り・直接登録)は null を返し、直販扱いにする。
+async function resolveAgentIdByReferralCode(referralCode: string | null): Promise<string | null> {
+  if (!referralCode) return null;
+
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("agents")
+    .select("id")
+    .eq("referral_code", referralCode)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data?.id ?? null;
+}
+
 // LINEユーザーIDからパスポートユーザーを取得、なければ新規登録する。
 // 登録済みユーザーの display_name は更新しない(ユーザーがLINE側で表示名を変えても
 // パスポート上の表示名は最初の登録時点のものを保持する。仕様上の明記はないため、
 // この方針に強い理由があるわけではなく、要件があれば都度上書きに変更する)。
+//
+// referralCode は新規登録時のみ users.referring_agent_id に反映する。
+// 既存ユーザーには反映しない(3.3章: 「登録完了後は変更不可。アトリビューションは
+// ファーストタッチ確定方式」)。
 export async function findOrCreateUserByLineId(
   lineUserId: string,
-  displayName: string | null
+  displayName: string | null,
+  referralCode: string | null
 ) {
   const supabase = createSupabaseServerClient();
 
@@ -29,9 +50,11 @@ export async function findOrCreateUserByLineId(
   if (findError) throw findError;
   if (existing) return existing.id as string;
 
+  const referringAgentId = await resolveAgentIdByReferralCode(referralCode);
+
   const { data: created, error: insertError } = await supabase
     .from("users")
-    .insert({ line_user_id: lineUserId, display_name: displayName })
+    .insert({ line_user_id: lineUserId, display_name: displayName, referring_agent_id: referringAgentId })
     .select("id")
     .single();
 

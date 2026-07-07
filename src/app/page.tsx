@@ -25,6 +25,16 @@ export default function Home() {
       }
 
       try {
+        // 代理店紹介リンク(?ref=AGENT_CODE)を保持しておく。liff.login()はLINEの
+        // 認証画面を経由してこのページへ戻ってくるため、sessionStorageに退避して
+        // リダイレクト後も参照できるようにする(新規登録時のみ users.referring_agent_id
+        // に反映され、既存ユーザーには影響しない)。
+        const refFromUrl = new URLSearchParams(window.location.search).get("ref");
+        if (refFromUrl) {
+          sessionStorage.setItem("sengoku_ref_code", refFromUrl);
+        }
+        const refCode = refFromUrl ?? sessionStorage.getItem("sengoku_ref_code");
+
         const liff = (await import("@line/liff")).default;
         await liff.init({ liffId });
 
@@ -41,7 +51,7 @@ export default function Home() {
         const loginRes = await fetch("/api/auth/line", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ idToken }),
+          body: JSON.stringify({ idToken, refCode }),
         });
 
         if (!loginRes.ok) {

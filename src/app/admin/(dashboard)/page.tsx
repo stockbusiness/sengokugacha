@@ -26,9 +26,16 @@ export default function AdminIndexPage() {
           <p className="font-semibold text-zinc-900 dark:text-zinc-50">武将マスタ</p>
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">warlords の一覧・編集</p>
         </Link>
+        <Link
+          href="/admin/agents"
+          className="rounded-xl border border-zinc-200 bg-white p-5 hover:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950"
+        >
+          <p className="font-semibold text-zinc-900 dark:text-zinc-50">代理店管理</p>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">agents の作成・referral_code発行・ランク更新</p>
+        </Link>
       </div>
       <p className="text-xs text-zinc-400 dark:text-zinc-600">
-        代理店管理・売上ログ・実績ログ・ユーザー検索は、該当データ(Stripe決済・代理店紐付け)が稼働し始めてから追加予定です。
+        売上ログ・実績ログ・ユーザー検索は、該当データ(Stripe決済等)が稼働し始めてから追加予定です。
       </p>
     </div>
   );
