@@ -26,6 +26,31 @@ async function grantPurchase(userId: string, itemType: string, grantAmount: numb
   }
 }
 
+// 04_mvp_spec 3.3: 紹介経由ユーザーの購入イベントを agent_sales に記録する(Phase1は記録のみ)。
+// agents テーブルにユーザーとの紐付け(user_id)が無いため、「代理店自身の自己購入」を
+// システム的に判別する手段が現状無い。そのためPhase1では紹介経由の購入を一律
+// type='referral' として記録する(自己購入分の仕分けはPhase2で人手/追加設計により対応)。
+async function recordAgentSaleIfReferred(userId: string, itemType: string, amountYen: number) {
+  const supabase = createSupabaseServerClient();
+
+  const { data: user, error } = await supabase
+    .from("users")
+    .select("referring_agent_id")
+    .eq("id", userId)
+    .single();
+  if (error) throw error;
+  if (!user.referring_agent_id) return;
+
+  const { error: insertError } = await supabase.from("agent_sales").insert({
+    agent_id: user.referring_agent_id,
+    buyer_user_id: userId,
+    amount: amountYen,
+    type: "referral",
+    source: itemType,
+  });
+  if (insertError) throw insertError;
+}
+
 export async function POST(request: NextRequest) {
   const settings = await getPaymentSettings();
   if (!settings?.stripe_secret_key || !settings.stripe_webhook_secret) {
@@ -50,27 +75,26 @@ export async function POST(request: NextRequest) {
 
   if (event.type === "checkout.session.completed") {
     const checkoutSession = event.data.object as Stripe.Checkout.Session;
-    const { userId, itemType, grantAmount } = checkoutSession.metadata ?? {};
+    const grantAmount = Number(checkoutSession.metadata?.grantAmount ?? 0);
 
-    if (userId && itemType && grantAmount) {
-      const supabase = createSupabaseServerClient();
+    const supabase = createSupabaseServerClient();
+    const { data: purchase, error: purchaseError } = await supabase
+      .from("purchases")
+      .select("id, user_id, item_type, amount, status")
+      .eq("stripe_session_id", checkoutSession.id)
+      .maybeSingle();
+    if (purchaseError) throw purchaseError;
 
-      const { data: purchase, error: purchaseError } = await supabase
+    // Stripeはイベントを再送することがあるため、完了済みなら何もしない(冪等)。
+    if (purchase && purchase.status !== "completed" && grantAmount > 0) {
+      await grantPurchase(purchase.user_id, purchase.item_type, grantAmount);
+      await recordAgentSaleIfReferred(purchase.user_id, purchase.item_type, purchase.amount);
+
+      const { error: statusError } = await supabase
         .from("purchases")
-        .select("status")
-        .eq("stripe_session_id", checkoutSession.id)
-        .maybeSingle();
-      if (purchaseError) throw purchaseError;
-
-      // Stripeはイベントを再送することがあるため、完了済みなら何もしない(冪等)。
-      if (purchase && purchase.status !== "completed") {
-        await grantPurchase(userId, itemType, Number(grantAmount));
-        const { error: statusError } = await supabase
-          .from("purchases")
-          .update({ status: "completed" })
-          .eq("stripe_session_id", checkoutSession.id);
-        if (statusError) throw statusError;
-      }
+        .update({ status: "completed" })
+        .eq("id", purchase.id);
+      if (statusError) throw statusError;
     }
   }
 

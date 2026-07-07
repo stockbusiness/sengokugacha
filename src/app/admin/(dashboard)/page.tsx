@@ -47,10 +47,28 @@ export default function AdminIndexPage() {
           <p className="font-semibold text-zinc-900 dark:text-zinc-50">決済設定</p>
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">Stripeキー・購入パック価格の設定</p>
         </Link>
+        <Link
+          href="/admin/agent-sales"
+          className="rounded-xl border border-zinc-200 bg-white p-5 hover:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950"
+        >
+          <p className="font-semibold text-zinc-900 dark:text-zinc-50">売上ログ</p>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">agent_sales の一覧・CSV出力</p>
+        </Link>
+        <Link
+          href="/admin/achievements"
+          className="rounded-xl border border-zinc-200 bg-white p-5 hover:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950"
+        >
+          <p className="font-semibold text-zinc-900 dark:text-zinc-50">実績ログ</p>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">地方コンプ・天下統一達成者の一覧</p>
+        </Link>
+        <Link
+          href="/admin/users"
+          className="rounded-xl border border-zinc-200 bg-white p-5 hover:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950"
+        >
+          <p className="font-semibold text-zinc-900 dark:text-zinc-50">ユーザー検索</p>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">表示名・LINEユーザーIDでのサポート検索</p>
+        </Link>
       </div>
-      <p className="text-xs text-zinc-400 dark:text-zinc-600">
-        売上ログ・実績ログ・ユーザー検索は、該当データが十分に溜まってから追加予定です。
-      </p>
     </div>
   );
 }
