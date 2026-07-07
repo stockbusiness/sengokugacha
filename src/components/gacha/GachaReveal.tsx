@@ -148,15 +148,7 @@ export function GachaReveal({ warlord, provinceName, onFinish }: GachaRevealProp
       )}
 
       {phase === "card" && (
-        <div
-          className={`relative flex flex-col items-center gap-4 rounded-2xl border-2 ${tier.cardBorderClass} ${tier.glowClass} bg-ink-raised px-8 py-10`}
-          style={{
-            animation: tier.shake
-              ? "gacha-card-in 0.45s ease-out, gacha-shake 0.4s ease-out 0.45s"
-              : "gacha-card-in 0.45s ease-out",
-          }}
-          onClick={(e) => e.stopPropagation()}
-        >
+        <div className="relative flex flex-col items-center gap-4" onClick={(e) => e.stopPropagation()}>
           {particles.map((p) => (
             <span
               key={p.key}
@@ -173,22 +165,42 @@ export function GachaReveal({ warlord, provinceName, onFinish }: GachaRevealProp
 
           <p className={`text-xs font-semibold tracking-[0.3em] ${tier.labelClass}`}>{tier.label}</p>
 
-          <div
-            className={`flex h-24 w-24 items-center justify-center overflow-hidden rounded-full border-2 ${tier.cardBorderClass} bg-gradient-to-br from-ink to-ink-raised text-3xl font-bold text-gold-soft`}
-          >
-            {warlord.imageUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={warlord.imageUrl} alt={warlord.name} className="h-full w-full object-cover" />
-            ) : (
-              warlord.name.slice(0, 1)
-            )}
-          </div>
+          {warlord.imageUrl ? (
+            // カード画像自体に武将名・レアリティ・スキル等が焼き込まれているため、
+            // 余計なテキストを重ねずイラストをそのまま主役として見せる。
+            <div
+              className={`w-64 overflow-hidden rounded-2xl border-2 ${tier.cardBorderClass} ${tier.glowClass}`}
+              style={{
+                animation: tier.shake
+                  ? "gacha-card-in 0.45s ease-out, gacha-shake 0.4s ease-out 0.45s"
+                  : "gacha-card-in 0.45s ease-out",
+              }}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={warlord.imageUrl} alt={warlord.name} className="block h-auto w-full" />
+            </div>
+          ) : (
+            <div
+              className={`flex flex-col items-center gap-4 rounded-2xl border-2 ${tier.cardBorderClass} ${tier.glowClass} bg-ink-raised px-8 py-10`}
+              style={{
+                animation: tier.shake
+                  ? "gacha-card-in 0.45s ease-out, gacha-shake 0.4s ease-out 0.45s"
+                  : "gacha-card-in 0.45s ease-out",
+              }}
+            >
+              <div
+                className={`flex h-24 w-24 items-center justify-center rounded-full border-2 ${tier.cardBorderClass} bg-gradient-to-br from-ink to-ink-raised text-3xl font-bold text-gold-soft`}
+              >
+                {warlord.name.slice(0, 1)}
+              </div>
 
-          <div className="text-center">
-            <p className="text-xs text-parchment-dim">{provinceName}国</p>
-            <p className="font-heading text-2xl font-bold text-parchment">{warlord.name}</p>
-            <p className="mt-1 text-sm text-gold-soft">{warlord.rarity}</p>
-          </div>
+              <div className="text-center">
+                <p className="text-xs text-parchment-dim">{provinceName}国</p>
+                <p className="font-heading text-2xl font-bold text-parchment">{warlord.name}</p>
+                <p className="mt-1 text-sm text-gold-soft">{warlord.rarity}</p>
+              </div>
+            </div>
+          )}
 
           <button
             onClick={onFinish}
