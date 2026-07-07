@@ -17,7 +17,21 @@ export type GachaDrawResult = {
     name: string;
   };
   provinceConquered: boolean;
+  regionCompleted: string | null;
+  minoUnlocked: boolean;
   remainingFreeDrawsToday: number;
+};
+
+// achievements.achievement_type の命名(例: "region_complete_kanto")に使うスラグ
+const REGION_SLUGS: Record<string, string> = {
+  東北: "tohoku",
+  関東: "kanto",
+  中部: "chubu",
+  近畿: "kinki",
+  中国: "chugoku",
+  四国: "shikoku",
+  九州: "kyushu",
+  北陸: "hokuriku",
 };
 
 // 04_mvp_spec_v1.2.md 3.1: 制圧済み国数に応じた排出率ティア
@@ -92,25 +106,43 @@ async function getTodaysFreeDrawCount(userId: string): Promise<number> {
   return count ?? 0;
 }
 
+type ProvinceRow = {
+  id: string;
+  region: string;
+  is_final_province: boolean;
+  unlock_condition_count: number | null;
+};
+
+async function getAllProvinces(): Promise<ProvinceRow[]> {
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("provinces")
+    .select("id, region, is_final_province, unlock_condition_count");
+  if (error) throw error;
+  return data ?? [];
+}
+
 // 未制圧国(美濃国は解放条件を満たすまで対象外)の一覧を返す。
-async function getEligibleProvinceIds(userId: string, conqueredCount: number): Promise<string[]> {
+async function getEligibleProvinces(
+  userId: string,
+  conqueredCount: number,
+  allProvinces: ProvinceRow[]
+): Promise<ProvinceRow[]> {
   const supabase = createSupabaseServerClient();
 
-  const [{ data: conqueredRows, error: conqueredError }, { data: provinces, error: provincesError }] =
-    await Promise.all([
-      supabase.from("user_provinces").select("province_id").eq("user_id", userId).eq("is_conquered", true),
-      supabase.from("provinces").select("id, is_final_province, unlock_condition_count"),
-    ]);
+  const { data: conqueredRows, error: conqueredError } = await supabase
+    .from("user_provinces")
+    .select("province_id")
+    .eq("user_id", userId)
+    .eq("is_conquered", true);
 
   if (conqueredError) throw conqueredError;
-  if (provincesError) throw provincesError;
 
   const conqueredIds = new Set((conqueredRows ?? []).map((r) => r.province_id as string));
 
-  return (provinces ?? [])
+  return allProvinces
     .filter((p) => !conqueredIds.has(p.id))
-    .filter((p) => !p.is_final_province || (p.unlock_condition_count != null && conqueredCount >= p.unlock_condition_count))
-    .map((p) => p.id);
+    .filter((p) => !p.is_final_province || (p.unlock_condition_count != null && conqueredCount >= p.unlock_condition_count));
 }
 
 async function addWarlordToUser(userId: string, warlordId: string) {
@@ -173,6 +205,65 @@ async function maybeConquerProvince(userId: string, provinceId: string): Promise
   return true;
 }
 
+// 実績を記録する。既に記録済みなら何もしない(冪等)。
+async function recordAchievementOnce(userId: string, achievementType: string): Promise<boolean> {
+  const supabase = createSupabaseServerClient();
+
+  const { data: existing, error: existingError } = await supabase
+    .from("achievements")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("achievement_type", achievementType)
+    .maybeSingle();
+  if (existingError) throw existingError;
+  if (existing) return false;
+
+  const { data: user, error: userError } = await supabase
+    .from("users")
+    .select("referring_agent_id")
+    .eq("id", userId)
+    .single();
+  if (userError) throw userError;
+
+  const { error: insertError } = await supabase.from("achievements").insert({
+    user_id: userId,
+    achievement_type: achievementType,
+    referring_agent_id: user.referring_agent_id,
+  });
+  if (insertError) throw insertError;
+
+  return true;
+}
+
+// 指定地方の国(美濃国を除く)がすべて制圧済みなら地方コンプ実績を記録する。
+async function maybeCompleteRegion(userId: string, region: string, allProvinces: ProvinceRow[]): Promise<boolean> {
+  const supabase = createSupabaseServerClient();
+
+  const provinceIds = allProvinces.filter((p) => p.region === region && !p.is_final_province).map((p) => p.id);
+  if (provinceIds.length === 0) return false;
+
+  const { data: conqueredRows, error: conqueredError } = await supabase
+    .from("user_provinces")
+    .select("province_id")
+    .eq("user_id", userId)
+    .eq("is_conquered", true)
+    .in("province_id", provinceIds);
+  if (conqueredError) throw conqueredError;
+
+  const allConquered = (conqueredRows ?? []).length === provinceIds.length;
+  if (!allConquered) return false;
+
+  const achievementType = `region_complete_${REGION_SLUGS[region] ?? region}`;
+  return recordAchievementOnce(userId, achievementType);
+}
+
+// 制圧済み国数が美濃国の解放しきい値を今回の抽選で初めて超えたかどうか。
+function didJustUnlockMino(previousCount: number, newCount: number, allProvinces: ProvinceRow[]): boolean {
+  const mino = allProvinces.find((p) => p.is_final_province);
+  if (!mino || mino.unlock_condition_count == null) return false;
+  return previousCount < mino.unlock_condition_count && newCount >= mino.unlock_condition_count;
+}
+
 export async function drawFreeGacha(userId: string): Promise<GachaDrawResult> {
   const supabase = createSupabaseServerClient();
 
@@ -186,12 +277,14 @@ export async function drawFreeGacha(userId: string): Promise<GachaDrawResult> {
     throw new GachaLimitExceededError("本日の無料ガチャ回数の上限に達しています");
   }
 
-  const eligibleProvinceIds = await getEligibleProvinceIds(userId, conqueredCount);
-  if (eligibleProvinceIds.length === 0) {
+  const allProvinces = await getAllProvinces();
+  const eligibleProvinces = await getEligibleProvinces(userId, conqueredCount, allProvinces);
+  if (eligibleProvinces.length === 0) {
     throw new NoEligibleProvinceError("挑戦できる国がありません");
   }
 
-  const provinceId = eligibleProvinceIds[Math.floor(Math.random() * eligibleProvinceIds.length)];
+  const chosenProvince = eligibleProvinces[Math.floor(Math.random() * eligibleProvinces.length)];
+  const provinceId = chosenProvince.id;
   const slot = pickSlot(conqueredCount);
 
   const { data: warlord, error: warlordError } = await supabase
@@ -215,6 +308,16 @@ export async function drawFreeGacha(userId: string): Promise<GachaDrawResult> {
 
   const provinceConquered = await maybeConquerProvince(userId, provinceId);
 
+  let regionCompleted: string | null = null;
+  let minoUnlocked = false;
+
+  if (provinceConquered) {
+    const newConqueredCount = conqueredCount + 1;
+    const regionJustCompleted = await maybeCompleteRegion(userId, chosenProvince.region, allProvinces);
+    if (regionJustCompleted) regionCompleted = chosenProvince.region;
+    minoUnlocked = didJustUnlockMino(conqueredCount, newConqueredCount, allProvinces);
+  }
+
   const province = warlord.provinces as unknown as { id: string; name: string };
 
   return {
@@ -228,6 +331,8 @@ export async function drawFreeGacha(userId: string): Promise<GachaDrawResult> {
     },
     province: { id: province.id, name: province.name },
     provinceConquered,
+    regionCompleted,
+    minoUnlocked,
     remainingFreeDrawsToday: Math.max(freeLimit - (todaysCount + 1), 0),
   };
 }

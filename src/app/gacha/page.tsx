@@ -14,6 +14,8 @@ type DrawResult = {
   };
   province: { id: string; name: string };
   provinceConquered: boolean;
+  regionCompleted: string | null;
+  minoUnlocked: boolean;
   remainingFreeDrawsToday: number;
 };
 
@@ -72,6 +74,18 @@ export default function GachaPage() {
             {result.provinceConquered && (
               <p className="rounded-lg bg-amber-50 p-4 text-center text-sm font-semibold text-amber-800 dark:bg-amber-950 dark:text-amber-300">
                 {result.province.name}国を制圧しました!
+              </p>
+            )}
+
+            {result.regionCompleted && (
+              <p className="rounded-lg bg-purple-50 p-4 text-center text-sm font-semibold text-purple-800 dark:bg-purple-950 dark:text-purple-300">
+                {result.regionCompleted}地方コンプリート!
+              </p>
+            )}
+
+            {result.minoUnlocked && (
+              <p className="rounded-lg bg-red-50 p-4 text-center text-sm font-semibold text-red-800 dark:bg-red-950 dark:text-red-300">
+                美濃国(岐阜)への挑戦権が解放されました!
               </p>
             )}
 
