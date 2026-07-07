@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import type { PassportData } from "@/lib/passport";
 
@@ -115,6 +116,15 @@ export default function Home() {
             <dt className="text-sm text-zinc-500 dark:text-zinc-400">制圧国数</dt>
             <dd className="text-right font-semibold">{passport.conqueredProvinceCount} / 66</dd>
           </dl>
+        )}
+
+        {status === "ready" && (
+          <Link
+            href="/gacha"
+            className="mt-6 block rounded-lg bg-red-700 px-4 py-3 text-center font-semibold text-white transition hover:bg-red-800"
+          >
+            ガチャを引く
+          </Link>
         )}
       </main>
     </div>
