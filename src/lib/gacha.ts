@@ -2,8 +2,9 @@ import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export class GachaLimitExceededError extends Error {}
 export class NoEligibleProvinceError extends Error {}
+export class InsufficientTicketsError extends Error {}
 
-export type GachaDrawResult = {
+type DrawCore = {
   warlord: {
     id: string;
     name: string;
@@ -20,7 +21,15 @@ export type GachaDrawResult = {
   regionCompleted: string | null;
   minoUnlocked: boolean;
   tenkaToitsuTriggered: boolean;
+};
+
+export type GachaDrawResult = DrawCore & {
   remainingFreeDrawsToday: number;
+};
+
+export type PaidGachaDrawResult = DrawCore & {
+  remainingPaidDrawsToday: number;
+  remainingGachaTickets: number;
 };
 
 // achievements.achievement_type の命名(例: "region_complete_kanto")に使うスラグ
@@ -92,8 +101,26 @@ async function getEffectiveFreeLimit(): Promise<number> {
   return config.base_daily_free_limit;
 }
 
+async function getEffectivePaidLimit(): Promise<number> {
+  const supabase = createSupabaseServerClient();
+  const { data: config, error } = await supabase
+    .from("gacha_config")
+    .select("base_daily_paid_limit, event_paid_limit_override, event_start_at, event_end_at")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!config) return 3;
+
+  if (config.event_paid_limit_override != null && isEventWindowActive(config.event_start_at, config.event_end_at)) {
+    return config.event_paid_limit_override;
+  }
+  return config.base_daily_paid_limit;
+}
+
 // 「本日」はサーバーのローカル日付境界で判定する(MVP簡易実装。ユーザーのタイムゾーンは考慮しない)。
-async function getTodaysFreeDrawCount(userId: string): Promise<number> {
+async function getTodaysDrawCount(userId: string, isPaid: boolean): Promise<number> {
   const supabase = createSupabaseServerClient();
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
@@ -102,7 +129,7 @@ async function getTodaysFreeDrawCount(userId: string): Promise<number> {
     .from("gacha_logs")
     .select("id", { count: "exact", head: true })
     .eq("user_id", userId)
-    .eq("is_paid", false)
+    .eq("is_paid", isPaid)
     .gte("created_at", startOfDay.toISOString());
 
   if (error) throw error;
@@ -267,18 +294,9 @@ function didJustUnlockMino(previousCount: number, newCount: number, allProvinces
   return previousCount < mino.unlock_condition_count && newCount >= mino.unlock_condition_count;
 }
 
-export async function drawFreeGacha(userId: string): Promise<GachaDrawResult> {
+// 無料/有料共通の抽選本体(排出率は共通。03_gacha_game_design 9章: 「排出率は無料と完全に共通、回数のみ増える」)。
+async function performDraw(userId: string, isPaid: boolean, conqueredCount: number): Promise<DrawCore> {
   const supabase = createSupabaseServerClient();
-
-  const [freeLimit, todaysCount, conqueredCount] = await Promise.all([
-    getEffectiveFreeLimit(),
-    getTodaysFreeDrawCount(userId),
-    getConqueredProvinceCount(userId),
-  ]);
-
-  if (todaysCount >= freeLimit) {
-    throw new GachaLimitExceededError("本日の無料ガチャ回数の上限に達しています");
-  }
 
   const allProvinces = await getAllProvinces();
   const eligibleProvinces = await getEligibleProvinces(userId, conqueredCount, allProvinces);
@@ -304,7 +322,7 @@ export async function drawFreeGacha(userId: string): Promise<GachaDrawResult> {
   const { error: logError } = await supabase.from("gacha_logs").insert({
     user_id: userId,
     warlord_id: warlord.id,
-    is_paid: false,
+    is_paid: isPaid,
     conquered_provinces_count_at_draw: conqueredCount,
   });
   if (logError) throw logError;
@@ -339,6 +357,59 @@ export async function drawFreeGacha(userId: string): Promise<GachaDrawResult> {
     regionCompleted,
     minoUnlocked,
     tenkaToitsuTriggered,
+  };
+}
+
+export async function drawFreeGacha(userId: string): Promise<GachaDrawResult> {
+  const [freeLimit, todaysCount, conqueredCount] = await Promise.all([
+    getEffectiveFreeLimit(),
+    getTodaysDrawCount(userId, false),
+    getConqueredProvinceCount(userId),
+  ]);
+
+  if (todaysCount >= freeLimit) {
+    throw new GachaLimitExceededError("本日の無料ガチャ回数の上限に達しています");
+  }
+
+  const core = await performDraw(userId, false, conqueredCount);
+
+  return {
+    ...core,
     remainingFreeDrawsToday: Math.max(freeLimit - (todaysCount + 1), 0),
+  };
+}
+
+// 有料ガチャ: ガチャ券を1枚消費する。排出率・国盗り判定ロジックは無料と共通。
+export async function drawPaidGacha(userId: string): Promise<PaidGachaDrawResult> {
+  const supabase = createSupabaseServerClient();
+
+  const [paidLimit, todaysCount, conqueredCount, user] = await Promise.all([
+    getEffectivePaidLimit(),
+    getTodaysDrawCount(userId, true),
+    getConqueredProvinceCount(userId),
+    supabase.from("users").select("gacha_tickets").eq("id", userId).single(),
+  ]);
+
+  if (user.error) throw user.error;
+
+  if (todaysCount >= paidLimit) {
+    throw new GachaLimitExceededError("本日の有料ガチャ回数の上限に達しています");
+  }
+  if (user.data.gacha_tickets < 1) {
+    throw new InsufficientTicketsError("ガチャ券が不足しています");
+  }
+
+  const { error: decrementError } = await supabase
+    .from("users")
+    .update({ gacha_tickets: user.data.gacha_tickets - 1 })
+    .eq("id", userId);
+  if (decrementError) throw decrementError;
+
+  const core = await performDraw(userId, true, conqueredCount);
+
+  return {
+    ...core,
+    remainingPaidDrawsToday: Math.max(paidLimit - (todaysCount + 1), 0),
+    remainingGachaTickets: user.data.gacha_tickets - 1,
   };
 }

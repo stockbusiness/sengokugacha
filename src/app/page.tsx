@@ -168,6 +168,12 @@ export default function Home() {
             >
               天下統一
             </Link>
+            <Link
+              href="/purchase"
+              className="block rounded-lg border border-zinc-300 px-4 py-3 text-center font-semibold text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
+            >
+              石高・ガチャ券を購入する
+            </Link>
           </div>
         )}
 

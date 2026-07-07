@@ -6,7 +6,7 @@ export default function AdminDashboardLayout({ children }: { children: React.Rea
     <div className="min-h-screen bg-zinc-50 font-sans dark:bg-black">
       <header className="border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
         <div className="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
-          <nav className="flex gap-4 text-sm font-medium text-zinc-600 dark:text-zinc-300">
+          <nav className="flex flex-wrap gap-4 text-sm font-medium text-zinc-600 dark:text-zinc-300">
             <Link href="/admin" className="hover:text-zinc-900 dark:hover:text-zinc-50">
               管理画面
             </Link>
@@ -24,6 +24,9 @@ export default function AdminDashboardLayout({ children }: { children: React.Rea
             </Link>
             <Link href="/admin/links" className="hover:text-zinc-900 dark:hover:text-zinc-50">
               送客導線
+            </Link>
+            <Link href="/admin/payment-settings" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+              決済設定
             </Link>
           </nav>
           <LogoutButton />

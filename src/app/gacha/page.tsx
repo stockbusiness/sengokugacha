@@ -17,25 +17,34 @@ type DrawResult = {
   regionCompleted: string | null;
   minoUnlocked: boolean;
   tenkaToitsuTriggered: boolean;
-  remainingFreeDrawsToday: number;
+  remainingFreeDrawsToday?: number;
+  remainingPaidDrawsToday?: number;
+  remainingGachaTickets?: number;
 };
 
+type Mode = "free" | "paid";
 type Status = "idle" | "drawing" | "done" | "error";
 
 export default function GachaPage() {
   const [status, setStatus] = useState<Status>("idle");
+  const [mode, setMode] = useState<Mode>("free");
   const [result, setResult] = useState<DrawResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [needsTickets, setNeedsTickets] = useState(false);
 
-  async function handleDraw() {
+  async function handleDraw(drawMode: Mode) {
     setStatus("drawing");
+    setMode(drawMode);
     setErrorMessage(null);
+    setNeedsTickets(false);
 
     try {
-      const res = await fetch("/api/gacha/draw", { method: "POST" });
+      const endpoint = drawMode === "free" ? "/api/gacha/draw" : "/api/gacha/draw-paid";
+      const res = await fetch(endpoint, { method: "POST" });
       const body = await res.json();
 
       if (!res.ok) {
+        if (res.status === 402) setNeedsTickets(true);
         throw new Error(body.error ?? "ガチャの実行に失敗しました。");
       }
 
@@ -47,27 +56,49 @@ export default function GachaPage() {
     }
   }
 
+  const remaining =
+    mode === "free" ? result?.remainingFreeDrawsToday ?? 0 : result?.remainingPaidDrawsToday ?? 0;
+
   return (
     <div className="flex flex-1 items-center justify-center bg-zinc-50 px-4 py-16 font-sans dark:bg-black">
       <main className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
         <h1 className="mb-6 text-center text-2xl font-bold tracking-tight text-zinc-900 dark:text-zinc-50">
-          無料ガチャ
+          ガチャ
         </h1>
 
         {status !== "done" && (
-          <button
-            onClick={handleDraw}
-            disabled={status === "drawing"}
-            className="w-full rounded-lg bg-red-700 px-4 py-3 font-semibold text-white transition hover:bg-red-800 disabled:opacity-50"
-          >
-            {status === "drawing" ? "抽選中..." : "ガチャを引く"}
-          </button>
+          <div className="space-y-2">
+            <button
+              onClick={() => handleDraw("free")}
+              disabled={status === "drawing"}
+              className="w-full rounded-lg bg-red-700 px-4 py-3 font-semibold text-white transition hover:bg-red-800 disabled:opacity-50"
+            >
+              {status === "drawing" && mode === "free" ? "抽選中..." : "無料ガチャを引く"}
+            </button>
+            <button
+              onClick={() => handleDraw("paid")}
+              disabled={status === "drawing"}
+              className="w-full rounded-lg border border-red-700 px-4 py-3 font-semibold text-red-700 transition hover:bg-red-50 disabled:opacity-50 dark:hover:bg-red-950"
+            >
+              {status === "drawing" && mode === "paid" ? "抽選中..." : "有料ガチャを引く(ガチャ券1枚消費)"}
+            </button>
+          </div>
         )}
 
         {status === "error" && errorMessage && (
-          <p className="mt-4 rounded-lg bg-red-50 p-4 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
-            {errorMessage}
-          </p>
+          <div className="mt-4 space-y-2">
+            <p className="rounded-lg bg-red-50 p-4 text-sm text-red-700 dark:bg-red-950 dark:text-red-300">
+              {errorMessage}
+            </p>
+            {needsTickets && (
+              <Link
+                href="/purchase"
+                className="block rounded-lg bg-red-700 px-4 py-3 text-center text-sm font-semibold text-white transition hover:bg-red-800"
+              >
+                ガチャ券を購入する
+              </Link>
+            )}
+          </div>
         )}
 
         {status === "done" && result && (
@@ -109,12 +140,14 @@ export default function GachaPage() {
             </div>
 
             <p className="text-center text-xs text-zinc-500 dark:text-zinc-400">
-              本日の無料ガチャ残り回数: {result.remainingFreeDrawsToday}
+              {mode === "free"
+                ? `本日の無料ガチャ残り回数: ${remaining}`
+                : `本日の有料ガチャ残り回数: ${remaining}(ガチャ券残り: ${result.remainingGachaTickets ?? 0}枚)`}
             </p>
 
             <button
-              onClick={handleDraw}
-              disabled={result.remainingFreeDrawsToday <= 0}
+              onClick={() => handleDraw(mode)}
+              disabled={remaining <= 0}
               className="w-full rounded-lg bg-red-700 px-4 py-3 font-semibold text-white transition hover:bg-red-800 disabled:opacity-50"
             >
               もう一度引く
@@ -134,6 +167,12 @@ export default function GachaPage() {
             className="block text-zinc-500 underline hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
           >
             天下統一の状況を見る
+          </Link>
+          <Link
+            href="/purchase"
+            className="block text-zinc-500 underline hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+          >
+            石高・ガチャ券を購入する
           </Link>
           <Link
             href="/"
