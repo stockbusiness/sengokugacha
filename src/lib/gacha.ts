@@ -1,3 +1,4 @@
+import { getGachaRateTiers, pickTierRates, type GachaRateTier } from "@/lib/gacha-rate-tiers";
 import { getLoginStreak, getStreakBonusDraws } from "@/lib/login-streak";
 import { getRegionKokudakaBonus, regionCompleteAchievementType } from "@/lib/regions";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -35,17 +36,11 @@ export type PaidGachaDrawResult = DrawCore & {
   remainingGachaTickets: number;
 };
 
-// 04_mvp_spec_v1.2.md 3.1: 制圧済み国数に応じた排出率ティア
-function getTierRates(conqueredCount: number): { rare: number; mid: number } {
-  if (conqueredCount <= 5) return { rare: 0.15, mid: 0.3 };
-  if (conqueredCount <= 15) return { rare: 0.1, mid: 0.3 };
-  if (conqueredCount <= 30) return { rare: 0.06, mid: 0.28 };
-  if (conqueredCount <= 50) return { rare: 0.03, mid: 0.25 };
-  return { rare: 0.015, mid: 0.2 };
-}
-
-function pickSlot(conqueredCount: number): "common" | "mid" | "rare" {
-  const { rare, mid } = getTierRates(conqueredCount);
+// 04_mvp_spec_v1.2.md 3.1: 制圧済み国数に応じた排出率ティア。
+// 管理画面(/admin/gacha-rates)から編集可能なgacha_rate_tiersテーブルを参照する
+// (ユーザー向け排出率開示ページ /rates も同じテーブルを参照するため、常に表示と実際の抽選が一致する)。
+function pickSlot(conqueredCount: number, tiers: GachaRateTier[]): "common" | "mid" | "rare" {
+  const { rare, mid } = pickTierRates(tiers, conqueredCount);
   const r = Math.random();
   if (r < rare) return "rare";
   if (r < rare + mid) return "mid";
@@ -316,7 +311,7 @@ function didJustUnlockMino(previousCount: number, newCount: number, allProvinces
 async function performDraw(userId: string, isPaid: boolean, conqueredCount: number): Promise<DrawCore> {
   const supabase = createSupabaseServerClient();
 
-  const allProvinces = await getAllProvinces();
+  const [allProvinces, tiers] = await Promise.all([getAllProvinces(), getGachaRateTiers()]);
   const eligibleProvinces = await getEligibleProvinces(userId, conqueredCount, allProvinces);
   if (eligibleProvinces.length === 0) {
     throw new NoEligibleProvinceError("挑戦できる国がありません");
@@ -324,7 +319,7 @@ async function performDraw(userId: string, isPaid: boolean, conqueredCount: numb
 
   const chosenProvince = eligibleProvinces[Math.floor(Math.random() * eligibleProvinces.length)];
   const provinceId = chosenProvince.id;
-  const slot = pickSlot(conqueredCount);
+  const slot = pickSlot(conqueredCount, tiers);
 
   const { data: warlord, error: warlordError } = await supabase
     .from("warlords")

@@ -166,6 +166,9 @@ export default function GachaPage() {
         <TextLink href="/regions">地方コンプ状況を見る</TextLink>
         <TextLink href="/tenka-toitsu">天下統一の状況を見る</TextLink>
       </div>
+      <div className="mt-2">
+        <TextLink href="/rates">排出率を見る</TextLink>
+      </div>
     </div>
   );
 }

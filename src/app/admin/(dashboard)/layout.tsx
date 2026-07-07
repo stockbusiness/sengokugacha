@@ -16,6 +16,9 @@ export default function AdminDashboardLayout({ children }: { children: React.Rea
             <Link href="/admin/gacha-config" className="hover:text-zinc-900 dark:hover:text-zinc-50">
               ガチャ設定
             </Link>
+            <Link href="/admin/gacha-rates" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+              排出率設定
+            </Link>
             <Link href="/admin/provinces" className="hover:text-zinc-900 dark:hover:text-zinc-50">
               国マスタ
             </Link>
@@ -39,6 +42,9 @@ export default function AdminDashboardLayout({ children }: { children: React.Rea
             </Link>
             <Link href="/admin/users" className="hover:text-zinc-900 dark:hover:text-zinc-50">
               ユーザー検索
+            </Link>
+            <Link href="/admin/legal-pages" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+              法的ページ
             </Link>
           </nav>
           <LogoutButton />
