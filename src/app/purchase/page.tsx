@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
 
 type PurchaseConfig = {
   stripeConfigured: boolean;
@@ -13,30 +14,34 @@ type PurchaseConfig = {
 
 export default function PurchasePage() {
   const [config, setConfig] = useState<PurchaseConfig | null>(null);
-  const [liffId, setLiffId] = useState<string | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [purchasingItem, setPurchasingItem] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [loadErrorMessage, setLoadErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/app-config")
-      .then((res) => res.json())
-      .then((appConfig) => {
-        const id: string | null = appConfig.liffId;
-        setLiffId(id);
-        if (id) {
-          import("@line/liff").then(({ default: liff }) => liff.init({ liffId: id }).catch(() => {}));
-        }
-      })
-      .catch(() => {});
+    let cancelled = false;
 
-    fetch("/api/purchase/config")
-      .then((res) => res.json())
-      .then((data) => {
-        setConfig(data);
-        setStatus("ready");
+    ensureLiffSession()
+      .then((session) => {
+        if (cancelled || session.status === "redirecting") return;
+        return fetch("/api/purchase/config")
+          .then((res) => res.json())
+          .then((data) => {
+            if (cancelled) return;
+            setConfig(data);
+            setStatus("ready");
+          });
       })
-      .catch(() => setStatus("error"));
+      .catch((error) => {
+        if (cancelled) return;
+        setLoadErrorMessage(error instanceof Error ? error.message : null);
+        setStatus("error");
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function handlePurchase(itemType: "kokudaka" | "gacha_ticket") {
@@ -53,12 +58,11 @@ export default function PurchasePage() {
       if (!res.ok) throw new Error(body.error ?? "購入手続きの開始に失敗しました。");
 
       // LIFF内WebViewのままだとStripe Checkoutが正しく動作しないため、外部ブラウザで開く。
-      if (liffId) {
-        const { default: liff } = await import("@line/liff");
-        if (liff.isInClient()) {
-          liff.openWindow({ url: body.url, external: true });
-          return;
-        }
+      // ensureLiffSession()で既にliff.init()済みのため、ここでは再初期化不要。
+      const { default: liff } = await import("@line/liff");
+      if (liff.isInClient()) {
+        liff.openWindow({ url: body.url, external: true });
+        return;
       }
       window.open(body.url, "_blank");
     } catch (error) {
@@ -77,7 +81,9 @@ export default function PurchasePage() {
 
         {status === "loading" && <p className="text-center text-zinc-500 dark:text-zinc-400">読み込み中...</p>}
         {status === "error" && (
-          <p className="text-center text-sm text-red-700 dark:text-red-400">読み込みに失敗しました。</p>
+          <p className="text-center text-sm text-red-700 dark:text-red-400">
+            {loadErrorMessage ?? "読み込みに失敗しました。"}
+          </p>
         )}
 
         {status === "ready" && config && !config.stripeConfigured && (

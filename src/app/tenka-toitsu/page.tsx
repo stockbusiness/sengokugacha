@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
 
 type OwnedWarlordOption = {
   id: string;
@@ -25,7 +26,7 @@ export default function TenkaToitsuPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  function load() {
+  function loadData() {
     return fetch("/api/tenka-toitsu")
       .then((res) => res.json())
       .then((body: TenkaToitsuStatus) => {
@@ -36,7 +37,22 @@ export default function TenkaToitsuPage() {
   }
 
   useEffect(() => {
-    load();
+    let cancelled = false;
+
+    ensureLiffSession()
+      .then((session) => {
+        if (cancelled || session.status === "redirecting") return;
+        return loadData();
+      })
+      .catch((error) => {
+        if (cancelled) return;
+        setErrorMessage(error instanceof Error ? error.message : null);
+        setStatus("error");
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function handleSubmit() {
@@ -52,7 +68,7 @@ export default function TenkaToitsuPage() {
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "登録に失敗しました。");
-      await load();
+      await loadData();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "予期しないエラーが発生しました。");
       setStatus("ready");
@@ -68,6 +84,12 @@ export default function TenkaToitsuPage() {
 
         {status === "loading" && (
           <p className="text-center text-zinc-500 dark:text-zinc-400">読み込み中...</p>
+        )}
+
+        {status === "error" && (
+          <p className="text-center text-sm text-red-700 dark:text-red-400">
+            {errorMessage ?? "読み込みに失敗しました。"}
+          </p>
         )}
 
         {status !== "loading" && data && !data.minoConquered && (

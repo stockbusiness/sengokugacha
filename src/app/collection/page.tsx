@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
 
 type CollectionWarlord = {
   id: string;
@@ -26,15 +27,31 @@ const REGION_ORDER = ["東北", "関東", "中部", "近畿", "中国", "四国"
 export default function CollectionPage() {
   const [provinces, setProvinces] = useState<CollectionProvince[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/collection")
-      .then((res) => res.json())
-      .then((data) => {
-        setProvinces(data);
-        setStatus("ready");
+    let cancelled = false;
+
+    ensureLiffSession()
+      .then((session) => {
+        if (cancelled || session.status === "redirecting") return;
+        return fetch("/api/collection")
+          .then((res) => res.json())
+          .then((data) => {
+            if (cancelled) return;
+            setProvinces(data);
+            setStatus("ready");
+          });
       })
-      .catch(() => setStatus("error"));
+      .catch((error) => {
+        if (cancelled) return;
+        setErrorMessage(error instanceof Error ? error.message : null);
+        setStatus("error");
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const ownedCount = provinces.flatMap((p) => p.warlords).filter((w) => w.owned).length;
@@ -63,7 +80,9 @@ export default function CollectionPage() {
 
         {status === "loading" && <p className="text-center text-zinc-500 dark:text-zinc-400">読み込み中...</p>}
         {status === "error" && (
-          <p className="text-center text-sm text-red-700 dark:text-red-400">読み込みに失敗しました。</p>
+          <p className="text-center text-sm text-red-700 dark:text-red-400">
+            {errorMessage ?? "読み込みに失敗しました。"}
+          </p>
         )}
 
         {status === "ready" && (

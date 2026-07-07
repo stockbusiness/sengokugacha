@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
 
 type RegionProgress = {
   region: string;
@@ -15,15 +16,31 @@ type RegionProgress = {
 export default function RegionsPage() {
   const [regions, setRegions] = useState<RegionProgress[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/regions")
-      .then((res) => res.json())
-      .then((data) => {
-        setRegions(data);
-        setStatus("ready");
+    let cancelled = false;
+
+    ensureLiffSession()
+      .then((session) => {
+        if (cancelled || session.status === "redirecting") return;
+        return fetch("/api/regions")
+          .then((res) => res.json())
+          .then((data) => {
+            if (cancelled) return;
+            setRegions(data);
+            setStatus("ready");
+          });
       })
-      .catch(() => setStatus("error"));
+      .catch((error) => {
+        if (cancelled) return;
+        setErrorMessage(error instanceof Error ? error.message : null);
+        setStatus("error");
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   return (
@@ -38,7 +55,9 @@ export default function RegionsPage() {
 
         {status === "loading" && <p className="text-center text-zinc-500 dark:text-zinc-400">読み込み中...</p>}
         {status === "error" && (
-          <p className="text-center text-sm text-red-700 dark:text-red-400">読み込みに失敗しました。</p>
+          <p className="text-center text-sm text-red-700 dark:text-red-400">
+            {errorMessage ?? "読み込みに失敗しました。"}
+          </p>
         )}
 
         {status === "ready" && (
