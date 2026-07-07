@@ -1,3 +1,5 @@
+import { getLoginStreak, getStreakBonusDraws } from "@/lib/login-streak";
+import { getRegionKokudakaBonus, regionCompleteAchievementType } from "@/lib/regions";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export class GachaLimitExceededError extends Error {}
@@ -19,6 +21,7 @@ type DrawCore = {
   };
   provinceConquered: boolean;
   regionCompleted: string | null;
+  regionCompletionBonus: number;
   minoUnlocked: boolean;
   tenkaToitsuTriggered: boolean;
 };
@@ -30,18 +33,6 @@ export type GachaDrawResult = DrawCore & {
 export type PaidGachaDrawResult = DrawCore & {
   remainingPaidDrawsToday: number;
   remainingGachaTickets: number;
-};
-
-// achievements.achievement_type の命名(例: "region_complete_kanto")に使うスラグ
-const REGION_SLUGS: Record<string, string> = {
-  東北: "tohoku",
-  関東: "kanto",
-  中部: "chubu",
-  近畿: "kinki",
-  中国: "chugoku",
-  四国: "shikoku",
-  九州: "kyushu",
-  北陸: "hokuriku",
 };
 
 // 04_mvp_spec_v1.2.md 3.1: 制圧済み国数に応じた排出率ティア
@@ -83,22 +74,31 @@ function isEventWindowActive(startAt: string | null, endAt: string | null): bool
 }
 
 // gacha_config は1行運用。行が無い場合はカラムのデフォルト値と同じ値にフォールバックする。
-async function getEffectiveFreeLimit(): Promise<number> {
+// 03_gacha_game_design 3章/9章: 連続ログイン日数に応じて無料ガチャの1日上限にボーナスを加算する。
+async function getEffectiveFreeLimit(userId: string): Promise<number> {
   const supabase = createSupabaseServerClient();
   const { data: config, error } = await supabase
     .from("gacha_config")
-    .select("base_daily_free_limit, event_free_limit_override, event_start_at, event_end_at")
+    .select(
+      "base_daily_free_limit, event_free_limit_override, event_start_at, event_end_at, streak_bonus_7day_draws, streak_bonus_30day_draws"
+    )
     .order("created_at", { ascending: false })
     .limit(1)
     .maybeSingle();
 
   if (error) throw error;
-  if (!config) return 1;
+
+  const streak = await getLoginStreak(userId);
+  const streakBonus = config
+    ? getStreakBonusDraws(streak, config.streak_bonus_7day_draws, config.streak_bonus_30day_draws)
+    : getStreakBonusDraws(streak, 1, 2);
+
+  if (!config) return 1 + streakBonus;
 
   if (config.event_free_limit_override != null && isEventWindowActive(config.event_start_at, config.event_end_at)) {
-    return config.event_free_limit_override;
+    return config.event_free_limit_override + streakBonus;
   }
-  return config.base_daily_free_limit;
+  return config.base_daily_free_limit + streakBonus;
 }
 
 async function getEffectivePaidLimit(): Promise<number> {
@@ -265,12 +265,26 @@ async function recordAchievementOnce(userId: string, achievementType: string): P
   return true;
 }
 
-// 指定地方の国(美濃国を除く)がすべて制圧済みなら地方コンプ実績を記録する。
-async function maybeCompleteRegion(userId: string, region: string, allProvinces: ProvinceRow[]): Promise<boolean> {
+async function grantKokudakaBonus(userId: string, amount: number) {
+  const supabase = createSupabaseServerClient();
+  const { data: user, error } = await supabase.from("users").select("kokudaka").eq("id", userId).single();
+  if (error) throw error;
+  const { error: updateError } = await supabase
+    .from("users")
+    .update({ kokudaka: user.kokudaka + amount })
+    .eq("id", userId);
+  if (updateError) throw updateError;
+}
+
+// 指定地方の国(美濃国を除く)がすべて制圧済みなら地方コンプ実績を記録し、石高ボーナスを付与する。
+// 03_gacha_game_design 13章の称号・クーポン・イベント特典のうち、石高ボーナスのみ自動付与する
+// (クーポン/イベント管理の基盤が無いため、その他は今後の課題)。
+// 戻り値: 今回新たに達成した場合は付与した石高ボーナス額、それ以外は0。
+async function maybeCompleteRegion(userId: string, region: string, allProvinces: ProvinceRow[]): Promise<number> {
   const supabase = createSupabaseServerClient();
 
   const provinceIds = allProvinces.filter((p) => p.region === region && !p.is_final_province).map((p) => p.id);
-  if (provinceIds.length === 0) return false;
+  if (provinceIds.length === 0) return 0;
 
   const { data: conqueredRows, error: conqueredError } = await supabase
     .from("user_provinces")
@@ -281,10 +295,14 @@ async function maybeCompleteRegion(userId: string, region: string, allProvinces:
   if (conqueredError) throw conqueredError;
 
   const allConquered = (conqueredRows ?? []).length === provinceIds.length;
-  if (!allConquered) return false;
+  if (!allConquered) return 0;
 
-  const achievementType = `region_complete_${REGION_SLUGS[region] ?? region}`;
-  return recordAchievementOnce(userId, achievementType);
+  const newlyCompleted = await recordAchievementOnce(userId, regionCompleteAchievementType(region));
+  if (!newlyCompleted) return 0;
+
+  const bonus = getRegionKokudakaBonus(provinceIds.length);
+  await grantKokudakaBonus(userId, bonus);
+  return bonus;
 }
 
 // 制圧済み国数が美濃国の解放しきい値を今回の抽選で初めて超えたかどうか。
@@ -330,13 +348,17 @@ async function performDraw(userId: string, isPaid: boolean, conqueredCount: numb
   const provinceConquered = await maybeConquerProvince(userId, provinceId);
 
   let regionCompleted: string | null = null;
+  let regionCompletionBonus = 0;
   let minoUnlocked = false;
   let tenkaToitsuTriggered = false;
 
   if (provinceConquered) {
     const newConqueredCount = conqueredCount + 1;
-    const regionJustCompleted = await maybeCompleteRegion(userId, chosenProvince.region, allProvinces);
-    if (regionJustCompleted) regionCompleted = chosenProvince.region;
+    const bonus = await maybeCompleteRegion(userId, chosenProvince.region, allProvinces);
+    if (bonus > 0) {
+      regionCompleted = chosenProvince.region;
+      regionCompletionBonus = bonus;
+    }
     minoUnlocked = didJustUnlockMino(conqueredCount, newConqueredCount, allProvinces);
     tenkaToitsuTriggered = chosenProvince.is_final_province;
   }
@@ -355,6 +377,7 @@ async function performDraw(userId: string, isPaid: boolean, conqueredCount: numb
     province: { id: province.id, name: province.name },
     provinceConquered,
     regionCompleted,
+    regionCompletionBonus,
     minoUnlocked,
     tenkaToitsuTriggered,
   };
@@ -362,7 +385,7 @@ async function performDraw(userId: string, isPaid: boolean, conqueredCount: numb
 
 export async function drawFreeGacha(userId: string): Promise<GachaDrawResult> {
   const [freeLimit, todaysCount, conqueredCount] = await Promise.all([
-    getEffectiveFreeLimit(),
+    getEffectiveFreeLimit(userId),
     getTodaysDrawCount(userId, false),
     getConqueredProvinceCount(userId),
   ]);

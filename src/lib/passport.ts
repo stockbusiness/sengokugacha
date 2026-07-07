@@ -1,3 +1,4 @@
+import { getLoginStreak } from "@/lib/login-streak";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export type PassportData = {
@@ -8,6 +9,7 @@ export type PassportData = {
   gachaTickets: number;
   warlordCount: number;
   conqueredProvinceCount: number;
+  loginStreak: number;
 };
 
 // 04_mvp_spec 3.3: 紹介リンク(?ref=AGENT_CODE)経由の代理店を解決する。
@@ -88,7 +90,7 @@ export async function getPassportData(userId: string): Promise<PassportData | nu
   if (userError) throw userError;
   if (!user) return null;
 
-  const [{ count: warlordCount, error: warlordError }, { count: conqueredCount, error: provinceError }] =
+  const [{ count: warlordCount, error: warlordError }, { count: conqueredCount, error: provinceError }, loginStreak] =
     await Promise.all([
       supabase
         .from("user_warlords")
@@ -99,6 +101,7 @@ export async function getPassportData(userId: string): Promise<PassportData | nu
         .select("id", { count: "exact", head: true })
         .eq("user_id", userId)
         .eq("is_conquered", true),
+      getLoginStreak(userId),
     ]);
 
   if (warlordError) throw warlordError;
@@ -112,5 +115,6 @@ export async function getPassportData(userId: string): Promise<PassportData | nu
     gachaTickets: user.gacha_tickets,
     warlordCount: warlordCount ?? 0,
     conqueredProvinceCount: conqueredCount ?? 0,
+    loginStreak,
   };
 }

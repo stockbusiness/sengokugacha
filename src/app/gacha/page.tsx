@@ -15,6 +15,7 @@ type DrawResult = {
   province: { id: string; name: string };
   provinceConquered: boolean;
   regionCompleted: string | null;
+  regionCompletionBonus: number;
   minoUnlocked: boolean;
   tenkaToitsuTriggered: boolean;
   remainingFreeDrawsToday?: number;
@@ -111,7 +112,7 @@ export default function GachaPage() {
 
             {result.regionCompleted && (
               <p className="rounded-lg bg-purple-50 p-4 text-center text-sm font-semibold text-purple-800 dark:bg-purple-950 dark:text-purple-300">
-                {result.regionCompleted}地方コンプリート!
+                {result.regionCompleted}地方コンプリート!石高+{result.regionCompletionBonus.toLocaleString()}
               </p>
             )}
 
@@ -157,10 +158,22 @@ export default function GachaPage() {
 
         <div className="mt-6 space-y-2 text-center text-sm">
           <Link
+            href="/collection"
+            className="block text-zinc-500 underline hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+          >
+            図鑑を見る
+          </Link>
+          <Link
             href="/map"
             className="block text-zinc-500 underline hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
           >
             日本地図(国盗り進捗)を見る
+          </Link>
+          <Link
+            href="/regions"
+            className="block text-zinc-500 underline hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+          >
+            地方コンプ状況を見る
           </Link>
           <Link
             href="/tenka-toitsu"

@@ -29,6 +29,8 @@ export async function GET() {
       event_start_at: null,
       event_end_at: null,
       preset_name: null,
+      streak_bonus_7day_draws: 1,
+      streak_bonus_30day_draws: 2,
     }
   );
 }
@@ -51,6 +53,8 @@ export async function PUT(request: NextRequest) {
     event_start_at: body.event_start_at,
     event_end_at: body.event_end_at,
     preset_name: body.preset_name,
+    streak_bonus_7day_draws: body.streak_bonus_7day_draws,
+    streak_bonus_30day_draws: body.streak_bonus_30day_draws,
     updated_at: new Date().toISOString(),
   };
 

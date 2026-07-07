@@ -11,6 +11,8 @@ type GachaConfig = {
   event_start_at: string | null;
   event_end_at: string | null;
   preset_name: string | null;
+  streak_bonus_7day_draws: number;
+  streak_bonus_30day_draws: number;
 };
 
 function toDatetimeLocal(iso: string | null): string {
@@ -157,6 +159,22 @@ export default function GachaConfigPage() {
             value={toDatetimeLocal(config.event_end_at)}
             onChange={(e) => setConfig({ ...config, event_end_at: toIsoOrNull(e.target.value) })}
             className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+          />
+        </Field>
+      </div>
+
+      <div className="space-y-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
+        <p className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">連続ログインボーナス(登城)</p>
+        <Field label="7日連続ログインで無料ガチャ+回数">
+          <NumberInput
+            value={config.streak_bonus_7day_draws}
+            onChange={(v) => setConfig({ ...config, streak_bonus_7day_draws: v ?? 0 })}
+          />
+        </Field>
+        <Field label="30日連続ログインで無料ガチャ+回数">
+          <NumberInput
+            value={config.streak_bonus_30day_draws}
+            onChange={(v) => setConfig({ ...config, streak_bonus_30day_draws: v ?? 0 })}
           />
         </Field>
       </div>

@@ -94,8 +94,14 @@ export default function MapPage() {
         )}
 
         <Link
-          href="/"
+          href="/regions"
           className="mt-8 block text-center text-sm text-zinc-500 underline hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+        >
+          地方コンプ状況を見る
+        </Link>
+        <Link
+          href="/"
+          className="mt-2 block text-center text-sm text-zinc-500 underline hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
         >
           戦国パスポートに戻る
         </Link>

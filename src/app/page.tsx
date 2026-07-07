@@ -145,6 +145,9 @@ export default function Home() {
 
             <dt className="text-sm text-zinc-500 dark:text-zinc-400">制圧国数</dt>
             <dd className="text-right font-semibold">{passport.conqueredProvinceCount} / 66</dd>
+
+            <dt className="text-sm text-zinc-500 dark:text-zinc-400">連続登城</dt>
+            <dd className="text-right font-semibold">{passport.loginStreak}日</dd>
           </dl>
         )}
 
@@ -157,10 +160,22 @@ export default function Home() {
               ガチャを引く
             </Link>
             <Link
+              href="/collection"
+              className="block rounded-lg border border-zinc-300 px-4 py-3 text-center font-semibold text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
+            >
+              図鑑
+            </Link>
+            <Link
               href="/map"
               className="block rounded-lg border border-zinc-300 px-4 py-3 text-center font-semibold text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
             >
               日本地図(国盗り進捗)
+            </Link>
+            <Link
+              href="/regions"
+              className="block rounded-lg border border-zinc-300 px-4 py-3 text-center font-semibold text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
+            >
+              地方コンプ
             </Link>
             <Link
               href="/tenka-toitsu"
