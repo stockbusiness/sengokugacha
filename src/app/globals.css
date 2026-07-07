@@ -35,3 +35,120 @@ h3,
 .font-heading {
   font-family: var(--font-heading), serif;
 }
+
+/* ガチャ演出アニメーション */
+
+@keyframes gacha-ring-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes gacha-pulse {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.85;
+  }
+  50% {
+    transform: scale(1.12);
+    opacity: 1;
+  }
+}
+
+@keyframes gacha-burst {
+  0% {
+    transform: scale(0.2);
+    opacity: 0.9;
+  }
+  60% {
+    opacity: 0.55;
+  }
+  100% {
+    transform: scale(var(--burst-scale, 8));
+    opacity: 0;
+  }
+}
+
+@keyframes gacha-flash {
+  0% {
+    opacity: 0;
+    transform: scale(0.6);
+  }
+  15% {
+    opacity: 0.55;
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.4);
+  }
+}
+
+@keyframes gacha-card-in {
+  0% {
+    transform: scale(0.4) rotateY(90deg);
+    opacity: 0;
+  }
+  60% {
+    transform: scale(1.05) rotateY(0deg);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1) rotateY(0deg);
+    opacity: 1;
+  }
+}
+
+@keyframes gacha-sparkle {
+  0% {
+    transform: translate(0, 0) scale(0);
+    opacity: 0;
+  }
+  30% {
+    opacity: 1;
+  }
+  100% {
+    transform: translate(var(--sx), var(--sy)) scale(1);
+    opacity: 0;
+  }
+}
+
+@keyframes gacha-shake {
+  0%,
+  100% {
+    transform: translateX(0);
+  }
+  20% {
+    transform: translateX(-6px);
+  }
+  40% {
+    transform: translateX(6px);
+  }
+  60% {
+    transform: translateX(-4px);
+  }
+  80% {
+    transform: translateX(4px);
+  }
+}
+
+@keyframes gacha-shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.gacha-shimmer-text {
+  background: linear-gradient(90deg, var(--color-gold-soft) 0%, #fff8dc 50%, var(--color-gold-soft) 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: gacha-shimmer 1.4s linear infinite;
+}

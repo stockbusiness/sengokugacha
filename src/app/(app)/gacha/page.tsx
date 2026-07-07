@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button, LinkButton, TextLink } from "@/components/ui/Button";
+import { GachaReveal } from "@/components/gacha/GachaReveal";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
 
 type DrawResult = {
@@ -27,7 +28,7 @@ type DrawResult = {
 };
 
 type Mode = "free" | "paid";
-type Status = "initializing" | "idle" | "drawing" | "done" | "error";
+type Status = "initializing" | "idle" | "drawing" | "revealing" | "done" | "error";
 
 export default function GachaPage() {
   const [status, setStatus] = useState<Status>("initializing");
@@ -72,7 +73,7 @@ export default function GachaPage() {
       }
 
       setResult(body as DrawResult);
-      setStatus("done");
+      setStatus("revealing");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "予期しないエラーが発生しました。");
       setStatus("error");
@@ -106,6 +107,14 @@ export default function GachaPage() {
           </Card>
           {needsTickets && <LinkButton href="/purchase">ガチャ券を購入する</LinkButton>}
         </div>
+      )}
+
+      {status === "revealing" && result && (
+        <GachaReveal
+          warlord={result.warlord}
+          provinceName={result.province.name}
+          onFinish={() => setStatus("done")}
+        />
       )}
 
       {status === "done" && result && (
