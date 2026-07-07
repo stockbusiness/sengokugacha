@@ -112,12 +112,20 @@ export default function GachaPage() {
           </div>
         )}
 
-        <Link
-          href="/"
-          className="mt-6 block text-center text-sm text-zinc-500 underline hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
-        >
-          戦国パスポートに戻る
-        </Link>
+        <div className="mt-6 space-y-2 text-center text-sm">
+          <Link
+            href="/map"
+            className="block text-zinc-500 underline hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+          >
+            日本地図(国盗り進捗)を見る
+          </Link>
+          <Link
+            href="/"
+            className="block text-zinc-500 underline hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200"
+          >
+            戦国パスポートに戻る
+          </Link>
+        </div>
       </main>
     </div>
   );

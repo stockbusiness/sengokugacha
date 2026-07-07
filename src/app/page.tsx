@@ -119,12 +119,20 @@ export default function Home() {
         )}
 
         {status === "ready" && (
-          <Link
-            href="/gacha"
-            className="mt-6 block rounded-lg bg-red-700 px-4 py-3 text-center font-semibold text-white transition hover:bg-red-800"
-          >
-            ガチャを引く
-          </Link>
+          <div className="mt-6 space-y-2">
+            <Link
+              href="/gacha"
+              className="block rounded-lg bg-red-700 px-4 py-3 text-center font-semibold text-white transition hover:bg-red-800"
+            >
+              ガチャを引く
+            </Link>
+            <Link
+              href="/map"
+              className="block rounded-lg border border-zinc-300 px-4 py-3 text-center font-semibold text-zinc-700 transition hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-200 dark:hover:bg-zinc-900"
+            >
+              日本地図(国盗り進捗)
+            </Link>
+          </div>
         )}
       </main>
     </div>
