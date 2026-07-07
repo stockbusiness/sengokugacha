@@ -4,6 +4,8 @@ export type LineSettings = {
   id: string;
   liff_id: string | null;
   channel_id: string | null;
+  messaging_channel_access_token: string | null;
+  rich_menu_id: string | null;
 };
 
 // line_settings は1行運用。
