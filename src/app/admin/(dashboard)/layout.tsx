@@ -10,6 +10,9 @@ export default function AdminDashboardLayout({ children }: { children: React.Rea
             <Link href="/admin" className="hover:text-zinc-900 dark:hover:text-zinc-50">
               管理画面
             </Link>
+            <Link href="/admin/line-settings" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+              LIFF/LINE設定
+            </Link>
             <Link href="/admin/gacha-config" className="hover:text-zinc-900 dark:hover:text-zinc-50">
               ガチャ設定
             </Link>

@@ -1,8 +1,18 @@
 "use client";
 
+import { useEffect, useState } from "react";
+
 export default function PurchaseSuccessPage() {
-  const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
-  const liffUrl = liffId ? `https://liff.line.me/${liffId}` : "/";
+  const [liffUrl, setLiffUrl] = useState("/");
+
+  useEffect(() => {
+    fetch("/api/app-config")
+      .then((res) => res.json())
+      .then((config) => {
+        if (config.liffId) setLiffUrl(`https://liff.line.me/${config.liffId}`);
+      })
+      .catch(() => {});
+  }, []);
 
   return (
     <div className="flex min-h-screen flex-1 items-center justify-center bg-zinc-50 px-4 py-16 font-sans dark:bg-black">

@@ -21,11 +21,13 @@ cp .env.example .env.local
 
 | 変数 | 説明 |
 |---|---|
-| `NEXT_PUBLIC_LIFF_ID` | LINE Developers コンソールで発行したLIFF ID |
-| `LINE_LOGIN_CHANNEL_ID` | LIFFの発行元であるLINEログインチャネルID(IDトークン検証の`aud`照合に使用) |
 | `NEXT_PUBLIC_SUPABASE_URL` | Supabase プロジェクトURL |
 | `SUPABASE_SERVICE_ROLE_KEY` | Supabase service role key(サーバー専用。クライアントに露出させない) |
 | `SESSION_SECRET` | セッションCookie署名用シークレット(`openssl rand -base64 32` 等で生成) |
+| `ADMIN_PASSWORD` | 管理画面(`/admin`)のログインパスワード |
+
+LIFF ID・LINEログインチャネルID・Stripeキー・購入パック価格・送客導線URLなど、
+DB接続そのものに必要な値以外の設定は env var ではなく管理画面(`/admin`)から設定する。
 
 ### 2. Supabase マイグレーション適用
 

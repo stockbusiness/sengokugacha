@@ -13,15 +13,22 @@ type PurchaseConfig = {
 
 export default function PurchasePage() {
   const [config, setConfig] = useState<PurchaseConfig | null>(null);
+  const [liffId, setLiffId] = useState<string | null>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [purchasingItem, setPurchasingItem] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
-    if (liffId) {
-      import("@line/liff").then(({ default: liff }) => liff.init({ liffId }).catch(() => {}));
-    }
+    fetch("/api/app-config")
+      .then((res) => res.json())
+      .then((appConfig) => {
+        const id: string | null = appConfig.liffId;
+        setLiffId(id);
+        if (id) {
+          import("@line/liff").then(({ default: liff }) => liff.init({ liffId: id }).catch(() => {}));
+        }
+      })
+      .catch(() => {});
 
     fetch("/api/purchase/config")
       .then((res) => res.json())
@@ -46,7 +53,6 @@ export default function PurchasePage() {
       if (!res.ok) throw new Error(body.error ?? "購入手続きの開始に失敗しました。");
 
       // LIFF内WebViewのままだとStripe Checkoutが正しく動作しないため、外部ブラウザで開く。
-      const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
       if (liffId) {
         const { default: liff } = await import("@line/liff");
         if (liff.isInClient()) {

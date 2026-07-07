@@ -17,16 +17,16 @@ export default function Home() {
     let cancelled = false;
 
     async function run() {
-      const liffId = process.env.NEXT_PUBLIC_LIFF_ID;
-      if (!liffId) {
-        setErrorMessage(
-          "NEXT_PUBLIC_LIFF_ID が設定されていません。.env.local にLIFF IDを設定してください。"
-        );
-        setStatus("error");
-        return;
-      }
-
       try {
+        const configRes = await fetch("/api/app-config");
+        const config = await configRes.json();
+        const liffId: string | null = config.liffId;
+        if (!liffId) {
+          setErrorMessage("LIFF IDが管理画面(/admin/line-settings)で設定されていません。");
+          setStatus("error");
+          return;
+        }
+
         // 代理店紹介リンク(?ref=AGENT_CODE)を保持しておく。liff.login()はLINEの
         // 認証画面を経由してこのページへ戻ってくるため、sessionStorageに退避して
         // リダイレクト後も参照できるようにする(新規登録時のみ users.referring_agent_id

@@ -2,6 +2,8 @@
 // クライアントから送られてきた情報をそのまま信用しない(なりすまし防止)。
 // 参考: https://developers.line.biz/ja/reference/line-login/#verify-id-token
 
+import { getLineSettings } from "@/lib/line-settings";
+
 type LineVerifyResponse = {
   iss: string;
   sub: string; // LINEユーザーID
@@ -15,9 +17,10 @@ type LineVerifyResponse = {
 export class LineIdTokenVerificationError extends Error {}
 
 export async function verifyLineIdToken(idToken: string): Promise<LineVerifyResponse> {
-  const channelId = process.env.LINE_LOGIN_CHANNEL_ID;
+  const settings = await getLineSettings();
+  const channelId = settings?.channel_id;
   if (!channelId) {
-    throw new Error("LINE_LOGIN_CHANNEL_ID が未設定です");
+    throw new Error("LINEチャネルIDが管理画面で設定されていません");
   }
 
   const res = await fetch("https://api.line.me/oauth2/v2.1/verify", {

@@ -6,6 +6,13 @@ export default function AdminIndexPage() {
       <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">管理画面</h1>
       <div className="grid gap-3 sm:grid-cols-3">
         <Link
+          href="/admin/line-settings"
+          className="rounded-xl border border-zinc-200 bg-white p-5 hover:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950"
+        >
+          <p className="font-semibold text-zinc-900 dark:text-zinc-50">LIFF/LINE設定</p>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">LIFF ID・LINEログインチャネルIDの設定</p>
+        </Link>
+        <Link
           href="/admin/gacha-config"
           className="rounded-xl border border-zinc-200 bg-white p-5 hover:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950"
         >
