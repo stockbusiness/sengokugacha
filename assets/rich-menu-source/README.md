@@ -10,7 +10,11 @@
 | richmenu-collection.webp | 図鑑 | `/collection` |
 | richmenu-map.webp | 日本地図 | `/map` |
 | richmenu-shop.webp | 購入 | `/purchase` |
-| richmenu-unification.webp | 天下統一 | `/tenka-toitsu` |
+| richmenu-guide.webp | 遊び方 | `/guide` |
+
+`richmenu-unification.webp`(旧6枠目「天下統一」)は現在の結合画像では使用していないが、
+差し替え候補として保管している。天下統一はパスポート画面・ガチャ画面に個別の導線があるため、
+リッチメニューの6枠目は新規ユーザー向けの「遊び方」を優先した(詳細は各PRの説明を参照)。
 
 ## 元画像とサイズの都合について
 

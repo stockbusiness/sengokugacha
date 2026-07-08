@@ -8,14 +8,16 @@
 const MENU_WIDTH = 2500;
 const MENU_HEIGHT = 1686;
 
-// public/rich-menu.png のレイアウト(3列×2行)と対応させる。
+// public/rich-menu.jpg のレイアウト(3列×2行)と対応させる。
+// 天下統一はパスポート画面・ガチャ画面から個別に導線があるため、
+// リッチメニューの6枠目は新規ユーザーの離脱防止を優先し「遊び方」とした。
 export const RICH_MENU_BUTTONS = [
   { label: "パスポート", path: "/" },
   { label: "ガチャ", path: "/gacha" },
   { label: "図鑑", path: "/collection" },
   { label: "日本地図", path: "/map" },
   { label: "購入", path: "/purchase" },
-  { label: "天下統一", path: "/tenka-toitsu" },
+  { label: "遊び方", path: "/guide" },
 ] as const;
 
 const COL_WIDTHS = [834, 833, 833];

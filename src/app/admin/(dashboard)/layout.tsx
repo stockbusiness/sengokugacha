@@ -55,6 +55,12 @@ export default function AdminDashboardLayout({ children }: { children: React.Rea
               <Link href="/admin/legal-pages" className="hover:text-zinc-900 dark:hover:text-zinc-50">
                 法的ページ
               </Link>
+              <Link href="/admin/faqs" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+                FAQ
+              </Link>
+              <Link href="/admin/announcements" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+                お知らせ
+              </Link>
               <Link href="/admin/audit-logs" className="hover:text-zinc-900 dark:hover:text-zinc-50">
                 操作ログ
               </Link>
