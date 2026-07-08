@@ -152,7 +152,7 @@ export default function LineSettingsPage() {
       <div className="space-y-3 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
         <p className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">リッチメニューのデプロイ</p>
         <img
-          src="/rich-menu.png"
+          src="/rich-menu.jpg"
           alt="リッチメニュー プレビュー"
           className="w-full rounded-lg border border-zinc-200 dark:border-zinc-800"
         />
