@@ -1,65 +1,72 @@
 import Link from "next/link";
 import LogoutButton from "./logout-button";
+import { AdminThemeProvider } from "./theme-provider";
+import { ThemeToggleButton } from "./theme-toggle-button";
 
 export default function AdminDashboardLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className="min-h-screen bg-zinc-50 font-sans dark:bg-black">
-      <header className="border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
-        <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
-          <nav className="flex flex-wrap gap-4 text-sm font-medium text-zinc-600 dark:text-zinc-300">
-            <Link href="/admin" className="hover:text-zinc-900 dark:hover:text-zinc-50">
-              管理画面
-            </Link>
-            <Link href="/admin/line-settings" className="hover:text-zinc-900 dark:hover:text-zinc-50">
-              LIFF/LINE設定
-            </Link>
-            <Link href="/admin/line-broadcast" className="hover:text-zinc-900 dark:hover:text-zinc-50">
-              LINE一斉配信
-            </Link>
-            <Link href="/admin/gacha-config" className="hover:text-zinc-900 dark:hover:text-zinc-50">
-              ガチャ設定
-            </Link>
-            <Link href="/admin/gacha-rates" className="hover:text-zinc-900 dark:hover:text-zinc-50">
-              排出率設定
-            </Link>
-            <Link href="/admin/provinces" className="hover:text-zinc-900 dark:hover:text-zinc-50">
-              国マスタ
-            </Link>
-            <Link href="/admin/warlords" className="hover:text-zinc-900 dark:hover:text-zinc-50">
-              武将マスタ
-            </Link>
-            <Link href="/admin/agents" className="hover:text-zinc-900 dark:hover:text-zinc-50">
-              代理店管理
-            </Link>
-            <Link href="/admin/links" className="hover:text-zinc-900 dark:hover:text-zinc-50">
-              送客導線
-            </Link>
-            <Link href="/admin/payment-settings" className="hover:text-zinc-900 dark:hover:text-zinc-50">
-              決済設定
-            </Link>
-            <Link href="/admin/purchases" className="hover:text-zinc-900 dark:hover:text-zinc-50">
-              購入履歴
-            </Link>
-            <Link href="/admin/agent-sales" className="hover:text-zinc-900 dark:hover:text-zinc-50">
-              売上ログ
-            </Link>
-            <Link href="/admin/achievements" className="hover:text-zinc-900 dark:hover:text-zinc-50">
-              実績ログ
-            </Link>
-            <Link href="/admin/users" className="hover:text-zinc-900 dark:hover:text-zinc-50">
-              ユーザー検索
-            </Link>
-            <Link href="/admin/legal-pages" className="hover:text-zinc-900 dark:hover:text-zinc-50">
-              法的ページ
-            </Link>
-            <Link href="/admin/audit-logs" className="hover:text-zinc-900 dark:hover:text-zinc-50">
-              操作ログ
-            </Link>
-          </nav>
-          <LogoutButton />
-        </div>
-      </header>
-      <div className="mx-auto max-w-5xl px-4 py-8">{children}</div>
-    </div>
+    <AdminThemeProvider>
+      <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
+        <header className="border-b border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
+          <div className="mx-auto flex max-w-5xl items-center justify-between px-4 py-3">
+            <nav className="flex flex-wrap gap-4 text-sm font-medium text-zinc-600 dark:text-zinc-300">
+              <Link href="/admin" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+                管理画面
+              </Link>
+              <Link href="/admin/line-settings" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+                LIFF/LINE設定
+              </Link>
+              <Link href="/admin/line-broadcast" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+                LINE一斉配信
+              </Link>
+              <Link href="/admin/gacha-config" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+                ガチャ設定
+              </Link>
+              <Link href="/admin/gacha-rates" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+                排出率設定
+              </Link>
+              <Link href="/admin/provinces" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+                国マスタ
+              </Link>
+              <Link href="/admin/warlords" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+                武将マスタ
+              </Link>
+              <Link href="/admin/agents" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+                代理店管理
+              </Link>
+              <Link href="/admin/links" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+                送客導線
+              </Link>
+              <Link href="/admin/payment-settings" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+                決済設定
+              </Link>
+              <Link href="/admin/purchases" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+                購入履歴
+              </Link>
+              <Link href="/admin/agent-sales" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+                売上ログ
+              </Link>
+              <Link href="/admin/achievements" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+                実績ログ
+              </Link>
+              <Link href="/admin/users" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+                ユーザー検索
+              </Link>
+              <Link href="/admin/legal-pages" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+                法的ページ
+              </Link>
+              <Link href="/admin/audit-logs" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+                操作ログ
+              </Link>
+            </nav>
+            <div className="flex items-center gap-3">
+              <ThemeToggleButton />
+              <LogoutButton />
+            </div>
+          </div>
+        </header>
+        <div className="mx-auto max-w-5xl px-4 py-8">{children}</div>
+      </div>
+    </AdminThemeProvider>
   );
 }

@@ -1,5 +1,11 @@
 @import "tailwindcss";
 
+/* 管理画面(/admin)はゲーム側の固定ダークテーマと切り離し、独自にライト/ダークを
+   手動切り替えできるようにするため、dark: バリアントをOSのprefers-color-scheme
+   ではなく .dark クラスの有無で判定する方式に変更する。ゲーム側は dark: を
+   一切使っていないため、この変更による影響はない。 */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme inline {
   --color-ink: #15100c;
   --color-ink-raised: #201811;

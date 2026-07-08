@@ -33,7 +33,10 @@ export default function AdminLoginPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-1 items-center justify-center bg-zinc-50 px-4 font-sans dark:bg-black">
+    <div
+      className="flex min-h-screen flex-1 items-center justify-center bg-zinc-50 px-4 font-sans text-zinc-900"
+      style={{ colorScheme: "light" }}
+    >
       <main className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
         <h1 className="mb-6 text-center text-xl font-bold text-zinc-900 dark:text-zinc-50">管理画面ログイン</h1>
         <form onSubmit={handleSubmit} className="space-y-4">
