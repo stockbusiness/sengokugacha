@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button, LinkButton, TextLink } from "@/components/ui/Button";
 import { GachaReveal } from "@/components/gacha/GachaReveal";
+import { SummonStage } from "@/components/gacha/SummonStage";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
 
 type DrawResult = {
@@ -90,14 +91,14 @@ export default function GachaPage() {
       {status === "initializing" && <p className="text-center text-parchment-dim">読み込み中...</p>}
 
       {(status === "idle" || status === "drawing") && (
-        <div className="space-y-2">
+        <SummonStage>
           <Button onClick={() => handleDraw("free")} disabled={status === "drawing"}>
             {status === "drawing" && mode === "free" ? "抽選中..." : "無料ガチャを引く"}
           </Button>
           <Button variant="secondary" onClick={() => handleDraw("paid")} disabled={status === "drawing"}>
             {status === "drawing" && mode === "paid" ? "抽選中..." : "有料ガチャを引く(ガチャ券1枚消費)"}
           </Button>
-        </div>
+        </SummonStage>
       )}
 
       {status === "error" && errorMessage && (

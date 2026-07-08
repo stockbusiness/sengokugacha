@@ -70,7 +70,8 @@ export default function Home() {
     <div className="mx-auto w-full max-w-md px-4 py-10">
       <div className="mb-8 text-center">
         <p className="text-xs tracking-[0.3em] text-gold/70">SENGOKU ECONOMY OS</p>
-        <h1 className="font-heading mt-1 text-3xl font-bold text-gold-soft">戦国パスポート</h1>
+        <h1 className="gold-title font-heading mt-1 text-4xl font-bold">戦国パスポート</h1>
+        <div className="mx-auto mt-3 h-px w-16 bg-gradient-to-r from-transparent via-gold/60 to-transparent" />
       </div>
 
       {status === "initializing" && (
@@ -84,7 +85,7 @@ export default function Home() {
       )}
 
       {status === "ready" && passport && (
-        <Card highlight className="relative overflow-hidden">
+        <Card highlight ornate className="relative overflow-hidden">
           <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-gold/10 via-transparent to-transparent" />
           <div className="relative flex items-center justify-between border-b border-gold/15 pb-4">
             <div>
@@ -93,18 +94,18 @@ export default function Home() {
                 {passport.displayName ?? "(未設定)"}
               </p>
             </div>
-            <span className="rounded-full border border-gold/50 bg-ink px-3 py-1 text-xs font-semibold text-gold-soft">
-              {passport.rank}
+            <span className="rounded-full border border-gold/50 bg-gradient-to-b from-crimson-soft to-crimson-dark px-3 py-1.5 text-xs font-bold text-gold-soft shadow-[0_2px_10px_rgba(0,0,0,0.4)]">
+              ✦ {passport.rank}
             </span>
           </div>
 
           <dl className="relative mt-4 grid grid-cols-3 gap-3">
-            <StatTile label="石高" value={passport.kokudaka.toLocaleString()} />
-            <StatTile label="戦功" value={passport.senko.toLocaleString()} />
-            <StatTile label="ガチャ券" value={passport.gachaTickets} />
-            <StatTile label="所持武将" value={passport.warlordCount} />
-            <StatTile label="制圧国数" value={`${passport.conqueredProvinceCount}/66`} />
-            <StatTile label="連続登城" value={`${passport.loginStreak}日`} />
+            <StatTile icon="🪙" label="石高" value={passport.kokudaka.toLocaleString()} />
+            <StatTile icon="⚔️" label="戦功" value={passport.senko.toLocaleString()} />
+            <StatTile icon="🎫" label="ガチャ券" value={passport.gachaTickets} />
+            <StatTile icon="🪖" label="所持武将" value={passport.warlordCount} />
+            <StatTile icon="🗾" label="制圧国数" value={`${passport.conqueredProvinceCount}/66`} />
+            <StatTile icon="🏯" label="連続登城" value={`${passport.loginStreak}日`} />
           </dl>
         </Card>
       )}
@@ -139,11 +140,14 @@ export default function Home() {
   );
 }
 
-function StatTile({ label, value }: { label: string; value: string | number }) {
+function StatTile({ icon, label, value }: { icon: string; label: string; value: string | number }) {
   return (
-    <div className="rounded-lg border border-gold/10 bg-ink/60 px-2 py-3 text-center">
-      <p className="text-[11px] text-parchment-dim">{label}</p>
-      <p className="mt-1 text-sm font-bold text-parchment">{value}</p>
+    <div className="relative rounded-xl border border-gold/15 bg-gradient-to-b from-ink-raised to-ink px-2 py-3 text-center shadow-[inset_0_0_16px_rgba(232,205,122,0.03)]">
+      <p aria-hidden="true" className="text-xl leading-none drop-shadow-[0_0_6px_rgba(201,162,39,0.25)]">
+        {icon}
+      </p>
+      <p className="mt-1.5 text-[11px] tracking-wide text-parchment-dim">{label}</p>
+      <p className="mt-1 text-base font-bold tabular-nums text-gold-soft">{value}</p>
     </div>
   );
 }
