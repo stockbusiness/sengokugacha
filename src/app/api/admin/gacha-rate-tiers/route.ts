@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminSession } from "@/lib/admin-session";
+import { logAdminAction } from "@/lib/admin-audit-log";
+import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export async function GET() {
@@ -48,5 +49,12 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  await logAdminAction(
+    await getAdminActorName(),
+    "gacha_rate_tier_create",
+    `tier_order=${tierOrder} max_conquered_count=${maxConqueredCount} rare_rate=${rareRate} mid_rate=${midRate}`
+  );
+
   return NextResponse.json(data);
 }

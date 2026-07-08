@@ -13,6 +13,9 @@ export default function AdminDashboardLayout({ children }: { children: React.Rea
             <Link href="/admin/line-settings" className="hover:text-zinc-900 dark:hover:text-zinc-50">
               LIFF/LINE設定
             </Link>
+            <Link href="/admin/line-broadcast" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+              LINE一斉配信
+            </Link>
             <Link href="/admin/gacha-config" className="hover:text-zinc-900 dark:hover:text-zinc-50">
               ガチャ設定
             </Link>
@@ -48,6 +51,9 @@ export default function AdminDashboardLayout({ children }: { children: React.Rea
             </Link>
             <Link href="/admin/legal-pages" className="hover:text-zinc-900 dark:hover:text-zinc-50">
               法的ページ
+            </Link>
+            <Link href="/admin/audit-logs" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+              操作ログ
             </Link>
           </nav>
           <LogoutButton />

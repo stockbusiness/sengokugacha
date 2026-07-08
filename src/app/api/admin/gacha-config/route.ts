@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminSession } from "@/lib/admin-session";
+import { logAdminAction } from "@/lib/admin-audit-log";
+import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export async function GET() {
@@ -68,10 +69,12 @@ export async function PUT(request: NextRequest) {
       .select("*")
       .single();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    await logAdminAction(await getAdminActorName(), "gacha_config_update", `id=${body.id}`);
     return NextResponse.json(data);
   }
 
   const { data, error } = await supabase.from("gacha_config").insert(fields).select("*").single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  await logAdminAction(await getAdminActorName(), "gacha_config_create");
   return NextResponse.json(data);
 }

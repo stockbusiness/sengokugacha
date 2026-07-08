@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminSession } from "@/lib/admin-session";
+import { logAdminAction } from "@/lib/admin-audit-log";
+import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 function last4(value: string | null): string | null {
@@ -85,5 +86,8 @@ export async function PUT(request: NextRequest) {
 
   const { error } = await query;
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  await logAdminAction(await getAdminActorName(), "payment_settings_update");
+
   return NextResponse.json({ ok: true });
 }

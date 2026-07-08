@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminSession } from "@/lib/admin-session";
+import { logAdminAction } from "@/lib/admin-audit-log";
+import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -24,5 +25,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  await logAdminAction(await getAdminActorName(), "agent_sale_payout_status_change", `id=${id} status=${payoutStatus}`);
+
   return NextResponse.json(data);
 }

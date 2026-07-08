@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminSession } from "@/lib/admin-session";
+import { logAdminAction } from "@/lib/admin-audit-log";
+import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
 import { getPaymentSettings } from "@/lib/payment-settings";
 import { createStripeClient } from "@/lib/stripe";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -71,6 +72,12 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     .select("*")
     .single();
   if (updateError) return NextResponse.json({ error: updateError.message }, { status: 500 });
+
+  await logAdminAction(
+    await getAdminActorName(),
+    "purchase_refund",
+    `purchase_id=${id} user_id=${purchase.user_id} item_type=${purchase.item_type} grant_amount=${purchase.grant_amount}`
+  );
 
   return NextResponse.json(updated);
 }

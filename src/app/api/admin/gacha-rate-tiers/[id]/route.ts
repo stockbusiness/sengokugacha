@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminSession } from "@/lib/admin-session";
+import { logAdminAction } from "@/lib/admin-audit-log";
+import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 const EDITABLE_FIELDS = ["tier_order", "max_conquered_count", "rare_rate", "mid_rate"] as const;
@@ -29,6 +30,9 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  await logAdminAction(await getAdminActorName(), "gacha_rate_tier_update", `id=${id}`);
+
   return NextResponse.json(data);
 }
 
@@ -42,5 +46,8 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   const { error } = await supabase.from("gacha_rate_tiers").delete().eq("id", id);
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  await logAdminAction(await getAdminActorName(), "gacha_rate_tier_delete", `id=${id}`);
+
   return NextResponse.json({ ok: true });
 }

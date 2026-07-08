@@ -5,6 +5,7 @@ import { useState } from "react";
 
 export default function AdminLoginPage() {
   const router = useRouter();
+  const [actorName, setActorName] = useState("");
   const [password, setPassword] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -18,7 +19,7 @@ export default function AdminLoginPage() {
       const res = await fetch("/api/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ password, actorName }),
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "ログインに失敗しました。");
@@ -36,6 +37,13 @@ export default function AdminLoginPage() {
       <main className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
         <h1 className="mb-6 text-center text-xl font-bold text-zinc-900 dark:text-zinc-50">管理画面ログイン</h1>
         <form onSubmit={handleSubmit} className="space-y-4">
+          <input
+            type="text"
+            value={actorName}
+            onChange={(e) => setActorName(e.target.value)}
+            placeholder="担当者名(任意・操作ログに記録されます)"
+            className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+          />
           <input
             type="password"
             value={password}

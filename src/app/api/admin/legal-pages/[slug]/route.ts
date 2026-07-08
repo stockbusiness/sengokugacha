@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminSession } from "@/lib/admin-session";
+import { logAdminAction } from "@/lib/admin-audit-log";
+import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
 import { LEGAL_PAGE_SLUGS } from "@/lib/legal-pages";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
@@ -31,5 +32,8 @@ export async function PUT(request: NextRequest, { params }: { params: Promise<{ 
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  await logAdminAction(await getAdminActorName(), "legal_page_update", `slug=${slug}`);
+
   return NextResponse.json(data);
 }
