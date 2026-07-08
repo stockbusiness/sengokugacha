@@ -22,4 +22,5 @@ insert into legal_pages (slug, title, body) values
     'support',
     'お問い合わせ',
     E'ご不明点・不具合等がございましたら、以下までご連絡ください。\n\n【メールアドレスやLINE公式アカウントのお問い合わせ先を管理画面(/admin/legal-pages)から入力してください】'
-  );
+  )
+on conflict (slug) do nothing;
