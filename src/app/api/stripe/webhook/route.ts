@@ -75,19 +75,19 @@ export async function POST(request: NextRequest) {
 
   if (event.type === "checkout.session.completed") {
     const checkoutSession = event.data.object as Stripe.Checkout.Session;
-    const grantAmount = Number(checkoutSession.metadata?.grantAmount ?? 0);
 
     const supabase = createSupabaseServerClient();
     const { data: purchase, error: purchaseError } = await supabase
       .from("purchases")
-      .select("id, user_id, item_type, amount, status")
+      .select("id, user_id, item_type, amount, grant_amount, status")
       .eq("stripe_session_id", checkoutSession.id)
       .maybeSingle();
     if (purchaseError) throw purchaseError;
 
     // Stripeはイベントを再送することがあるため、完了済みなら何もしない(冪等)。
-    if (purchase && purchase.status !== "completed" && grantAmount > 0) {
-      await grantPurchase(purchase.user_id, purchase.item_type, grantAmount);
+    // 付与量は購入時にpurchasesへ保存した値を正とする(後からパック設定が変わっても影響を受けない)。
+    if (purchase && purchase.status !== "completed" && purchase.grant_amount > 0) {
+      await grantPurchase(purchase.user_id, purchase.item_type, purchase.grant_amount);
       await recordAgentSaleIfReferred(purchase.user_id, purchase.item_type, purchase.amount);
 
       const { error: statusError } = await supabase

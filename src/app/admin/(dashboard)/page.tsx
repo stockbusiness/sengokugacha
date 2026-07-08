@@ -1,9 +1,26 @@
 import Link from "next/link";
+import { getKpiSummary } from "@/lib/kpi";
 
-export default function AdminIndexPage() {
+// KPIは常に最新のDB状態を反映する必要があるため静的生成しない。
+export const dynamic = "force-dynamic";
+
+export default async function AdminIndexPage() {
+  const kpi = await getKpiSummary();
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-6">
       <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">管理画面</h1>
+
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <KpiTile label="登録ユーザー数" value={kpi.totalUsers.toLocaleString()} />
+        <KpiTile label="本日の新規登録" value={kpi.newUsersToday.toLocaleString()} />
+        <KpiTile label="DAU(本日)" value={kpi.dau.toLocaleString()} />
+        <KpiTile label="WAU(直近7日)" value={kpi.wau.toLocaleString()} />
+        <KpiTile label="本日のガチャ実行数" value={kpi.gachaDrawsToday.toLocaleString()} />
+        <KpiTile label="本日の購入額" value={`¥${kpi.purchasesTodayYen.toLocaleString()}`} />
+        <KpiTile label="今月の購入額" value={`¥${kpi.purchasesMonthYen.toLocaleString()}`} />
+      </div>
+
       <div className="grid gap-3 sm:grid-cols-3">
         <Link
           href="/admin/line-settings"
@@ -76,6 +93,15 @@ export default function AdminIndexPage() {
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">表示名・LINEユーザーIDでのサポート検索</p>
         </Link>
       </div>
+    </div>
+  );
+}
+
+function KpiTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+      <p className="text-xs text-zinc-500 dark:text-zinc-400">{label}</p>
+      <p className="mt-1 text-xl font-bold text-zinc-900 dark:text-zinc-50">{value}</p>
     </div>
   );
 }

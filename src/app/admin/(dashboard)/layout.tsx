@@ -13,8 +13,14 @@ export default function AdminDashboardLayout({ children }: { children: React.Rea
             <Link href="/admin/line-settings" className="hover:text-zinc-900 dark:hover:text-zinc-50">
               LIFF/LINE設定
             </Link>
+            <Link href="/admin/line-broadcast" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+              LINE一斉配信
+            </Link>
             <Link href="/admin/gacha-config" className="hover:text-zinc-900 dark:hover:text-zinc-50">
               ガチャ設定
+            </Link>
+            <Link href="/admin/gacha-rates" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+              排出率設定
             </Link>
             <Link href="/admin/provinces" className="hover:text-zinc-900 dark:hover:text-zinc-50">
               国マスタ
@@ -31,6 +37,9 @@ export default function AdminDashboardLayout({ children }: { children: React.Rea
             <Link href="/admin/payment-settings" className="hover:text-zinc-900 dark:hover:text-zinc-50">
               決済設定
             </Link>
+            <Link href="/admin/purchases" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+              購入履歴
+            </Link>
             <Link href="/admin/agent-sales" className="hover:text-zinc-900 dark:hover:text-zinc-50">
               売上ログ
             </Link>
@@ -39,6 +48,12 @@ export default function AdminDashboardLayout({ children }: { children: React.Rea
             </Link>
             <Link href="/admin/users" className="hover:text-zinc-900 dark:hover:text-zinc-50">
               ユーザー検索
+            </Link>
+            <Link href="/admin/legal-pages" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+              法的ページ
+            </Link>
+            <Link href="/admin/audit-logs" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+              操作ログ
             </Link>
           </nav>
           <LogoutButton />

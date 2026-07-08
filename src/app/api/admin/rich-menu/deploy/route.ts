@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getAdminSession } from "@/lib/admin-session";
+import { logAdminAction } from "@/lib/admin-audit-log";
+import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
 import { getLineSettings } from "@/lib/line-settings";
 import { deployRichMenu } from "@/lib/rich-menu";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -28,6 +29,8 @@ export async function POST(request: NextRequest) {
       .update({ rich_menu_id: richMenuId, updated_at: new Date().toISOString() })
       .eq("id", settings.id);
     if (error) throw error;
+
+    await logAdminAction(await getAdminActorName(), "rich_menu_deploy", `richMenuId=${richMenuId}`);
 
     return NextResponse.json({ ok: true, richMenuId });
   } catch (error) {

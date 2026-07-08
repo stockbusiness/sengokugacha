@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getPaymentSettings, isStripeConfigured } from "@/lib/payment-settings";
+import { getMonthlySpentYen } from "@/lib/purchases";
 import { getSession } from "@/lib/session";
 import { createStripeClient } from "@/lib/stripe";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -27,6 +28,19 @@ export async function POST(request: NextRequest) {
   const amountYen = isKokudaka ? settings.kokudaka_pack_amount_yen : settings.gacha_ticket_pack_amount_yen;
   const grantAmount = isKokudaka ? settings.kokudaka_pack_kokudaka : settings.gacha_ticket_pack_tickets;
   const productName = isKokudaka ? `石高 ${grantAmount}` : `ガチャ券 ${grantAmount}枚`;
+
+  // 使いすぎ防止: 月間購入上限が設定されている場合、今回の購入で上限を超えるなら拒否する。
+  if (settings.monthly_spending_cap_yen != null) {
+    const monthlySpentYen = await getMonthlySpentYen(session.userId);
+    if (monthlySpentYen + amountYen > settings.monthly_spending_cap_yen) {
+      return NextResponse.json(
+        {
+          error: `今月のご購入上限額(¥${settings.monthly_spending_cap_yen.toLocaleString()})に達するため、これ以上のご購入はできません。上限は月が変わるとリセットされます。`,
+        },
+        { status: 402 }
+      );
+    }
+  }
 
   const stripe = createStripeClient(settings.stripe_secret_key);
   const origin = request.nextUrl.origin;
@@ -58,6 +72,7 @@ export async function POST(request: NextRequest) {
     stripe_session_id: checkoutSession.id,
     item_type: itemType,
     amount: amountYen,
+    grant_amount: grantAmount,
     status: "pending",
   });
   if (error) {

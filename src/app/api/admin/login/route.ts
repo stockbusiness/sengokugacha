@@ -17,11 +17,12 @@ export async function POST(request: NextRequest) {
 
   const body = await request.json().catch(() => null);
   const password = body?.password;
+  const actorName = typeof body?.actorName === "string" ? body.actorName.slice(0, 50) : null;
 
   if (typeof password !== "string" || !safeCompare(password, adminPassword)) {
     return NextResponse.json({ error: "パスワードが違います" }, { status: 401 });
   }
 
-  await setAdminSessionCookie();
+  await setAdminSessionCookie(actorName);
   return NextResponse.json({ ok: true });
 }
