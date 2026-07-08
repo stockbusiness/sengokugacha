@@ -83,15 +83,18 @@ export default function CollectionPage() {
       {status === "ready" && (
         <div className="space-y-4">
           {regionGroups.map((group) => (
-            <Card key={group.region}>
-              <h2 className="mb-3 text-sm font-semibold text-gold-soft">{group.region}地方</h2>
-              <div className="space-y-3">
+            <Card key={group.region} ornate>
+              <h2 className="mb-3 text-sm font-semibold tracking-wide text-gold-soft">{group.region}地方</h2>
+              <div className="space-y-4">
                 {group.provinces.map((p) => (
                   <div key={p.id}>
-                    <p className="mb-1 text-xs font-medium text-parchment-dim">{p.name}国</p>
-                    <div className="flex flex-wrap gap-2">
+                    <p className="mb-2 flex items-center gap-1.5 text-xs font-medium text-parchment-dim">
+                      <span className="text-gold/70">◆</span>
+                      {p.name}国
+                    </p>
+                    <div className="grid grid-cols-3 gap-2">
                       {p.warlords.map((w) => (
-                        <WarlordTile key={w.id} warlord={w} />
+                        <WarlordCard key={w.id} warlord={w} />
                       ))}
                     </div>
                   </div>
@@ -101,11 +104,11 @@ export default function CollectionPage() {
           ))}
 
           {mino && (
-            <Card highlight>
-              <h2 className="mb-3 text-sm font-semibold text-gold-soft">{mino.name}国(最終国)</h2>
-              <div className="flex flex-wrap gap-2">
+            <Card highlight ornate>
+              <h2 className="mb-3 text-sm font-semibold tracking-wide text-gold-soft">{mino.name}国(最終国)</h2>
+              <div className="grid grid-cols-3 gap-2">
                 {mino.warlords.map((w) => (
-                  <WarlordTile key={w.id} warlord={w} />
+                  <WarlordCard key={w.id} warlord={w} />
                 ))}
               </div>
             </Card>
@@ -116,22 +119,28 @@ export default function CollectionPage() {
   );
 }
 
-function WarlordTile({ warlord }: { warlord: CollectionWarlord }) {
+function WarlordCard({ warlord }: { warlord: CollectionWarlord }) {
   if (!warlord.owned) {
     return (
-      <span className="rounded-lg border border-gold/10 bg-ink px-3 py-2 text-sm text-parchment-dim/50">
+      <div
+        className="flex aspect-[4/3] items-center justify-center rounded-xl border border-gold/15 bg-gradient-to-b from-ink-raised/60 to-ink text-sm tracking-wide text-parchment-dim/40"
+        aria-label="未獲得武将"
+      >
         ???
-      </span>
+      </div>
     );
   }
 
   return (
-    <span className="rounded-lg border border-gold/25 bg-ink px-3 py-2 text-sm">
-      <span className="font-semibold text-parchment">{warlord.name}</span>
-      <span className="ml-1 text-xs text-gold-soft">
+    <div className="relative flex aspect-[4/3] flex-col items-center justify-center gap-1 overflow-hidden rounded-xl border border-gold/50 bg-gradient-to-b from-crimson-soft/40 to-ink px-1.5 text-center shadow-[inset_0_0_0_1px_rgba(232,205,122,0.08)]">
+      <span aria-hidden="true" className="text-xl drop-shadow-[0_0_8px_rgba(232,205,122,0.3)]">
+        ⚔️
+      </span>
+      <span className="line-clamp-1 text-[11px] font-semibold text-parchment">{warlord.name}</span>
+      <span className="text-[10px] text-gold-soft">
         {warlord.rarity}
         {warlord.count > 1 ? ` ×${warlord.count}` : ""}
       </span>
-    </span>
+    </div>
   );
 }

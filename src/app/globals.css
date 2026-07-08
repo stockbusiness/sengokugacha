@@ -158,3 +158,38 @@ h3,
   color: transparent;
   animation: gacha-shimmer 1.4s linear infinite;
 }
+
+.gold-title {
+  background: linear-gradient(180deg, #fff5cf 0%, var(--color-gold-soft) 50%, var(--color-gold) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* 装飾的な角飾り(戦国風の額縁演出)。角の2辺だけに金線を入れる。 */
+.ornate-frame {
+  position: relative;
+}
+.ornate-frame::before,
+.ornate-frame::after {
+  content: "";
+  position: absolute;
+  width: 22px;
+  height: 22px;
+  pointer-events: none;
+  border-color: rgba(232, 205, 122, 0.65);
+}
+.ornate-frame::before {
+  left: 6px;
+  top: 6px;
+  border-left: 2px solid;
+  border-top: 2px solid;
+  border-radius: 8px 0 0 0;
+}
+.ornate-frame::after {
+  right: 6px;
+  bottom: 6px;
+  border-right: 2px solid;
+  border-bottom: 2px solid;
+  border-radius: 0 0 8px 0;
+}
