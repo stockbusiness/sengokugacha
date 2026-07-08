@@ -13,6 +13,7 @@ type PaymentSettingsView = {
   kokudaka_pack_kokudaka: number;
   gacha_ticket_pack_amount_yen: number;
   gacha_ticket_pack_tickets: number;
+  monthly_spending_cap_yen: number | null;
 };
 
 export default function PaymentSettingsPage() {
@@ -55,6 +56,7 @@ export default function PaymentSettingsPage() {
           kokudaka_pack_kokudaka: data.kokudaka_pack_kokudaka,
           gacha_ticket_pack_amount_yen: data.gacha_ticket_pack_amount_yen,
           gacha_ticket_pack_tickets: data.gacha_ticket_pack_tickets,
+          monthly_spending_cap_yen: data.monthly_spending_cap_yen,
         }),
       });
       const body = await res.json();
@@ -143,6 +145,28 @@ export default function PaymentSettingsPage() {
             />
           </Field>
         </div>
+      </div>
+
+      <div className="space-y-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
+        <p className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">使いすぎ防止</p>
+        <p className="text-xs text-zinc-400 dark:text-zinc-600">
+          1ユーザーが暦月内に購入できる合計金額の上限です。空欄の場合は上限を設けません。
+          上限に達したユーザーは、翌月になるまで購入手続きに進めなくなります。
+        </p>
+        <Field label="月間購入上限(円・空欄で上限なし)">
+          <input
+            type="number"
+            value={data.monthly_spending_cap_yen ?? ""}
+            onChange={(e) =>
+              setData({
+                ...data,
+                monthly_spending_cap_yen: e.target.value === "" ? null : Number(e.target.value),
+              })
+            }
+            placeholder="例: 50000"
+            className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+          />
+        </Field>
       </div>
 
       {message && <p className="text-sm text-zinc-600 dark:text-zinc-300">{message}</p>}

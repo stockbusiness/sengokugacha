@@ -17,25 +17,30 @@ export async function GET(request: NextRequest) {
   const supabase = createSupabaseServerClient();
   const { data, error } = await supabase
     .from("agent_sales")
-    .select("id, amount, type, source, created_at, agents(name), buyer:buyer_user_id(display_name)")
+    .select(
+      "id, agent_id, amount, type, source, payout_status, paid_at, created_at, agents(name), buyer:buyer_user_id(display_name)"
+    )
     .order("created_at", { ascending: false });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   const rows = (data ?? []).map((r) => ({
     id: r.id,
+    agentId: r.agent_id,
     agentName: (r.agents as unknown as { name: string } | null)?.name ?? "(不明)",
     buyerDisplayName: (r.buyer as unknown as { display_name: string | null } | null)?.display_name ?? "(未設定)",
     amount: r.amount,
     type: r.type,
     source: r.source,
+    payoutStatus: r.payout_status,
+    paidAt: r.paid_at,
     createdAt: r.created_at,
   }));
 
   if (request.nextUrl.searchParams.get("format") === "csv") {
-    const header = "created_at,agent_name,buyer_display_name,amount,type,source";
+    const header = "created_at,agent_name,buyer_display_name,amount,type,source,payout_status,paid_at";
     const lines = rows.map((r) =>
-      [r.createdAt, r.agentName, r.buyerDisplayName, String(r.amount), r.type, r.source]
+      [r.createdAt, r.agentName, r.buyerDisplayName, String(r.amount), r.type, r.source, r.payoutStatus, r.paidAt ?? ""]
         .map(csvEscape)
         .join(",")
     );

@@ -13,9 +13,10 @@ const SLUG_LABELS: Record<string, string> = {
   tokushoho: "特定商取引法に基づく表記",
   terms: "利用規約",
   privacy: "プライバシーポリシー",
+  support: "お問い合わせ",
 };
 
-const SLUG_ORDER = ["tokushoho", "terms", "privacy"];
+const SLUG_ORDER = ["tokushoho", "terms", "privacy", "support"];
 
 export default function LegalPagesAdminPage() {
   const [pages, setPages] = useState<LegalPage[]>([]);

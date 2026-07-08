@@ -34,6 +34,9 @@ export default function AdminDashboardLayout({ children }: { children: React.Rea
             <Link href="/admin/payment-settings" className="hover:text-zinc-900 dark:hover:text-zinc-50">
               決済設定
             </Link>
+            <Link href="/admin/purchases" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+              購入履歴
+            </Link>
             <Link href="/admin/agent-sales" className="hover:text-zinc-900 dark:hover:text-zinc-50">
               売上ログ
             </Link>

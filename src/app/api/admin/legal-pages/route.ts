@@ -6,6 +6,7 @@ const FALLBACK_TITLES: Record<string, string> = {
   tokushoho: "特定商取引法に基づく表記",
   terms: "利用規約",
   privacy: "プライバシーポリシー",
+  support: "お問い合わせ",
 };
 
 export async function GET() {

@@ -9,6 +9,7 @@ export type PaymentSettings = {
   kokudaka_pack_kokudaka: number;
   gacha_ticket_pack_amount_yen: number;
   gacha_ticket_pack_tickets: number;
+  monthly_spending_cap_yen: number | null;
 };
 
 // payment_settings は1行運用。行が無い場合はStripe未設定として扱う。

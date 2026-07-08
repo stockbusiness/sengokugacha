@@ -33,6 +33,7 @@ export async function GET() {
     kokudaka_pack_kokudaka: data?.kokudaka_pack_kokudaka ?? 500,
     gacha_ticket_pack_amount_yen: data?.gacha_ticket_pack_amount_yen ?? 150,
     gacha_ticket_pack_tickets: data?.gacha_ticket_pack_tickets ?? 1,
+    monthly_spending_cap_yen: data?.monthly_spending_cap_yen ?? null,
   });
 }
 
@@ -60,6 +61,10 @@ export async function PUT(request: NextRequest) {
     kokudaka_pack_kokudaka: body.kokudaka_pack_kokudaka,
     gacha_ticket_pack_amount_yen: body.gacha_ticket_pack_amount_yen,
     gacha_ticket_pack_tickets: body.gacha_ticket_pack_tickets,
+    monthly_spending_cap_yen:
+      body.monthly_spending_cap_yen === "" || body.monthly_spending_cap_yen == null
+        ? null
+        : Number(body.monthly_spending_cap_yen),
     updated_at: new Date().toISOString(),
   };
 

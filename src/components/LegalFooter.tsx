@@ -5,6 +5,8 @@ const LINKS = [
   { href: "/legal/tokushoho", label: "特定商取引法に基づく表記" },
   { href: "/legal/terms", label: "利用規約" },
   { href: "/legal/privacy", label: "プライバシーポリシー" },
+  { href: "/legal/support", label: "お問い合わせ" },
+  { href: "/account/delete", label: "退会" },
 ];
 
 export function LegalFooter() {

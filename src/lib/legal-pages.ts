@@ -1,8 +1,8 @@
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
-export type LegalPageSlug = "tokushoho" | "terms" | "privacy";
+export type LegalPageSlug = "tokushoho" | "terms" | "privacy" | "support";
 
-export const LEGAL_PAGE_SLUGS: LegalPageSlug[] = ["tokushoho", "terms", "privacy"];
+export const LEGAL_PAGE_SLUGS: LegalPageSlug[] = ["tokushoho", "terms", "privacy", "support"];
 
 export type LegalPage = {
   slug: string;
@@ -15,6 +15,7 @@ const FALLBACK_TITLES: Record<LegalPageSlug, string> = {
   tokushoho: "特定商取引法に基づく表記",
   terms: "利用規約",
   privacy: "プライバシーポリシー",
+  support: "お問い合わせ",
 };
 
 export async function getLegalPage(slug: string): Promise<LegalPage | null> {
