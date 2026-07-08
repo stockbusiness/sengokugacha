@@ -24,6 +24,7 @@ export default function WarlordsPage() {
   const [statsDraft, setStatsDraft] = useState<Record<string, string>>({});
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
   const [messageById, setMessageById] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -93,6 +94,31 @@ export default function WarlordsPage() {
     }
   }
 
+  async function handleImageUpload(warlord: Warlord, file: File) {
+    setUploadingId(warlord.id);
+    setMessageById((prev) => ({ ...prev, [warlord.id]: "" }));
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`/api/admin/warlords/${warlord.id}/image`, {
+        method: "POST",
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "画像のアップロードに失敗しました。");
+      updateField(warlord.id, "image_url", data.image_url as string);
+      setMessageById((prev) => ({ ...prev, [warlord.id]: "画像をアップロードしました" }));
+    } catch (error) {
+      setMessageById((prev) => ({
+        ...prev,
+        [warlord.id]: error instanceof Error ? error.message : "画像のアップロードに失敗しました。",
+      }));
+    } finally {
+      setUploadingId(null);
+    }
+  }
+
   if (status === "loading") return <p className="text-zinc-500 dark:text-zinc-400">読み込み中...</p>;
   if (status === "error") return <p className="text-red-700 dark:text-red-400">読み込みに失敗しました。</p>;
 
@@ -124,6 +150,39 @@ export default function WarlordsPage() {
                     onChange={(v) => updateField(w.id, "image_url", v || null)}
                   />
                 </div>
+
+                <div className="mt-2 flex items-center gap-3">
+                  {w.image_url && (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={w.image_url}
+                      alt={w.name}
+                      className="h-16 w-16 rounded-lg border border-zinc-200 object-cover dark:border-zinc-700"
+                    />
+                  )}
+                  <label className="block">
+                    <span className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                      画像をアップロード(自動でLINE表示用にリサイズされます)
+                    </span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={uploadingId === w.id}
+                      onChange={(e) => {
+                        const file = e.target.files?.[0];
+                        e.target.value = "";
+                        if (file) handleImageUpload(w, file);
+                      }}
+                      className="block text-xs text-zinc-600 file:mr-2 file:rounded-lg file:border-0 file:bg-zinc-900 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-zinc-700 disabled:opacity-50 dark:text-zinc-400 dark:file:bg-zinc-100 dark:file:text-zinc-900"
+                    />
+                    {uploadingId === w.id && (
+                      <span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">
+                        アップロード中...
+                      </span>
+                    )}
+                  </label>
+                </div>
+
                 <label className="mt-2 block">
                   <span className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">逸話</span>
                   <textarea
