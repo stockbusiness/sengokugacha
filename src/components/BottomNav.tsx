@@ -15,7 +15,10 @@ export function BottomNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="sticky bottom-0 z-10 border-t border-gold/15 bg-ink/95 backdrop-blur-sm">
+    <nav
+      className="sticky bottom-0 z-10 border-t border-gold/15 bg-ink/95 backdrop-blur-sm"
+      style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+    >
       <div className="mx-auto flex max-w-md">
         {ITEMS.map((item) => {
           const active = pathname === item.href;

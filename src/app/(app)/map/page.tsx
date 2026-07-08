@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Card } from "@/components/ui/Card";
-import { PageHeader } from "@/components/ui/PageHeader";
+import { useEffect, useRef, useState } from "react";
 import { TextLink } from "@/components/ui/Button";
+import { JapanMap, type RegionMarker } from "@/components/map/JapanMap";
+import { MapProgress } from "@/components/map/MapProgress";
+import { ProvinceButton, getProvinceStatus } from "@/components/map/ProvinceButton";
+import { RegionPanel } from "@/components/map/RegionPanel";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
 import type { ProvinceProgress, ProvinceProgressSummary } from "@/lib/provinces";
 
@@ -11,10 +13,25 @@ type Status = "loading" | "ready" | "error";
 
 const REGION_ORDER = ["東北", "関東", "中部", "近畿", "中国", "四国", "九州", "北陸"];
 
+// 簡略化した地図(JapanMap.tsx)上でのおおよその地方位置(viewBox 400x620基準)。
+// 正確な地理座標ではなく、地図をタップした際に対応する地方パネルへスクロールするための目安。
+const REGION_MAP_POSITIONS: Record<string, { x: number; y: number }> = {
+  東北: { x: 300, y: 195 },
+  関東: { x: 270, y: 250 },
+  中部: { x: 220, y: 280 },
+  北陸: { x: 175, y: 255 },
+  近畿: { x: 165, y: 320 },
+  中国: { x: 105, y: 300 },
+  四国: { x: 165, y: 470 },
+  九州: { x: 90, y: 500 },
+};
+
 export default function MapPage() {
   const [status, setStatus] = useState<Status>("loading");
   const [summary, setSummary] = useState<ProvinceProgressSummary | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [selectedProvinceId, setSelectedProvinceId] = useState<string | null>(null);
+  const regionRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
     let cancelled = false;
@@ -45,47 +62,86 @@ export default function MapPage() {
 
   const nonFinalProvinces = summary?.provinces.filter((p) => !p.isFinalProvince) ?? [];
   const mino = summary?.provinces.find((p) => p.isFinalProvince) ?? null;
+  const conqueredCount = summary?.conqueredCount ?? 0;
 
   const regionGroups = REGION_ORDER.map((region) => ({
     region,
     provinces: nonFinalProvinces.filter((p) => p.region === region),
   })).filter((g) => g.provinces.length > 0);
 
+  const markers: RegionMarker[] = regionGroups
+    .filter((g) => REGION_MAP_POSITIONS[g.region])
+    .map((g) => ({
+      region: g.region,
+      x: REGION_MAP_POSITIONS[g.region].x,
+      y: REGION_MAP_POSITIONS[g.region].y,
+      conquered: g.provinces.filter((p) => p.isConquered).length,
+      total: g.provinces.length,
+    }));
+
+  const selectedProvince =
+    summary?.provinces.find((p) => p.id === selectedProvinceId && !p.isFinalProvince) ?? null;
+
+  function scrollToRegion(region: string) {
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    regionRefs.current[region]?.scrollIntoView({
+      behavior: reduceMotion ? "auto" : "smooth",
+      block: "start",
+    });
+  }
+
+  function handleSelectProvince(province: ProvinceProgress) {
+    setSelectedProvinceId((prev) => (prev === province.id ? null : province.id));
+  }
+
   return (
     <div className="mx-auto w-full max-w-md px-4 py-10">
-      <PageHeader
-        title="日本地図"
-        subtitle={
-          status === "ready" && summary ? `制圧国数: ${summary.conqueredCount} / 66` : undefined
-        }
-      />
+      <MapProgress conquered={conqueredCount} total={66} />
 
       {status === "loading" && <p className="text-center text-parchment-dim">読み込み中...</p>}
       {status === "error" && (
-        <Card className="border-crimson/50 bg-crimson-soft/40 text-center text-sm text-parchment">
+        <p className="rounded-2xl border border-crimson/50 bg-crimson-soft/40 p-4 text-center text-sm text-parchment">
           {errorMessage}
-        </Card>
+        </p>
       )}
 
       {status === "ready" && (
-        <div className="space-y-4">
-          {regionGroups.map((group) => (
-            <Card key={group.region}>
-              <h2 className="mb-3 text-sm font-semibold text-gold-soft">{group.region}地方</h2>
-              <div className="flex flex-wrap gap-2">
-                {group.provinces.map((p) => (
-                  <ProvinceTile key={p.id} province={p} />
-                ))}
-              </div>
-            </Card>
-          ))}
+        <div className="space-y-6">
+          <JapanMap markers={markers} onSelectRegion={scrollToRegion} />
 
-          {mino && (
-            <Card highlight>
-              <h2 className="mb-3 text-sm font-semibold text-gold-soft">最終国</h2>
-              <MinoTile province={mino} conqueredCount={summary?.conqueredCount ?? 0} />
-            </Card>
+          {selectedProvince && (
+            <div className="rounded-xl border border-gold/40 bg-ink-raised/90 p-3 text-center text-sm text-parchment">
+              {selectedProvince.isConquered
+                ? `✓ ${selectedProvince.name}国は制圧済みです。`
+                : `${selectedProvince.name}国はまだ制圧されていません。ガチャで3体の武将を集めましょう。`}
+            </div>
           )}
+
+          <div className="space-y-4">
+            {regionGroups.map((group) => (
+              <RegionPanel
+                key={group.region}
+                ref={(el) => {
+                  regionRefs.current[group.region] = el;
+                }}
+                title={group.region}
+                conquered={group.provinces.filter((p) => p.isConquered).length}
+                total={group.provinces.length}
+              >
+                {group.provinces.map((p) => (
+                  <ProvinceButton
+                    key={p.id}
+                    name={p.name}
+                    status={getProvinceStatus(p, conqueredCount)}
+                    selected={selectedProvinceId === p.id}
+                    onSelect={() => handleSelectProvince(p)}
+                  />
+                ))}
+              </RegionPanel>
+            ))}
+          </div>
+
+          {mino && <MinoPanel province={mino} conqueredCount={conqueredCount} />}
         </div>
       )}
 
@@ -96,47 +152,28 @@ export default function MapPage() {
   );
 }
 
-function ProvinceTile({ province }: { province: ProvinceProgress }) {
-  return (
-    <span
-      className={
-        "rounded-full px-3 py-1.5 text-sm font-medium " +
-        (province.isConquered
-          ? "border border-gold/50 bg-gold/15 text-gold-soft"
-          : "border border-gold/10 bg-ink text-parchment-dim/50")
-      }
-    >
-      {province.isConquered ? "✓ " : ""}
-      {province.name}
-    </span>
-  );
-}
-
-function MinoTile({ province, conqueredCount }: { province: ProvinceProgress; conqueredCount: number }) {
+function MinoPanel({ province, conqueredCount }: { province: ProvinceProgress; conqueredCount: number }) {
   const threshold = province.unlockConditionCount;
   const unlocked = threshold == null || conqueredCount >= threshold;
 
-  if (province.isConquered) {
-    return (
-      <span className="rounded-full border border-gold/50 bg-gold/15 px-3 py-1.5 text-sm font-medium text-gold-soft">
-        ✓ {province.name}(天下統一達成)
-      </span>
-    );
-  }
-
-  if (unlocked) {
-    return (
-      <span className="rounded-full border border-crimson/60 bg-crimson-soft/50 px-3 py-1.5 text-sm font-medium text-parchment">
-        挑戦可能: {province.name}
-      </span>
-    );
-  }
-
-  const remaining = threshold != null ? Math.max(threshold - conqueredCount, 0) : null;
   return (
-    <span className="rounded-full border border-gold/10 bg-ink px-3 py-1.5 text-sm font-medium text-parchment-dim/50">
-      🔒 {province.name}
-      {remaining != null ? `(あと${remaining}国)` : ""}
-    </span>
+    <div className="rounded-2xl border border-gold bg-gradient-to-b from-crimson-soft/60 to-ink-raised/90 p-4 text-center shadow-lg shadow-black/30">
+      <h2 className="font-heading mb-2 text-sm font-bold text-gold-soft">最終国</h2>
+
+      {province.isConquered ? (
+        <p className="rounded-lg border border-gold bg-gradient-to-b from-gold-soft to-gold px-4 py-3 font-bold text-ink">
+          ✓ {province.name}国(天下統一達成)
+        </p>
+      ) : unlocked ? (
+        <p className="rounded-lg border border-gold/40 bg-crimson-soft/60 px-4 py-3 font-semibold text-parchment">
+          挑戦可能: {province.name}国
+        </p>
+      ) : (
+        <p className="rounded-lg border border-gold/10 bg-ink px-4 py-3 font-medium text-parchment-dim/50">
+          🔒 {province.name}国
+          {threshold != null ? `(あと${Math.max(threshold - conqueredCount, 0)}国)` : ""}
+        </p>
+      )}
+    </div>
   );
 }
