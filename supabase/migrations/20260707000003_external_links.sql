@@ -15,4 +15,5 @@ alter table external_links enable row level security;
 insert into external_links (key, label, url) values
   ('ai_art_school', 'AIアート教室', null),
   ('nft_marketplace', 'NFTマーケット', null),
-  ('advisor_program', '評議員募集', null);
+  ('advisor_program', '評議員募集', null)
+on conflict (key) do nothing;

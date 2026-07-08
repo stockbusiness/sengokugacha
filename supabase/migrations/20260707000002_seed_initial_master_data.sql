@@ -7,6 +7,11 @@
 --   - 各国のスロット2体目(中間枠)・1体目(コモン枠)の武将名は「(仮)」表記のプレースホルダー
 --   - stats_json・lore は簡易な仮データ
 --   - image_url / gacha_reveal_animation_url / tenka_toitsu_image_url は未着手のため NULL のまま
+--
+-- 【冪等性】ON CONFLICT DO NOTHING により、国マスタ・武将マスタが何らかの理由で
+-- 消失した場合等に本ファイルを再実行しても安全(既存データは変更せず、無いデータのみ追加)。
+-- warlords側の重複判定には 20260708000013 で追加した (province_id, slot_type) の
+-- unique制約を使うため、そちらを先に適用しておくこと。
 
 -- ============================================================
 -- 国マスタ(25国 + 美濃)
@@ -38,7 +43,8 @@ insert into provinces (name, region, is_final_province, unlock_condition_count, 
   ('肥前', '九州', false, null, 23, null),
   ('豊後', '九州', false, null, 24, null),
   ('加賀', '北陸', false, null, 25, null),
-  ('美濃', '中部', true, 60, 26, '岐阜城');
+  ('美濃', '中部', true, 60, 26, '岐阜城')
+on conflict (name) do nothing;
 
 -- ============================================================
 -- 武将マスタ(26国 × 3体 = 78体)
@@ -174,4 +180,5 @@ insert into warlords (province_id, name, rarity, slot_type, stats_json, lore) va
   -- 美濃(最終国。専用特別枠)
   ((select id from provinces where name = '美濃'), '美濃国の足軽(仮)', '侍級', 'common', '{"統率":40,"知略":38,"勇猛":42}'::jsonb, '美濃の地を守る古参の足軽。'),
   ((select id from provinces where name = '美濃'), '斎藤道三', '大名級', 'mid', '{"統率":86,"知略":94,"勇猛":80}'::jsonb, '美濃のマムシと恐れられた下剋上の体現者。'),
-  ((select id from provinces where name = '美濃'), '織田信長', '大名級', 'rare', '{"統率":95,"知略":93,"勇猛":90}'::jsonb, '天下布武を掲げ、時代を切り拓いた革新の覇王。');
+  ((select id from provinces where name = '美濃'), '織田信長', '大名級', 'rare', '{"統率":95,"知略":93,"勇猛":90}'::jsonb, '天下布武を掲げ、時代を切り拓いた革新の覇王。')
+on conflict (province_id, slot_type) do nothing;
