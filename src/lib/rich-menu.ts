@@ -1,7 +1,9 @@
 // LINEリッチメニュー(Messaging API)のデプロイ処理。
-// 画像は public/rich-menu.png に事前生成済みの静的ファイルを使う
+// 画像は public/rich-menu.jpg に事前生成済みの静的ファイルを使う
 // (実行時にJapanese対応フォントを含むレンダリングを行うのは負荷が大きいため、
 // レイアウトを変える場合は画像を作り直して差し替える運用とする)。
+// 単体素材(assets/rich-menu-source/*.webp)から最終画像を作り直す手順は
+// assets/rich-menu-source/README.md を参照。
 
 const MENU_WIDTH = 2500;
 const MENU_HEIGHT = 1686;
@@ -76,16 +78,16 @@ export async function deployRichMenu(
   );
   const { richMenuId } = (await createRes.json()) as { richMenuId: string };
 
-  const imageRes = await fetch(`${baseUrl}/rich-menu.png`);
+  const imageRes = await fetch(`${baseUrl}/rich-menu.jpg`);
   if (!imageRes.ok) {
-    throw new Error("リッチメニュー画像(public/rich-menu.png)の取得に失敗しました");
+    throw new Error("リッチメニュー画像(public/rich-menu.jpg)の取得に失敗しました");
   }
   const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
 
   await lineApiRequest(
     `https://api-data.line.me/v2/bot/richmenu/${richMenuId}/content`,
     accessToken,
-    { method: "POST", headers: { "Content-Type": "image/png" }, body: imageBuffer },
+    { method: "POST", headers: { "Content-Type": "image/jpeg" }, body: imageBuffer },
     "リッチメニュー画像のアップロード"
   );
 
