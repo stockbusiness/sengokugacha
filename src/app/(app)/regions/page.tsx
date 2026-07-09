@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { TextLink } from "@/components/ui/Button";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
 
 type RegionProgress = {
@@ -48,8 +49,12 @@ export default function RegionsPage() {
     <div className="mx-auto w-full max-w-md px-4 py-10">
       <PageHeader
         title="地方コンプ"
-        subtitle="コンプ達成で石高ボーナスを自動付与します。称号・クーポン等の追加特典は今後の対応です。"
+        subtitle="コンプ達成で石高ボーナスを自動付与します。称号・クーポン等の追加特典は今後の対応です。地方コンプの進捗は戦国国家建設への道の一部として、ホームの国家建設率にも反映されます。"
       />
+
+      <div className="mb-6 text-center">
+        <TextLink href="/">国家建設率をホームで確認 →</TextLink>
+      </div>
 
       {status === "loading" && <p className="text-center text-parchment-dim">読み込み中...</p>}
       {status === "error" && (

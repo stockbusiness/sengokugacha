@@ -29,6 +29,7 @@ type DrawCore = {
   tenkaToitsuTriggered: boolean;
   isNewCard: boolean;
   animation: SelectedAnimation | null;
+  contributionPointsEarned: number;
 };
 
 export type GachaDrawResult = DrawCore & {
@@ -278,6 +279,31 @@ async function grantKokudakaBonus(userId: string, amount: number) {
   if (updateError) throw updateError;
 }
 
+// Ver2.0: 武将登用(ガチャ)結果に応じた国家貢献ポイント。指示書8章の「登用結果に応じて
+// 国家貢献ポイントを表示」に対応。ポイント配分は簡易な固定値で、経済ロジックの厳密さは
+// 今回のスコープ外(将来調整しやすいよう、この関数にのみ定義を置く)。
+const CONTRIBUTION_POINTS_BY_SLOT: Record<string, number> = { common: 5, mid: 15, rare: 40 };
+const CONTRIBUTION_POINTS_NEW_CARD_BONUS = 10;
+
+function calcContributionPoints(slotType: string, isNewCard: boolean): number {
+  return (CONTRIBUTION_POINTS_BY_SLOT[slotType] ?? 0) + (isNewCard ? CONTRIBUTION_POINTS_NEW_CARD_BONUS : 0);
+}
+
+async function grantContributionPoints(userId: string, amount: number) {
+  const supabase = createSupabaseServerClient();
+  const { data: user, error } = await supabase
+    .from("users")
+    .select("contribution_points")
+    .eq("id", userId)
+    .single();
+  if (error) throw error;
+  const { error: updateError } = await supabase
+    .from("users")
+    .update({ contribution_points: user.contribution_points + amount })
+    .eq("id", userId);
+  if (updateError) throw updateError;
+}
+
 // 指定地方の国(美濃国を除く)がすべて制圧済みなら地方コンプ実績を記録し、石高ボーナスを付与する。
 // 03_gacha_game_design 13章の称号・クーポン・イベント特典のうち、石高ボーナスのみ自動付与する
 // (クーポン/イベント管理の基盤が無いため、その他は今後の課題)。
@@ -363,6 +389,9 @@ async function performDraw(userId: string, isPaid: boolean, conqueredCount: numb
     .single();
   if (logError) throw logError;
 
+  const contributionPointsEarned = calcContributionPoints(warlord.slot_type, isNewCard);
+  await grantContributionPoints(userId, contributionPointsEarned);
+
   const provinceConquered = await maybeConquerProvince(userId, provinceId);
 
   let regionCompleted: string | null = null;
@@ -401,6 +430,7 @@ async function performDraw(userId: string, isPaid: boolean, conqueredCount: numb
     tenkaToitsuTriggered,
     isNewCard,
     animation,
+    contributionPointsEarned,
   };
 }
 
