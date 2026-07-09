@@ -5,12 +5,14 @@
 // 単体素材(assets/rich-menu-source/*.webp)から既定画像を作り直す手順は
 // assets/rich-menu-source/README.md を参照。
 
-const MENU_WIDTH = 2500;
-const MENU_HEIGHT = 1686;
+export const MENU_WIDTH = 2500;
+export const MENU_HEIGHT = 1686;
 
 // public/rich-menu.jpg のレイアウト(3列×2行)と対応させる。
 // 天下統一はパスポート画面・ガチャ画面から個別に導線があるため、
 // リッチメニューの6枠目は新規ユーザーの離脱防止を優先し「遊び方」とした。
+// 配列の並び順は rich_menu_panels.slot_index、public/rich-menu-panels/*.webp の
+// ファイル名(DEFAULT_PANEL_SLUGS)と対応させる。
 export const RICH_MENU_BUTTONS = [
   { label: "パスポート", path: "/" },
   { label: "ガチャ", path: "/gacha" },
@@ -20,8 +22,8 @@ export const RICH_MENU_BUTTONS = [
   { label: "遊び方", path: "/guide" },
 ] as const;
 
-const COL_WIDTHS = [834, 833, 833];
-const ROW_HEIGHT = 843;
+export const COL_WIDTHS = [834, 833, 833];
+export const ROW_HEIGHT = 843;
 
 function buildAreas(baseUrl: string) {
   return RICH_MENU_BUTTONS.map((button, i) => {
