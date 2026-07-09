@@ -26,3 +26,29 @@ export async function resizeForLine(input: Buffer): Promise<ResizedImage> {
 
   return { buffer, contentType: "image/webp", extension: "webp" };
 }
+
+// LINEリッチメニュー(大サイズテンプレート)の必須解像度。
+const RICH_MENU_WIDTH = 2500;
+const RICH_MENU_HEIGHT = 1686;
+// LINEの登録上限(1MB)に余裕を持って収める。
+const RICH_MENU_MAX_BYTES = 950 * 1024;
+
+export async function resizeForRichMenu(input: Buffer): Promise<ResizedImage> {
+  const base = sharp(input)
+    .rotate()
+    .resize({
+      width: RICH_MENU_WIDTH,
+      height: RICH_MENU_HEIGHT,
+      fit: "cover",
+      position: "centre",
+    });
+
+  for (const quality of [85, 75, 65, 55, 45]) {
+    const buffer = await base.clone().jpeg({ quality, mozjpeg: true }).toBuffer();
+    if (buffer.byteLength <= RICH_MENU_MAX_BYTES) {
+      return { buffer, contentType: "image/jpeg", extension: "jpg" };
+    }
+  }
+
+  throw new Error("画像を1MB以下に圧縮できませんでした。別の画像でお試しください。");
+}

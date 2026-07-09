@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ChangeEvent } from "react";
 
 type LineSettings = {
   id: string | null;
@@ -9,6 +9,7 @@ type LineSettings = {
   messaging_channel_access_token_set: boolean;
   messaging_channel_access_token_last4: string | null;
   rich_menu_id: string | null;
+  rich_menu_image_url: string | null;
 };
 
 export default function LineSettingsPage() {
@@ -20,6 +21,8 @@ export default function LineSettingsPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [deployStatus, setDeployStatus] = useState<"idle" | "deploying">("idle");
   const [deployMessage, setDeployMessage] = useState<string | null>(null);
+  const [imageUploadStatus, setImageUploadStatus] = useState<"idle" | "uploading">("idle");
+  const [imageUploadMessage, setImageUploadMessage] = useState<string | null>(null);
 
   function load() {
     return fetch("/api/admin/line-settings")
@@ -60,6 +63,29 @@ export default function LineSettingsPage() {
       setMessage(error instanceof Error ? error.message : "予期しないエラーが発生しました。");
     } finally {
       setStatus("ready");
+    }
+  }
+
+  async function handleImageUpload(e: ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+
+    setImageUploadStatus("uploading");
+    setImageUploadMessage(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch("/api/admin/rich-menu/image", { method: "POST", body: formData });
+      const body = await res.json();
+      if (!res.ok) throw new Error(body.error ?? "アップロードに失敗しました。");
+      setImageUploadMessage("画像をアップロードしました。反映するには下の「リッチメニューをデプロイ」を実行してください。");
+      await load();
+    } catch (error) {
+      setImageUploadMessage(error instanceof Error ? error.message : "予期しないエラーが発生しました。");
+    } finally {
+      setImageUploadStatus("idle");
     }
   }
 
@@ -152,13 +178,30 @@ export default function LineSettingsPage() {
       <div className="space-y-3 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
         <p className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">リッチメニューのデプロイ</p>
         <img
-          src="/rich-menu.jpg"
+          src={settings.rich_menu_image_url ?? "/rich-menu.jpg"}
           alt="リッチメニュー プレビュー"
           className="w-full rounded-lg border border-zinc-200 dark:border-zinc-800"
         />
         <p className="text-xs text-zinc-400 dark:text-zinc-600">
-          パスポート/ガチャ/図鑑/日本地図/購入/天下統一 の6ボタン構成です。ボタン内容を変更したい場合は開発者に依頼してください。
+          パスポート/ガチャ/図鑑/日本地図/購入/遊び方 の6ボタン構成です。ボタンの遷移先を変更したい場合は開発者に依頼してください。
         </p>
+
+        <label className="block">
+          <span className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">画像を差し替え</span>
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handleImageUpload}
+            disabled={imageUploadStatus === "uploading"}
+            className="block w-full text-sm text-zinc-600 file:mr-3 file:rounded-lg file:border-0 file:bg-zinc-900 file:px-3 file:py-1.5 file:text-sm file:font-semibold file:text-white hover:file:bg-zinc-700 dark:text-zinc-400 dark:file:bg-zinc-100 dark:file:text-zinc-900"
+          />
+        </label>
+        <p className="text-xs text-zinc-400 dark:text-zinc-600">
+          自動で2500×1686pxにリサイズ(中央でトリミング)・圧縮されます。アップロード後は下の「リッチメニューをデプロイ」の実行が必要です。
+        </p>
+        {imageUploadStatus === "uploading" && <p className="text-sm text-zinc-600 dark:text-zinc-300">アップロード中...</p>}
+        {imageUploadMessage && <p className="text-sm text-zinc-600 dark:text-zinc-300">{imageUploadMessage}</p>}
+
         {settings.rich_menu_id && (
           <p className="text-xs text-zinc-400 dark:text-zinc-600">現在のrichMenuId: {settings.rich_menu_id}</p>
         )}

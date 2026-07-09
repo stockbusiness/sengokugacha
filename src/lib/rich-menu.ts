@@ -1,8 +1,8 @@
 // LINEリッチメニュー(Messaging API)のデプロイ処理。
-// 画像は public/rich-menu.jpg に事前生成済みの静的ファイルを使う
-// (実行時にJapanese対応フォントを含むレンダリングを行うのは負荷が大きいため、
-// レイアウトを変える場合は画像を作り直して差し替える運用とする)。
-// 単体素材(assets/rich-menu-source/*.webp)から最終画像を作り直す手順は
+// 画像は管理画面(/admin/line-settings)からアップロードされたもの
+// (line_settings.rich_menu_image_url)があればそれを使い、未設定の場合は
+// public/rich-menu.jpg に同梱の既定画像を使う。
+// 単体素材(assets/rich-menu-source/*.webp)から既定画像を作り直す手順は
 // assets/rich-menu-source/README.md を参照。
 
 const MENU_WIDTH = 2500;
@@ -51,7 +51,8 @@ async function lineApiRequest(url: string, accessToken: string, init: RequestIni
 export async function deployRichMenu(
   accessToken: string,
   baseUrl: string,
-  previousRichMenuId: string | null
+  previousRichMenuId: string | null,
+  customImageUrl?: string | null
 ): Promise<string> {
   if (previousRichMenuId) {
     await fetch(`https://api.line.me/v2/bot/richmenu/${previousRichMenuId}`, {
@@ -80,9 +81,10 @@ export async function deployRichMenu(
   );
   const { richMenuId } = (await createRes.json()) as { richMenuId: string };
 
-  const imageRes = await fetch(`${baseUrl}/rich-menu.jpg`);
+  const imageUrl = customImageUrl || `${baseUrl}/rich-menu.jpg`;
+  const imageRes = await fetch(imageUrl);
   if (!imageRes.ok) {
-    throw new Error("リッチメニュー画像(public/rich-menu.jpg)の取得に失敗しました");
+    throw new Error(`リッチメニュー画像(${imageUrl})の取得に失敗しました`);
   }
   const imageBuffer = Buffer.from(await imageRes.arrayBuffer());
 
