@@ -3,6 +3,7 @@ import { getGachaRateTiers, pickTierRates, type GachaRateTier } from "@/lib/gach
 import { getLoginStreak, getStreakBonusDraws } from "@/lib/login-streak";
 import { getRegionKokudakaBonus, regionCompleteAchievementType } from "@/lib/regions";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { recordContribution } from "@/lib/user-activity";
 
 export class GachaLimitExceededError extends Error {}
 export class NoEligibleProvinceError extends Error {}
@@ -289,21 +290,6 @@ function calcContributionPoints(slotType: string, isNewCard: boolean): number {
   return (CONTRIBUTION_POINTS_BY_SLOT[slotType] ?? 0) + (isNewCard ? CONTRIBUTION_POINTS_NEW_CARD_BONUS : 0);
 }
 
-async function grantContributionPoints(userId: string, amount: number) {
-  const supabase = createSupabaseServerClient();
-  const { data: user, error } = await supabase
-    .from("users")
-    .select("contribution_points")
-    .eq("id", userId)
-    .single();
-  if (error) throw error;
-  const { error: updateError } = await supabase
-    .from("users")
-    .update({ contribution_points: user.contribution_points + amount })
-    .eq("id", userId);
-  if (updateError) throw updateError;
-}
-
 // 指定地方の国(美濃国を除く)がすべて制圧済みなら地方コンプ実績を記録し、石高ボーナスを付与する。
 // 03_gacha_game_design 13章の称号・クーポン・イベント特典のうち、石高ボーナスのみ自動付与する
 // (クーポン/イベント管理の基盤が無いため、その他は今後の課題)。
@@ -390,7 +376,7 @@ async function performDraw(userId: string, isPaid: boolean, conqueredCount: numb
   if (logError) throw logError;
 
   const contributionPointsEarned = calcContributionPoints(warlord.slot_type, isNewCard);
-  await grantContributionPoints(userId, contributionPointsEarned);
+  await recordContribution(userId, "gacha_draw", contributionPointsEarned);
 
   const provinceConquered = await maybeConquerProvince(userId, provinceId);
 

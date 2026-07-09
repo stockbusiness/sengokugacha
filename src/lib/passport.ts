@@ -1,6 +1,7 @@
 import { getDailyMissionStatus } from "@/lib/daily-missions";
 import { getLoginStreak } from "@/lib/login-streak";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { MANUAL_ACTIVITY_POINTS, recordContribution } from "@/lib/user-activity";
 
 export type PassportData = {
   displayName: string | null;
@@ -83,14 +84,20 @@ export async function recordLoginToday(userId: string) {
   const supabase = createSupabaseServerClient();
   const today = new Date().toISOString().slice(0, 10);
 
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("login_logs")
     .upsert(
       { user_id: userId, login_date: today },
       { onConflict: "user_id,login_date", ignoreDuplicates: true }
-    );
+    )
+    .select("id");
 
   if (error) throw error;
+
+  // 本日はじめてのログイン(=新規insert)の場合のみ国家貢献ポイントを付与する(Ver2.3)。
+  if ((data?.length ?? 0) > 0) {
+    await recordContribution(userId, "login", MANUAL_ACTIVITY_POINTS.login);
+  }
 }
 
 // 国家建設率(Ver2.0初期の簡易計算)。国盗り進捗・図鑑進捗・ログイン継続・本日の任務達成の
