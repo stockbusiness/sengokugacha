@@ -52,3 +52,29 @@ export async function resizeForRichMenu(input: Buffer): Promise<ResizedImage> {
 
   throw new Error("画像を1MB以下に圧縮できませんでした。別の画像でお試しください。");
 }
+
+// ガチャ動画演出のポスター画像(読み込み中・通信失敗時に表示)。仕様書7章の推奨値
+// (720×1280 WebP、300KB以下目安)に合わせる。
+const POSTER_WIDTH = 720;
+const POSTER_HEIGHT = 1280;
+const POSTER_MAX_BYTES = 300 * 1024;
+
+export async function resizeForGachaPoster(input: Buffer): Promise<ResizedImage> {
+  const base = sharp(input)
+    .rotate()
+    .resize({
+      width: POSTER_WIDTH,
+      height: POSTER_HEIGHT,
+      fit: "cover",
+      position: "centre",
+    });
+
+  for (const quality of [85, 75, 65, 55, 45]) {
+    const buffer = await base.clone().webp({ quality }).toBuffer();
+    if (buffer.byteLength <= POSTER_MAX_BYTES) {
+      return { buffer, contentType: "image/webp", extension: "webp" };
+    }
+  }
+
+  throw new Error("ポスター画像を300KB以下に圧縮できませんでした。別の画像でお試しください。");
+}

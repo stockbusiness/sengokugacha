@@ -1,3 +1,4 @@
+import { selectAnimationForDraw, type SelectedAnimation } from "@/lib/gacha-animations";
 import { getGachaRateTiers, pickTierRates, type GachaRateTier } from "@/lib/gacha-rate-tiers";
 import { getLoginStreak, getStreakBonusDraws } from "@/lib/login-streak";
 import { getRegionKokudakaBonus, regionCompleteAchievementType } from "@/lib/regions";
@@ -8,6 +9,7 @@ export class NoEligibleProvinceError extends Error {}
 export class InsufficientTicketsError extends Error {}
 
 type DrawCore = {
+  drawLogId: string;
   warlord: {
     id: string;
     name: string;
@@ -25,6 +27,8 @@ type DrawCore = {
   regionCompletionBonus: number;
   minoUnlocked: boolean;
   tenkaToitsuTriggered: boolean;
+  isNewCard: boolean;
+  animation: SelectedAnimation | null;
 };
 
 export type GachaDrawResult = DrawCore & {
@@ -170,7 +174,8 @@ async function getEligibleProvinces(
     .filter((p) => !p.is_final_province || (p.unlock_condition_count != null && conqueredCount >= p.unlock_condition_count));
 }
 
-async function addWarlordToUser(userId: string, warlordId: string) {
+// 戻り値: このユーザーが今回初めてこの武将を獲得した(新規)かどうか。
+async function addWarlordToUser(userId: string, warlordId: string): Promise<boolean> {
   const supabase = createSupabaseServerClient();
 
   const { data: existing, error: findError } = await supabase
@@ -188,12 +193,14 @@ async function addWarlordToUser(userId: string, warlordId: string) {
       .update({ count: existing.count + 1 })
       .eq("id", existing.id);
     if (error) throw error;
-  } else {
-    const { error } = await supabase
-      .from("user_warlords")
-      .insert({ user_id: userId, warlord_id: warlordId, count: 1 });
-    if (error) throw error;
+    return false;
   }
+
+  const { error } = await supabase
+    .from("user_warlords")
+    .insert({ user_id: userId, warlord_id: warlordId, count: 1 });
+  if (error) throw error;
+  return true;
 }
 
 // その国の3武将すべてを所持していれば制圧済みにする。戻り値: 今回の抽選で新たに制圧したかどうか。
@@ -330,14 +337,30 @@ async function performDraw(userId: string, isPaid: boolean, conqueredCount: numb
 
   if (warlordError) throw warlordError;
 
-  await addWarlordToUser(userId, warlord.id);
+  const isNewCard = await addWarlordToUser(userId, warlord.id);
 
-  const { error: logError } = await supabase.from("gacha_logs").insert({
-    user_id: userId,
-    warlord_id: warlord.id,
-    is_paid: isPaid,
-    conquered_provinces_count_at_draw: conqueredCount,
+  // 動画演出の選定は結果表示用の付随情報であり、失敗してもガチャ自体を
+  // 失敗させてはならない(仕様書2.1/5.4)。
+  const animation = await selectAnimationForDraw(
+    warlord.slot_type as "common" | "mid" | "rare",
+    isNewCard
+  ).catch((error) => {
+    console.error("ガチャ動画演出の選定に失敗しました", error);
+    return null;
   });
+
+  const { data: log, error: logError } = await supabase
+    .from("gacha_logs")
+    .insert({
+      user_id: userId,
+      warlord_id: warlord.id,
+      is_paid: isPaid,
+      conquered_provinces_count_at_draw: conqueredCount,
+      animation_asset_id: animation?.id ?? null,
+      animation_key: animation?.key ?? null,
+    })
+    .select("id")
+    .single();
   if (logError) throw logError;
 
   const provinceConquered = await maybeConquerProvince(userId, provinceId);
@@ -361,6 +384,7 @@ async function performDraw(userId: string, isPaid: boolean, conqueredCount: numb
   const province = warlord.provinces as unknown as { id: string; name: string };
 
   return {
+    drawLogId: log.id,
     warlord: {
       id: warlord.id,
       name: warlord.name,
@@ -375,6 +399,8 @@ async function performDraw(userId: string, isPaid: boolean, conqueredCount: numb
     regionCompletionBonus,
     minoUnlocked,
     tenkaToitsuTriggered,
+    isNewCard,
+    animation,
   };
 }
 
