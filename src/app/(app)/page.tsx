@@ -9,6 +9,10 @@ import { NationBuildingRateCard } from "@/components/dashboard/NationBuildingRat
 import { DevelopmentPlotCard } from "@/components/founding-member/DevelopmentPlotCard";
 import { FoundingMemberPanel } from "@/components/founding-member/FoundingMemberPanel";
 import { NationBuilderOfferCard } from "@/components/founding-member/NationBuilderOfferCard";
+import { AcademyHubCard } from "@/components/hubs/AcademyHubCard";
+import { MarketHubCard } from "@/components/hubs/MarketHubCard";
+import { EventHubCard } from "@/components/hubs/EventHubCard";
+import { NationContributionCategoryCard } from "@/components/hubs/NationContributionCategoryCard";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
 import type { DailyMissionStatus } from "@/lib/daily-missions";
 import type { PassportData } from "@/lib/passport";
@@ -16,25 +20,15 @@ import type { PassportData } from "@/lib/passport";
 type Status = "initializing" | "ready" | "error";
 type ExternalLink = { key: string; label: string; url: string };
 
-// AI寺子屋・マーケットは国家ダッシュボードの主要導線として常に枠を表示する
-// (既存の外部送客リンク管理(external_links)のURLをそのまま利用する)。
-const FEATURED_LINK_OVERRIDES: Record<string, { label: string; icon: string }> = {
-  ai_art_school: { label: "AI寺子屋", icon: "📜" },
-  nft_marketplace: { label: "マーケット", icon: "🏮" },
-};
-
-// 建国メンバー導線もNationBuilderOfferCardで専用表示するため、送客リンク一覧からは除外する。
-const NATION_BUILDER_LINK_KEY = "nation_builder_program";
-
-function pingMission(key: string) {
-  fetch("/api/missions/ping", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ key }),
-  }).catch(() => {
-    /* 任務達成表示はおまけ機能のため、失敗しても無視する */
-  });
-}
+// AI寺子屋・マーケット・イベントは専用ハブページ(/academy, /market, /events)へ集約したため、
+// ホームの「送客リンク」一覧からは重複表示しない。建国メンバー導線もNationBuilderOfferCardで
+// 専用表示するため同様に除外する。
+const LINKS_HANDLED_BY_DEDICATED_UI = new Set([
+  "ai_art_school",
+  "nft_marketplace",
+  "event_reservation",
+  "nation_builder_program",
+]);
 
 export default function Home() {
   const [status, setStatus] = useState<Status>("initializing");
@@ -103,11 +97,7 @@ export default function Home() {
     };
   }, [status]);
 
-  const featuredLinks = externalLinks.filter((link) => link.key in FEATURED_LINK_OVERRIDES);
-  const nationBuilderLink = externalLinks.find((link) => link.key === NATION_BUILDER_LINK_KEY) ?? null;
-  const otherLinks = externalLinks.filter(
-    (link) => !(link.key in FEATURED_LINK_OVERRIDES) && link.key !== NATION_BUILDER_LINK_KEY
-  );
+  const otherLinks = externalLinks.filter((link) => !LINKS_HANDLED_BY_DEDICATED_UI.has(link.key));
 
   return (
     <div className="mx-auto w-full max-w-md px-4 py-10">
@@ -159,40 +149,15 @@ export default function Home() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2">
-            {Object.entries(FEATURED_LINK_OVERRIDES).map(([key, meta]) => {
-              const link = featuredLinks.find((l) => l.key === key);
-              if (!link) {
-                return (
-                  <div
-                    key={key}
-                    className="rounded-lg border border-gold/10 px-3 py-4 text-center text-xs text-parchment-dim/60"
-                  >
-                    <p className="text-lg">{meta.icon}</p>
-                    <p className="mt-1">{meta.label}(準備中)</p>
-                  </div>
-                );
-              }
-              return (
-                <a
-                  key={key}
-                  href={link.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  onClick={() => key === "ai_art_school" && pingMission("view_terakoya")}
-                  className="rounded-lg border border-gold/25 px-3 py-4 text-center text-xs font-semibold text-gold-soft transition hover:border-gold/50 hover:bg-ink-raised"
-                >
-                  <p className="text-lg">{meta.icon}</p>
-                  <p className="mt-1">{meta.label} ↗</p>
-                </a>
-              );
-            })}
+          <div className="grid grid-cols-3 gap-2">
+            <AcademyHubCard />
+            <MarketHubCard />
+            <EventHubCard />
           </div>
 
-          <NationBuilderOfferCard
-            isFoundingMember={passport.isFoundingMember}
-            detailUrl={nationBuilderLink?.url ?? null}
-          />
+          <NationContributionCategoryCard />
+
+          <NationBuilderOfferCard isFoundingMember={passport.isFoundingMember} href="/nation-builder" external={false} />
         </div>
       )}
 

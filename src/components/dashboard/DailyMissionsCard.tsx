@@ -21,6 +21,9 @@ export function DailyMissionsCard({ missions }: { missions: DailyMissionStatus[]
             <span className={mission.completed ? "text-parchment-dim line-through" : "text-parchment"}>
               {mission.title}
             </span>
+            {mission.rewardPoint > 0 && (
+              <span className="text-[11px] text-gold/70">+{mission.rewardPoint}pt</span>
+            )}
           </li>
         ))}
       </ul>

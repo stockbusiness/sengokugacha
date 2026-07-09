@@ -6,23 +6,30 @@ export type DailyMissionDef = {
   key: string;
   title: string;
   detect: DailyMissionDetectType;
+  // Ver2.2指示書6章の表示用ポイント。実際の付与(users.contribution_pointsへの反映)は
+  // 後続フェーズとし、今回はUI上の表示のみ(指示書: 「実際のポイント保存は後続フェーズでもよい」)。
+  rewardPoint: number;
 };
 
 // Ver2.0初期の「本日の任務」。完璧な達成条件管理はせず、既存ログ(ガチャ・ログイン)から
 // 自動判定できるものはそこから、それ以外は各画面からの簡易な達成通知(ping)で判定する。
+// Ver2.2でAI寺子屋・市場・イベント関連の任務を追加。
 export const DAILY_MISSIONS: DailyMissionDef[] = [
-  { key: "gacha_draw", title: "無料武将登用を行う", detect: "gacha_draw" },
-  { key: "view_collection", title: "図鑑を確認する", detect: "manual" },
-  { key: "view_terakoya", title: "AI寺子屋を見る", detect: "manual" },
-  { key: "view_announcements", title: "お知らせを読む", detect: "manual" },
-  { key: "login_streak", title: "連続ログインする", detect: "login" },
+  { key: "gacha_draw", title: "無料武将登用を行う", detect: "gacha_draw", rewardPoint: 0 },
+  { key: "view_collection", title: "図鑑を確認する", detect: "manual", rewardPoint: 0 },
+  { key: "view_terakoya", title: "AI寺子屋を見る", detect: "manual", rewardPoint: 10 },
+  { key: "view_market", title: "市場を確認する", detect: "manual", rewardPoint: 5 },
+  { key: "view_events", title: "イベント情報を見る", detect: "manual", rewardPoint: 5 },
+  { key: "view_nation_builder_info", title: "建国メンバー案内を見る", detect: "manual", rewardPoint: 5 },
+  { key: "view_announcements", title: "お知らせを読む", detect: "manual", rewardPoint: 3 },
+  { key: "login_streak", title: "連続ログインする", detect: "login", rewardPoint: 0 },
 ];
 
 const MANUAL_KEYS = new Set(
   DAILY_MISSIONS.filter((mission) => mission.detect === "manual").map((mission) => mission.key)
 );
 
-export type DailyMissionStatus = { key: string; title: string; completed: boolean };
+export type DailyMissionStatus = { key: string; title: string; completed: boolean; rewardPoint: number };
 
 function todayDateString(): string {
   return new Date().toISOString().slice(0, 10);
@@ -61,7 +68,7 @@ export async function getDailyMissionStatus(userId: string): Promise<DailyMissio
     if (mission.detect === "gacha_draw") completed = (drawCount ?? 0) > 0;
     else if (mission.detect === "login") completed = !!loginRow;
     else completed = manualDone.has(mission.key);
-    return { key: mission.key, title: mission.title, completed };
+    return { key: mission.key, title: mission.title, completed, rewardPoint: mission.rewardPoint };
   });
 }
 

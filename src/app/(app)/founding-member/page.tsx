@@ -11,7 +11,6 @@ import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
 import type { PassportData } from "@/lib/passport";
 
 type Status = "loading" | "ready" | "error";
-type ExternalLink = { key: string; label: string; url: string };
 
 const SECTIONS = [
   {
@@ -55,7 +54,6 @@ export default function FoundingMemberPage() {
   const [status, setStatus] = useState<Status>("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [passport, setPassport] = useState<PassportData | null>(null);
-  const [externalLinks, setExternalLinks] = useState<ExternalLink[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -85,24 +83,6 @@ export default function FoundingMemberPage() {
     };
   }, []);
 
-  useEffect(() => {
-    if (status !== "ready") return;
-    let cancelled = false;
-
-    fetch("/api/links")
-      .then((res) => (res.ok ? res.json() : []))
-      .then((data: ExternalLink[]) => {
-        if (!cancelled) setExternalLinks(data);
-      })
-      .catch(() => {
-        /* 送客導線はおまけ機能のため、取得失敗しても本文表示は継続する */
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [status]);
-
   if (status === "loading") {
     return (
       <div className="mx-auto w-full max-w-md px-4 py-10">
@@ -118,8 +98,6 @@ export default function FoundingMemberPage() {
       </div>
     );
   }
-
-  const nationBuilderLink = externalLinks.find((link) => link.key === "nation_builder_program") ?? null;
 
   return (
     <div className="mx-auto w-full max-w-md px-4 py-10">
@@ -149,10 +127,7 @@ export default function FoundingMemberPage() {
       </div>
 
       <div className="mt-6">
-        <NationBuilderOfferCard
-          isFoundingMember={passport?.isFoundingMember ?? false}
-          detailUrl={nationBuilderLink?.url ?? null}
-        />
+        <NationBuilderOfferCard isFoundingMember={passport?.isFoundingMember ?? false} href="/nation-builder" external={false} />
       </div>
 
       <div className="mt-6 space-y-3">
