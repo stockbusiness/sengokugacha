@@ -20,7 +20,8 @@ export async function POST(request: NextRequest) {
     const richMenuId = await deployRichMenu(
       settings.messaging_channel_access_token,
       baseUrl,
-      settings.rich_menu_id
+      settings.rich_menu_id,
+      settings.rich_menu_image_url
     );
 
     const supabase = createSupabaseServerClient();

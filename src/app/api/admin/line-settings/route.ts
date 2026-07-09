@@ -30,6 +30,7 @@ export async function GET() {
     messaging_channel_access_token_set: !!data?.messaging_channel_access_token,
     messaging_channel_access_token_last4: last4(data?.messaging_channel_access_token ?? null),
     rich_menu_id: data?.rich_menu_id ?? null,
+    rich_menu_image_url: data?.rich_menu_image_url ?? null,
   });
 }
 

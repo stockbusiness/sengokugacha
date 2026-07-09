@@ -6,6 +6,7 @@ export type LineSettings = {
   channel_id: string | null;
   messaging_channel_access_token: string | null;
   rich_menu_id: string | null;
+  rich_menu_image_url: string | null;
 };
 
 // line_settings は1行運用。
