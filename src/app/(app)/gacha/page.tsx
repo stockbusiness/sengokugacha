@@ -38,6 +38,7 @@ type DrawResult = {
   tenkaToitsuTriggered: boolean;
   isNewCard: boolean;
   animation: DrawAnimation | null;
+  contributionPointsEarned: number;
   remainingFreeDrawsToday?: number;
   remainingPaidDrawsToday?: number;
   remainingGachaTickets?: number;
@@ -198,6 +199,11 @@ export default function GachaPage() {
             <p className="mt-1 text-sm text-gold-soft">{result.warlord.rarity}</p>
             {result.warlord.lore && (
               <p className="mt-3 text-sm text-parchment-dim">{result.warlord.lore}</p>
+            )}
+            {result.contributionPointsEarned > 0 && (
+              <p className="mt-3 text-sm font-semibold text-gold-soft">
+                国家貢献 +{result.contributionPointsEarned}pt
+              </p>
             )}
           </Card>
 

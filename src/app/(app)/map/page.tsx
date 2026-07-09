@@ -98,6 +98,10 @@ export default function MapPage() {
     <div className="mx-auto w-full max-w-md px-4 py-10">
       <MapProgress conquered={conqueredCount} total={66} />
 
+      <div className="mb-6 text-center">
+        <TextLink href="/">🏯 あなたの国盗りは国家建設率に反映されます。ホームで確認 →</TextLink>
+      </div>
+
       {status === "loading" && <p className="text-center text-parchment-dim">読み込み中...</p>}
       {status === "error" && (
         <p className="rounded-2xl border border-crimson/50 bg-crimson-soft/40 p-4 text-center text-sm text-parchment">
