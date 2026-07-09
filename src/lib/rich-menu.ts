@@ -15,7 +15,7 @@ export const MENU_HEIGHT = 1686;
 // ファイル名(DEFAULT_PANEL_SLUGS)と対応させる。
 export const RICH_MENU_BUTTONS = [
   { label: "パスポート", path: "/" },
-  { label: "ガチャ", path: "/gacha" },
+  { label: "武将登用", path: "/gacha" },
   { label: "図鑑", path: "/collection" },
   { label: "日本地図", path: "/map" },
   { label: "購入", path: "/purchase" },

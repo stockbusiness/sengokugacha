@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 
 const ITEMS = [
   { href: "/", label: "パスポート", icon: "🏯" },
-  { href: "/gacha", label: "ガチャ", icon: "🎴" },
+  { href: "/gacha", label: "武将登用", icon: "🎴" },
   { href: "/collection", label: "図鑑", icon: "📖" },
   { href: "/map", label: "地図", icon: "🗾" },
   { href: "/purchase", label: "購入", icon: "🛒" },

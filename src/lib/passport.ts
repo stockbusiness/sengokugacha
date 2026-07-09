@@ -1,3 +1,4 @@
+import { getDailyMissionStatus } from "@/lib/daily-missions";
 import { getLoginStreak } from "@/lib/login-streak";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
@@ -9,7 +10,18 @@ export type PassportData = {
   gachaTickets: number;
   warlordCount: number;
   conqueredProvinceCount: number;
+  totalProvinceCount: number;
   loginStreak: number;
+  // Ver2.0: 国家ダッシュボード・国民証向けの拡張フィールド。
+  nationalNumber: number;
+  contributionPoints: number;
+  affiliatedProvinceName: string | null;
+  nationBuildingRate: number;
+  isFoundingMember: boolean;
+  foundingMemberNumber: number | null;
+  developmentPlotId: string | null;
+  isNationBuilder: boolean;
+  nationBuilderPlan: string | null;
 };
 
 // 04_mvp_spec 3.3: 紹介リンク(?ref=AGENT_CODE)経由の代理店を解決する。
@@ -78,34 +90,103 @@ export async function recordLoginToday(userId: string) {
   if (error) throw error;
 }
 
+// 国家建設率(Ver2.0初期の簡易計算)。国盗り進捗・図鑑進捗・ログイン継続・本日の任務達成の
+// 加重平均。将来、国家建設の実データが揃った時点で本格的な計算に差し替える前提のダミー寄りの値。
+function calcNationBuildingRate(params: {
+  conqueredProvinceCount: number;
+  totalProvinceCount: number;
+  warlordCount: number;
+  totalWarlordCount: number;
+  loginStreak: number;
+  completedMissionCount: number;
+  totalMissionCount: number;
+}): number {
+  const provinceRatio =
+    params.totalProvinceCount > 0 ? params.conqueredProvinceCount / params.totalProvinceCount : 0;
+  const warlordRatio = params.totalWarlordCount > 0 ? params.warlordCount / params.totalWarlordCount : 0;
+  const streakRatio = Math.min(params.loginStreak, 30) / 30;
+  const missionRatio =
+    params.totalMissionCount > 0 ? params.completedMissionCount / params.totalMissionCount : 0;
+
+  const rate = provinceRatio * 0.4 + warlordRatio * 0.3 + streakRatio * 0.15 + missionRatio * 0.15;
+  return Math.round(rate * 100);
+}
+
+async function getAffiliatedProvinceName(userId: string): Promise<string | null> {
+  const supabase = createSupabaseServerClient();
+
+  const { data: firstConquered, error: firstConqueredError } = await supabase
+    .from("user_provinces")
+    .select("province_id")
+    .eq("user_id", userId)
+    .eq("is_conquered", true)
+    .order("conquered_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  if (firstConqueredError) throw firstConqueredError;
+  if (!firstConquered) return null;
+
+  const { data: province, error: provinceError } = await supabase
+    .from("provinces")
+    .select("name")
+    .eq("id", firstConquered.province_id)
+    .maybeSingle();
+
+  if (provinceError) throw provinceError;
+  return province?.name ?? null;
+}
+
 export async function getPassportData(userId: string): Promise<PassportData | null> {
   const supabase = createSupabaseServerClient();
 
   const { data: user, error: userError } = await supabase
     .from("users")
-    .select("display_name, rank, kokudaka, senko, gacha_tickets")
+    .select(
+      "display_name, rank, kokudaka, senko, gacha_tickets, national_number, contribution_points, is_founding_member, founding_member_number, development_plot_id, is_nation_builder, nation_builder_plan"
+    )
     .eq("id", userId)
     .maybeSingle();
 
   if (userError) throw userError;
   if (!user) return null;
 
-  const [{ count: warlordCount, error: warlordError }, { count: conqueredCount, error: provinceError }, loginStreak] =
-    await Promise.all([
-      supabase
-        .from("user_warlords")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", userId),
-      supabase
-        .from("user_provinces")
-        .select("id", { count: "exact", head: true })
-        .eq("user_id", userId)
-        .eq("is_conquered", true),
-      getLoginStreak(userId),
-    ]);
+  const [
+    { count: warlordCount, error: warlordError },
+    { count: conqueredCount, error: provinceError },
+    { count: totalWarlordCount, error: totalWarlordError },
+    { count: totalProvinceCount, error: totalProvinceError },
+    loginStreak,
+    missions,
+    affiliatedProvinceName,
+  ] = await Promise.all([
+    supabase.from("user_warlords").select("id", { count: "exact", head: true }).eq("user_id", userId),
+    supabase
+      .from("user_provinces")
+      .select("id", { count: "exact", head: true })
+      .eq("user_id", userId)
+      .eq("is_conquered", true),
+    supabase.from("warlords").select("id", { count: "exact", head: true }),
+    supabase.from("provinces").select("id", { count: "exact", head: true }),
+    getLoginStreak(userId),
+    getDailyMissionStatus(userId),
+    getAffiliatedProvinceName(userId),
+  ]);
 
   if (warlordError) throw warlordError;
   if (provinceError) throw provinceError;
+  if (totalWarlordError) throw totalWarlordError;
+  if (totalProvinceError) throw totalProvinceError;
+
+  const nationBuildingRate = calcNationBuildingRate({
+    conqueredProvinceCount: conqueredCount ?? 0,
+    totalProvinceCount: totalProvinceCount ?? 0,
+    warlordCount: warlordCount ?? 0,
+    totalWarlordCount: totalWarlordCount ?? 0,
+    loginStreak,
+    completedMissionCount: missions.filter((mission) => mission.completed).length,
+    totalMissionCount: missions.length,
+  });
 
   return {
     displayName: user.display_name,
@@ -115,6 +196,16 @@ export async function getPassportData(userId: string): Promise<PassportData | nu
     gachaTickets: user.gacha_tickets,
     warlordCount: warlordCount ?? 0,
     conqueredProvinceCount: conqueredCount ?? 0,
+    totalProvinceCount: totalProvinceCount ?? 0,
     loginStreak,
+    nationalNumber: user.national_number,
+    contributionPoints: user.contribution_points,
+    affiliatedProvinceName,
+    nationBuildingRate,
+    isFoundingMember: user.is_founding_member,
+    foundingMemberNumber: user.founding_member_number,
+    developmentPlotId: user.development_plot_id,
+    isNationBuilder: user.is_nation_builder,
+    nationBuilderPlan: user.nation_builder_plan,
   };
 }
