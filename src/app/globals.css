@@ -141,6 +141,61 @@ h3,
   }
 }
 
+/* 大名級(最高レア)専用の追加演出: 雷光と家紋の閃光。 */
+@keyframes gacha-lightning {
+  0%,
+  100% {
+    opacity: 0;
+  }
+  4% {
+    opacity: 0.85;
+  }
+  9% {
+    opacity: 0.1;
+  }
+  14% {
+    opacity: 0.65;
+  }
+  22% {
+    opacity: 0;
+  }
+}
+
+@keyframes gacha-blade-flash {
+  0% {
+    transform: translateX(-120%) skewX(-18deg);
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  45% {
+    opacity: 0;
+  }
+  100% {
+    transform: translateX(120%) skewX(-18deg);
+    opacity: 0;
+  }
+}
+
+@keyframes gacha-crest-flash {
+  0% {
+    transform: scale(0.3) rotate(-6deg);
+    opacity: 0;
+  }
+  35% {
+    transform: scale(1.05) rotate(2deg);
+    opacity: 0.95;
+  }
+  65% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: scale(1.7) rotate(0deg);
+    opacity: 0;
+  }
+}
+
 @keyframes gacha-shimmer {
   0% {
     background-position: -200% 0;
@@ -164,6 +219,51 @@ h3,
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+}
+
+/* ホーム画面の演出背景(和紙・桜・提灯)。src/components/home/AtmosphereBackground.tsx */
+@keyframes sakura-fall {
+  0% {
+    transform: translate(0, 0) rotate(0deg);
+    opacity: 0;
+  }
+  8% {
+    opacity: 0.9;
+  }
+  92% {
+    opacity: 0.6;
+  }
+  100% {
+    transform: translate(36px, 340px) rotate(280deg);
+    opacity: 0;
+  }
+}
+
+.sakura-petal {
+  animation-name: sakura-fall;
+  animation-timing-function: linear;
+  animation-iteration-count: infinite;
+}
+
+@keyframes lantern-glow {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 0.85;
+  }
+}
+
+.lantern-glow {
+  animation: lantern-glow 5.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sakura-petal,
+  .lantern-glow {
+    animation: none;
+  }
 }
 
 /* 装飾的な角飾り(戦国風の額縁演出)。角の2辺だけに金線を入れる。 */

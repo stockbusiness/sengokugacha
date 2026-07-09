@@ -11,6 +11,7 @@ type CollectionWarlord = {
   name: string;
   rarity: string;
   slotType: "common" | "mid" | "rare";
+  imageUrl: string | null;
   lore: string | null;
   owned: boolean;
   count: number;
@@ -121,28 +122,56 @@ export default function CollectionPage() {
   );
 }
 
+// 巻物風カード。上下に軸(巻物の芯)を表す金の帯を置き、タップで少し浮き上がる。
+function ScrollCardFrame({ children, borderClass }: { children: React.ReactNode; borderClass: string }) {
+  return (
+    <div className={`relative overflow-hidden rounded-lg border ${borderClass}`}>
+      <div className="absolute inset-x-0 top-0 h-1.5 bg-gradient-to-r from-gold/10 via-gold/70 to-gold/10" />
+      {children}
+      <div className="absolute inset-x-0 bottom-0 h-1.5 bg-gradient-to-r from-gold/10 via-gold/70 to-gold/10" />
+    </div>
+  );
+}
+
 function WarlordCard({ warlord }: { warlord: CollectionWarlord }) {
   if (!warlord.owned) {
     return (
-      <div
-        className="flex aspect-[4/3] items-center justify-center rounded-xl border border-gold/15 bg-gradient-to-b from-ink-raised/60 to-ink text-sm tracking-wide text-parchment-dim/40"
-        aria-label="未獲得武将"
-      >
-        ???
-      </div>
+      <ScrollCardFrame borderClass="border-gold/10">
+        <div
+          className="flex aspect-[4/3] items-center justify-center bg-gradient-to-b from-ink-raised/60 to-ink text-sm tracking-wide text-parchment-dim/40"
+          aria-label="未獲得武将"
+        >
+          ???
+        </div>
+      </ScrollCardFrame>
     );
   }
 
   return (
-    <div className="relative flex aspect-[4/3] flex-col items-center justify-center gap-1 overflow-hidden rounded-xl border border-gold/50 bg-gradient-to-b from-crimson-soft/40 to-ink px-1.5 text-center shadow-[inset_0_0_0_1px_rgba(232,205,122,0.08)]">
-      <span aria-hidden="true" className="text-xl drop-shadow-[0_0_8px_rgba(232,205,122,0.3)]">
-        ⚔️
-      </span>
-      <span className="line-clamp-1 text-[11px] font-semibold text-parchment">{warlord.name}</span>
-      <span className="text-[10px] text-gold-soft">
-        {warlord.rarity}
-        {warlord.count > 1 ? ` ×${warlord.count}` : ""}
-      </span>
-    </div>
+    <ScrollCardFrame borderClass="border-gold/50 shadow-[inset_0_0_0_1px_rgba(232,205,122,0.08)]">
+      <div className="group relative aspect-[4/3] cursor-default transition-transform duration-200 will-change-transform hover:-translate-y-1 active:-translate-y-0.5 active:scale-[0.98]">
+        {warlord.imageUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={warlord.imageUrl}
+            alt={warlord.name}
+            className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          />
+        ) : (
+          <div className="flex h-full w-full flex-col items-center justify-center gap-1 bg-gradient-to-b from-crimson-soft/40 to-ink text-center">
+            <span aria-hidden="true" className="text-xl drop-shadow-[0_0_8px_rgba(232,205,122,0.3)]">
+              ⚔️
+            </span>
+          </div>
+        )}
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-ink/95 via-ink/60 to-transparent px-1.5 pb-1.5 pt-4 text-center">
+          <p className="line-clamp-1 text-[11px] font-semibold text-parchment">{warlord.name}</p>
+          <p className="text-[10px] text-gold-soft">
+            {warlord.rarity}
+            {warlord.count > 1 ? ` ×${warlord.count}` : ""}
+          </p>
+        </div>
+      </div>
+    </ScrollCardFrame>
   );
 }

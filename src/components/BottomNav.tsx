@@ -26,11 +26,20 @@ export function BottomNav() {
             <Link
               key={item.href}
               href={item.href}
-              className={`flex flex-1 flex-col items-center gap-1 py-2.5 text-xs transition ${
+              className={`relative flex flex-1 flex-col items-center gap-1 py-2.5 text-xs transition-colors duration-200 active:scale-95 ${
                 active ? "text-gold-soft" : "text-parchment-dim hover:text-gold-soft/70"
               }`}
             >
-              <span className={`text-lg ${active ? "" : "opacity-70"}`}>{item.icon}</span>
+              {active && (
+                <span className="absolute top-0 h-0.5 w-8 rounded-full bg-gold shadow-[0_0_8px_rgba(201,162,39,0.8)]" />
+              )}
+              <span
+                className={`text-lg transition-transform duration-200 ${
+                  active ? "scale-110 drop-shadow-[0_0_6px_rgba(232,205,122,0.5)]" : "opacity-70"
+                }`}
+              >
+                {item.icon}
+              </span>
               {item.label}
             </Link>
           );
