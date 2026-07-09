@@ -72,3 +72,28 @@
 - 創設メンバー特別価格・建国メンバー価格の管理画面/環境変数からの変更UI(現在は `src/lib/founding-member.ts` の固定値)
 - 実際の決済フロー、権利証NFT、メタバース座標の本格反映
 - 管理画面ユーザー一覧の50件制限を超えたページネーション(既存の検索機能の制約をそのまま踏襲)
+
+---
+
+## Ver2.2: AI寺子屋・マーケット・外部送客導線統合フェーズ
+
+### 変更内容
+
+- 既存の外部送客リンク管理(`external_links`)に `event_reservation`(イベント予約)を追加(マイグレーション `20260711000001_academy_market_events_v22.sql`)。他のリンク(AI寺子屋=`ai_art_school`、マーケット=`nft_marketplace`、建国メンバー=`nation_builder_program`)は既存キーをそのまま流用し、カテゴリ列は追加せず `src/lib/external-services.ts` の `EXTERNAL_LINK_CATEGORY_BY_KEY` で既存キー名から判別する方式にした(指示書9章の「カテゴリがない場合は既存リンク名で判別する」を採用)。
+- ハブページを3つ新設: `/academy`(AI寺子屋)、`/market`(戦国市場)、`/events`(イベント)。いずれもLIFFログイン必須、`/api/links` から取得したURLをカード表示し、未設定カテゴリは「近日公開」と表示する(`ExternalLinkCard` コンポーネントで共通化)。
+- 建国メンバー案内ページを `/nation-builder` として新設(Ver2.1の `/founding-member` とは別ページ)。`/founding-member` は既存土地オーナー向けの説明、`/nation-builder` は「今日から受け取れる価値/将来広がる価値」を軸にした新規参加者向けの価値訴求ページという役割分担にした。
+- `NationBuilderOfferCard` を拡張し、`href`/`external`/`ctaLabel` props で「内部リンク(ダッシュボード→`/nation-builder`)」と「外部リンク(`/nation-builder`→実際のLP、未設定時は準備中)」の両方に対応。ホーム・`/founding-member`・`/nation-builder` の3箇所から同じコンポーネントを異なる導線設定で利用している。
+- ホーム(国家ダッシュボード)の送客導線を、AI寺子屋/マーケットへの直接外部リンクから、`AcademyHubCard`/`MarketHubCard`/`EventHubCard`(3つの内部ハブページへの入口)に置き換え。加えて `NationContributionCategoryCard` を追加し、AI寺子屋(教育)・作品投稿/NFT(文化)・戦国市場(商業)・イベント(観光)・武将登用(軍事)の対応を説明(実際の国家ステータス計算は行わない)。
+- 「本日の任務」に3件追加(`view_market` 市場を確認する、`view_events` イベント情報を見る、`view_nation_builder_info` 建国メンバー案内を見る)。`DailyMissionDef`/`DailyMissionStatus` に `rewardPoint` を追加し、`DailyMissionsCard` にポイント数を表示するが、実際の `contribution_points` への付与は行わない(指示書6章: 「実際のポイント保存は後続フェーズでもよい」を採用し、表示のみ)。
+
+### 影響範囲
+
+- 既存テーブルへの変更はなし(`external_links` への行追加のみ)。
+- ホーム画面のAI寺子屋/マーケットへの導線が「外部リンクへの直接遷移」から「内部ハブページ経由」に変わった。URLの遷移先自体(最終的に開く外部LP)は変わらないため、送客効果への影響はない想定。
+- 既存機能(LIFFログイン、ガチャ、Stripe決済、図鑑、国盗り、管理画面)への変更なし。
+
+### 未実装事項
+
+- 講座受講管理、動画教材管理、本格EC、商品出品、イベント予約DB、チケット販売(指示書12章のとおりスコープ外)
+- 本日の任務の実際のポイント付与(`contribution_points` への反映)
+- 国家ステータス(教育/文化/商業/観光/軍事)の本格計算
