@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { MissionPing } from "@/components/MissionPing";
 import { getAnnouncements } from "@/lib/announcements";
 
 // 管理画面での編集を再デプロイなしで即反映させるため、静的生成せず都度DBを参照する。
@@ -15,6 +16,7 @@ export default async function AnnouncementsPage() {
 
   return (
     <div className="mx-auto w-full max-w-md px-4 py-10">
+      <MissionPing missionKey="view_announcements" />
       <PageHeader title="お知らせ" />
 
       {announcements.length === 0 && <p className="text-center text-parchment-dim">現在、お知らせはありません。</p>}

@@ -108,7 +108,7 @@ export default function GachaPage() {
 
       if (!res.ok) {
         if (res.status === 402) setNeedsTickets(true);
-        throw new Error(body.error ?? "ガチャの実行に失敗しました。");
+        throw new Error(body.error ?? "武将登用の実行に失敗しました。");
       }
 
       const drawResult = body as DrawResult;
@@ -125,17 +125,17 @@ export default function GachaPage() {
 
   return (
     <div className="mx-auto w-full max-w-md px-4 py-10">
-      <PageHeader title="ガチャ" />
+      <PageHeader title="武将登用" />
 
       {status === "initializing" && <p className="text-center text-parchment-dim">読み込み中...</p>}
 
       {(status === "idle" || status === "drawing") && (
         <SummonStage>
           <Button onClick={() => handleDraw("free")} disabled={status === "drawing"}>
-            {status === "drawing" && mode === "free" ? "抽選中..." : "無料ガチャを引く"}
+            {status === "drawing" && mode === "free" ? "抽選中..." : "無料武将登用を行う"}
           </Button>
           <Button variant="secondary" onClick={() => handleDraw("paid")} disabled={status === "drawing"}>
-            {status === "drawing" && mode === "paid" ? "抽選中..." : "有料ガチャを引く(ガチャ券1枚消費)"}
+            {status === "drawing" && mode === "paid" ? "抽選中..." : "有料武将登用を行う(ガチャ券1枚消費)"}
           </Button>
         </SummonStage>
       )}
@@ -203,8 +203,8 @@ export default function GachaPage() {
 
           <p className="text-center text-xs text-parchment-dim">
             {mode === "free"
-              ? `本日の無料ガチャ残り回数: ${remaining}`
-              : `本日の有料ガチャ残り回数: ${remaining}(ガチャ券残り: ${result.remainingGachaTickets ?? 0}枚)`}
+              ? `本日の無料武将登用 残り回数: ${remaining}`
+              : `本日の有料武将登用 残り回数: ${remaining}(ガチャ券残り: ${result.remainingGachaTickets ?? 0}枚)`}
           </p>
 
           <Button onClick={() => handleDraw(mode)} disabled={remaining <= 0}>

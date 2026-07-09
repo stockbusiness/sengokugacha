@@ -58,7 +58,7 @@ export default async function RatesPage() {
           href="/gacha"
           className="text-sm text-parchment-dim underline decoration-gold/30 underline-offset-4 transition hover:text-gold-soft"
         >
-          ガチャ画面に戻る
+          武将登用画面に戻る
         </Link>
       </div>
     </div>

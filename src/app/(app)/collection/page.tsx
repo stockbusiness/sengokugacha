@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
+import { MissionPing } from "@/components/MissionPing";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
 
 type CollectionWarlord = {
@@ -82,6 +83,7 @@ export default function CollectionPage() {
 
       {status === "ready" && (
         <div className="space-y-4">
+          <MissionPing missionKey="view_collection" />
           {regionGroups.map((group) => (
             <Card key={group.region} ornate>
               <h2 className="mb-3 text-sm font-semibold tracking-wide text-gold-soft">{group.region}地方</h2>
