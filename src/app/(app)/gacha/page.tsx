@@ -5,10 +5,23 @@ import { Card } from "@/components/ui/Card";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button, LinkButton, TextLink } from "@/components/ui/Button";
 import { GachaReveal } from "@/components/gacha/GachaReveal";
+import { GachaVideoOverlay } from "@/components/gacha/GachaVideoOverlay";
 import { SummonStage } from "@/components/gacha/SummonStage";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
 
+type DrawAnimation = {
+  id: string;
+  key: string;
+  videoUrl: string;
+  posterUrl: string | null;
+  durationMs: number;
+  allowSkip: boolean;
+  skipAfterMs: number;
+  hasAudio: boolean;
+};
+
 type DrawResult = {
+  drawLogId: string;
   warlord: {
     id: string;
     name: string;
@@ -23,13 +36,38 @@ type DrawResult = {
   regionCompletionBonus: number;
   minoUnlocked: boolean;
   tenkaToitsuTriggered: boolean;
+  isNewCard: boolean;
+  animation: DrawAnimation | null;
   remainingFreeDrawsToday?: number;
   remainingPaidDrawsToday?: number;
   remainingGachaTickets?: number;
 };
 
 type Mode = "free" | "paid";
-type Status = "initializing" | "idle" | "drawing" | "revealing" | "done" | "error";
+type Status = "initializing" | "idle" | "drawing" | "playing_video" | "revealing" | "done" | "error";
+
+function logAnimationEvent(
+  eventType: string,
+  result: DrawResult,
+  extra?: { errorCode?: string; playbackMs?: number }
+) {
+  const isLiff = typeof window !== "undefined" && /Line/i.test(window.navigator.userAgent);
+  fetch("/api/gacha/animation-event", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      eventType,
+      drawLogId: result.drawLogId,
+      animationAssetId: result.animation?.id ?? null,
+      animationKey: result.animation?.key ?? null,
+      rarity: result.warlord.slotType,
+      isLiff,
+      ...extra,
+    }),
+  }).catch(() => {
+    /* 分析ログの送信失敗はユーザー体験に影響させない */
+  });
+}
 
 export default function GachaPage() {
   const [status, setStatus] = useState<Status>("initializing");
@@ -73,8 +111,9 @@ export default function GachaPage() {
         throw new Error(body.error ?? "ガチャの実行に失敗しました。");
       }
 
-      setResult(body as DrawResult);
-      setStatus("revealing");
+      const drawResult = body as DrawResult;
+      setResult(drawResult);
+      setStatus(drawResult.animation ? "playing_video" : "revealing");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "予期しないエラーが発生しました。");
       setStatus("error");
@@ -110,11 +149,22 @@ export default function GachaPage() {
         </div>
       )}
 
+      {status === "playing_video" && result?.animation && (
+        <GachaVideoOverlay
+          animation={result.animation}
+          onEvent={(eventType, extra) => logAnimationEvent(eventType, result, extra)}
+          onComplete={() => setStatus("revealing")}
+        />
+      )}
+
       {status === "revealing" && result && (
         <GachaReveal
           warlord={result.warlord}
           provinceName={result.province.name}
-          onFinish={() => setStatus("done")}
+          onFinish={() => {
+            logAnimationEvent("gacha_result_revealed", result);
+            setStatus("done");
+          }}
         />
       )}
 
