@@ -20,6 +20,9 @@ export type PassportData = {
   isFoundingMember: boolean;
   foundingMemberNumber: number | null;
   developmentPlotId: string | null;
+  // Ver2.1: 国家開発区画(旧・土地)向けの拡張フィールド。
+  developmentArea: string | null;
+  developmentPlotStatus: string;
   isNationBuilder: boolean;
   nationBuilderPlan: string | null;
 };
@@ -143,7 +146,7 @@ export async function getPassportData(userId: string): Promise<PassportData | nu
   const { data: user, error: userError } = await supabase
     .from("users")
     .select(
-      "display_name, rank, kokudaka, senko, gacha_tickets, national_number, contribution_points, is_founding_member, founding_member_number, development_plot_id, is_nation_builder, nation_builder_plan"
+      "display_name, rank, kokudaka, senko, gacha_tickets, national_number, contribution_points, is_founding_member, founding_member_number, development_plot_id, development_area, development_plot_status, is_nation_builder, nation_builder_plan"
     )
     .eq("id", userId)
     .maybeSingle();
@@ -205,6 +208,8 @@ export async function getPassportData(userId: string): Promise<PassportData | nu
     isFoundingMember: user.is_founding_member,
     foundingMemberNumber: user.founding_member_number,
     developmentPlotId: user.development_plot_id,
+    developmentArea: user.development_area,
+    developmentPlotStatus: user.development_plot_status,
     isNationBuilder: user.is_nation_builder,
     nationBuilderPlan: user.nation_builder_plan,
   };
