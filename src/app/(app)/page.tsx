@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/Card";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { LinkButton, TextLink } from "@/components/ui/Button";
 import { DailyMissionsCard } from "@/components/dashboard/DailyMissionsCard";
 import { NationalIdCard } from "@/components/dashboard/NationalIdCard";
@@ -9,10 +10,9 @@ import { NationBuildingRateCard } from "@/components/dashboard/NationBuildingRat
 import { DevelopmentPlotCard } from "@/components/founding-member/DevelopmentPlotCard";
 import { FoundingMemberPanel } from "@/components/founding-member/FoundingMemberPanel";
 import { NationBuilderOfferCard } from "@/components/founding-member/NationBuilderOfferCard";
-import { AcademyHubCard } from "@/components/hubs/AcademyHubCard";
-import { MarketHubCard } from "@/components/hubs/MarketHubCard";
-import { EventHubCard } from "@/components/hubs/EventHubCard";
 import { NationContributionCategoryCard } from "@/components/hubs/NationContributionCategoryCard";
+import { AtmosphereBackground } from "@/components/home/AtmosphereBackground";
+import { PriorityQuickActions } from "@/components/home/PriorityQuickActions";
 import { ContributionCard } from "@/components/economy/ContributionCard";
 import { ActivityTimelineCard } from "@/components/economy/ActivityTimelineCard";
 import { OveWalletCard } from "@/components/economy/OveWalletCard";
@@ -130,15 +130,23 @@ export default function Home() {
 
   return (
     <div className="mx-auto w-full max-w-md px-4 py-10">
+      <AtmosphereBackground />
+
       <div className="mb-8 text-center">
-        <p className="text-xs tracking-[0.3em] text-gold/70">SENGOKU ECONOMY OS</p>
+        <p className="font-accent text-xs tracking-[0.3em] text-gold/70">SENGOKU ECONOMY OS</p>
         <h1 className="gold-title font-heading mt-1 text-4xl font-bold">戦国パスポート</h1>
         <p className="mt-1 text-[11px] tracking-[0.15em] text-parchment-dim">国家ダッシュボード</p>
         <div className="mx-auto mt-3 h-px w-16 bg-gradient-to-r from-transparent via-gold/60 to-transparent" />
       </div>
 
+      {status === "ready" && passport && (
+        <div className="mb-6">
+          <PriorityQuickActions />
+        </div>
+      )}
+
       {status === "initializing" && (
-        <p className="text-center text-parchment-dim">読み込み中...</p>
+        <LoadingSpinner />
       )}
 
       {status === "error" && (
@@ -177,12 +185,6 @@ export default function Home() {
               <TextLink href="/regions">地方コンプ</TextLink>
               <TextLink href="/tenka-toitsu">天下統一</TextLink>
             </div>
-          </div>
-
-          <div className="grid grid-cols-3 gap-2">
-            <AcademyHubCard />
-            <MarketHubCard />
-            <EventHubCard />
           </div>
 
           <NationContributionCategoryCard />

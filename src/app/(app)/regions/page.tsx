@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/Card";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TextLink } from "@/components/ui/Button";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
@@ -56,7 +57,7 @@ export default function RegionsPage() {
         <TextLink href="/">国家建設率をホームで確認 →</TextLink>
       </div>
 
-      {status === "loading" && <p className="text-center text-parchment-dim">読み込み中...</p>}
+      {status === "loading" && <LoadingSpinner />}
       {status === "error" && (
         <Card className="border-crimson/50 bg-crimson-soft/40 text-center text-sm text-parchment">
           {errorMessage ?? "読み込みに失敗しました。"}

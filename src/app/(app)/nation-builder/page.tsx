@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/Card";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TextLink } from "@/components/ui/Button";
 import { NationBuilderOfferCard } from "@/components/founding-member/NationBuilderOfferCard";
@@ -81,7 +82,7 @@ export default function NationBuilderPage() {
   if (status === "loading") {
     return (
       <div className="mx-auto w-full max-w-md px-4 py-10">
-        <p className="text-center text-parchment-dim">読み込み中...</p>
+        <LoadingSpinner />
       </div>
     );
   }

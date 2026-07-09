@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Card } from "@/components/ui/Card";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button, LinkButton, TextLink } from "@/components/ui/Button";
 import { GachaReveal } from "@/components/gacha/GachaReveal";
@@ -128,7 +130,7 @@ export default function GachaPage() {
     <div className="mx-auto w-full max-w-md px-4 py-10">
       <PageHeader title="武将登用" />
 
-      {status === "initializing" && <p className="text-center text-parchment-dim">読み込み中...</p>}
+      {status === "initializing" && <LoadingSpinner />}
 
       {(status === "idle" || status === "drawing") && (
         <SummonStage>
@@ -216,6 +218,16 @@ export default function GachaPage() {
           <Button onClick={() => handleDraw(mode)} disabled={remaining <= 0}>
             もう一度引く
           </Button>
+
+          <div className="pt-2">
+            <p className="mb-2 text-center text-xs text-parchment-dim">続けて楽しむ</p>
+            <div className="grid grid-cols-4 gap-2">
+              <RecommendTile href="/collection" icon="📖" label="図鑑" />
+              <RecommendTile href="/academy" icon="📜" label="AI寺子屋" />
+              <RecommendTile href="/events" icon="🎆" label="イベント" />
+              <RecommendTile href="/market" icon="🏮" label="市場" />
+            </div>
+          </div>
         </div>
       )}
 
@@ -227,5 +239,17 @@ export default function GachaPage() {
         <TextLink href="/rates">排出率を見る</TextLink>
       </div>
     </div>
+  );
+}
+
+function RecommendTile({ href, icon, label }: { href: string; icon: string; label: string }) {
+  return (
+    <Link
+      href={href}
+      className="flex flex-col items-center gap-1 rounded-lg border border-gold/20 py-2.5 text-center text-[11px] font-semibold text-gold-soft transition hover:border-gold/50 hover:bg-ink-raised active:scale-95"
+    >
+      <span className="text-base">{icon}</span>
+      {label}
+    </Link>
   );
 }

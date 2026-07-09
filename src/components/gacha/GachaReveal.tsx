@@ -43,11 +43,11 @@ const TIER_CONFIG: Record<SlotType, TierConfig> = {
   },
   mid: {
     label: "武将出現",
-    ringClass: "border-gold/70",
-    burstClass: "bg-gold/60",
-    cardBorderClass: "border-gold/70",
-    glowClass: "shadow-[0_0_55px_rgba(201,162,39,0.5)]",
-    labelClass: "text-gold-soft",
+    ringClass: "border-purple/70",
+    burstClass: "bg-purple/60",
+    cardBorderClass: "border-purple/70",
+    glowClass: "shadow-[0_0_55px_rgba(107,58,162,0.5)]",
+    labelClass: "text-purple",
     particleCount: 12,
     burstScale: 9,
     shake: false,
@@ -133,18 +133,60 @@ export function GachaReveal({ warlord, provinceName, onFinish }: GachaRevealProp
       )}
 
       {phase === "burst" && (
-        <div className="relative flex h-56 w-56 items-center justify-center">
-          <div
-            className={`absolute h-10 w-10 rounded-full ${tier.burstClass}`}
-            style={
-              {
-                animation: "gacha-burst 0.5s ease-out forwards",
-                "--burst-scale": tier.burstScale,
-              } as React.CSSProperties
-            }
-          />
-          <div className="absolute inset-0 rounded-full bg-parchment" style={{ animation: "gacha-flash 0.5s ease-out forwards" }} />
-        </div>
+        <>
+          {tier.shake && (
+            <>
+              {/* 大名級専用: 雷光(画面全体)と家紋の閃光。 */}
+              <div
+                className="pointer-events-none fixed inset-0 bg-gradient-to-b from-gold-soft/70 via-transparent to-transparent mix-blend-screen"
+                style={{ animation: "gacha-lightning 0.9s ease-out forwards" }}
+              />
+              <div
+                className="pointer-events-none fixed inset-0 overflow-hidden mix-blend-screen"
+                aria-hidden="true"
+              >
+                <div
+                  className="absolute -inset-y-full left-1/2 w-8 -translate-x-1/2 bg-gradient-to-r from-transparent via-parchment/90 to-transparent"
+                  style={{ animation: "gacha-blade-flash 0.55s ease-out 0.1s forwards" }}
+                />
+              </div>
+              <div
+                aria-hidden="true"
+                className="pointer-events-none fixed inset-0 flex items-center justify-center"
+                style={{ animation: "gacha-crest-flash 0.7s ease-out forwards" }}
+              >
+                <svg width="220" height="220" viewBox="0 0 100 100" fill="none">
+                  <circle cx="50" cy="50" r="46" stroke="var(--color-gold)" strokeWidth="1.5" opacity="0.8" />
+                  <circle cx="50" cy="50" r="34" stroke="var(--color-gold-soft)" strokeWidth="1" opacity="0.6" />
+                  {Array.from({ length: 6 }, (_, i) => {
+                    const angle = (Math.PI * 2 * i) / 6;
+                    const x1 = 50 + Math.cos(angle) * 20;
+                    const y1 = 50 + Math.sin(angle) * 20;
+                    const x2 = 50 + Math.cos(angle) * 44;
+                    const y2 = 50 + Math.sin(angle) * 44;
+                    return (
+                      <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="var(--color-gold)" strokeWidth="1.5" opacity="0.75" />
+                    );
+                  })}
+                  <circle cx="50" cy="50" r="7" fill="var(--color-gold-soft)" opacity="0.85" />
+                </svg>
+              </div>
+            </>
+          )}
+
+          <div className="relative flex h-56 w-56 items-center justify-center">
+            <div
+              className={`absolute h-10 w-10 rounded-full ${tier.burstClass}`}
+              style={
+                {
+                  animation: "gacha-burst 0.5s ease-out forwards",
+                  "--burst-scale": tier.burstScale,
+                } as React.CSSProperties
+              }
+            />
+            <div className="absolute inset-0 rounded-full bg-parchment" style={{ animation: "gacha-flash 0.5s ease-out forwards" }} />
+          </div>
+        </>
       )}
 
       {phase === "card" && (
