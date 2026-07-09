@@ -97,3 +97,29 @@
 - 講座受講管理、動画教材管理、本格EC、商品出品、イベント予約DB、チケット販売(指示書12章のとおりスコープ外)
 - 本日の任務の実際のポイント付与(`contribution_points` への反映)
 - 国家ステータス(教育/文化/商業/観光/軍事)の本格計算
+
+---
+
+## Ver2.3: OVE・国家貢献・経済圏エンジン フェーズ
+
+### 変更内容
+
+- `user_activity`(id, user_id, activity_type, point, created_at)テーブルを新規追加(マイグレーション `20260712000001_economy_engine_v23.sql`)。国家貢献ポイントの取得元(武将登用・AI寺子屋・イベント参加・市場閲覧・ログイン)を時系列で記録する。`users.contribution_points`(Ver2.0で追加済み)は引き続き「総国家貢献」の集計値として使い、月間/本日はこのテーブルから都度集計する。
+- `src/lib/user-activity.ts` の `recordContribution()` を新設し、活動ログへのinsertと `contribution_points` への加算を1箇所にまとめた。従来 `src/lib/gacha.ts` に直書きされていた `grantContributionPoints` はこの関数に置き換え、集計元を一本化した。
+- Ver2.2で「表示のみ」だった本日の任務(AI寺子屋を見る=30pt、市場を確認する=5pt、イベント情報を見る=20pt、ログイン=2pt)を、Ver2.3で実際にポイント付与するよう変更。`daily_mission_completions`/`login_logs` への upsert が実際に新規insertされた(=本日はじめての達成)場合のみ `recordContribution()` を呼ぶことで、ページの再読み込みで無限にポイントが増えないようにしている。図鑑確認・お知らせ・建国メンバー案内の3任務は指示書の取得例に含まれないため、完了状態の表示のみでポイント付与はしていない。
+- 国家貢献カード(`ContributionCard`)、国家活動履歴(`ActivityTimelineCard`)、OVEウォレット(`OveWalletCard`、モック。保有予定OVEは国家貢献ポイントを1:1で仮換算した表示専用の値)、バッジ(`BadgeCard`。連続ログイン7日/AI寺子屋1回以上/武将10体以上/創設メンバー/建国メンバーの5種)を国家ダッシュボードに追加。いずれも新設の `GET /api/economy` から一括取得する。
+- 国家ランキング画面 `/ranking` を新設(国家貢献・武将収集・国盗り・AI活動の4種、タブ切り替え)。`src/lib/rankings.ts` で集計するが、小規模運用を前提にDBビュー/RPCは追加せず、既存テーブルをJS側で集計している(`GET /api/rankings?type=...`)。
+- 国家ニュース(`NationNewsCard`)は新しいニュース管理機能を作らず、既存のお知らせ(`announcements`テーブル・`/admin/announcements`管理画面)をそのまま流用。ダッシュボード向けに `GET /api/announcements` を新設した。
+
+### 影響範囲
+
+- 既存テーブルは `user_activity` の新規追加のみで、既存テーブルへの列変更はない。
+- 武将登用のポイント付与ロジック自体(レアリティ別の計算式)は変更していない。付与の実行経路のみ `recordContribution()` に統一した。
+- 「本日の任務」のうちAI寺子屋/市場/イベントの3件は、Ver2.2まではポイント表示のみだったが、Ver2.3から実際に `contribution_points` が増えるようになった(仕様変更点。指示書1章の取得例に基づく)。
+- 既存機能(LIFFログイン、ガチャ、Stripe決済、図鑑、国盗り、管理画面)への影響なし。
+
+### 未実装事項
+
+- OVE送金、ブロックチェーン連携、NFT同期、報酬自動計算(指示書のとおりスコープ外)
+- OVEの正式な換算レート(現在は国家貢献ポイントの1:1仮表示)
+- ランキングの大規模化に伴うDBビュー/RPC化(現在はJS側での全件集計)

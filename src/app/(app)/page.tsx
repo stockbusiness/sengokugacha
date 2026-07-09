@@ -13,12 +13,21 @@ import { AcademyHubCard } from "@/components/hubs/AcademyHubCard";
 import { MarketHubCard } from "@/components/hubs/MarketHubCard";
 import { EventHubCard } from "@/components/hubs/EventHubCard";
 import { NationContributionCategoryCard } from "@/components/hubs/NationContributionCategoryCard";
+import { ContributionCard } from "@/components/economy/ContributionCard";
+import { ActivityTimelineCard } from "@/components/economy/ActivityTimelineCard";
+import { OveWalletCard } from "@/components/economy/OveWalletCard";
+import { BadgeCard } from "@/components/economy/BadgeCard";
+import { NationNewsCard } from "@/components/economy/NationNewsCard";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
+import type { Announcement } from "@/lib/announcements";
+import type { Badge } from "@/lib/badges";
 import type { DailyMissionStatus } from "@/lib/daily-missions";
 import type { PassportData } from "@/lib/passport";
+import type { ActivityLogEntry, ContributionSummary } from "@/lib/user-activity";
 
 type Status = "initializing" | "ready" | "error";
 type ExternalLink = { key: string; label: string; url: string };
+type EconomyData = { contribution: ContributionSummary; activity: ActivityLogEntry[]; badges: Badge[] };
 
 // AI寺子屋・マーケット・イベントは専用ハブページ(/academy, /market, /events)へ集約したため、
 // ホームの「送客リンク」一覧からは重複表示しない。建国メンバー導線もNationBuilderOfferCardで
@@ -36,6 +45,8 @@ export default function Home() {
   const [passport, setPassport] = useState<PassportData | null>(null);
   const [missions, setMissions] = useState<DailyMissionStatus[]>([]);
   const [externalLinks, setExternalLinks] = useState<ExternalLink[]>([]);
+  const [economy, setEconomy] = useState<EconomyData | null>(null);
+  const [announcements, setAnnouncements] = useState<Announcement[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -92,6 +103,24 @@ export default function Home() {
         /* 本日の任務もおまけ機能のため、取得失敗してもパスポート表示自体は継続する */
       });
 
+    fetch("/api/economy")
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data: EconomyData | null) => {
+        if (!cancelled && data) setEconomy(data);
+      })
+      .catch(() => {
+        /* 国家貢献/活動履歴/バッジもおまけ機能のため、取得失敗してもパスポート表示自体は継続する */
+      });
+
+    fetch("/api/announcements")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: Announcement[]) => {
+        if (!cancelled) setAnnouncements(data ?? []);
+      })
+      .catch(() => {
+        /* 国家ニュースもおまけ機能のため、取得失敗してもパスポート表示自体は継続する */
+      });
+
     return () => {
       cancelled = true;
     };
@@ -124,6 +153,7 @@ export default function Home() {
           <FoundingMemberPanel passport={passport} />
           <DevelopmentPlotCard passport={passport} />
           <NationBuildingRateCard rate={passport.nationBuildingRate} />
+          {economy && <ContributionCard summary={economy.contribution} />}
           <DailyMissionsCard missions={missions} />
 
           <Card>
@@ -156,6 +186,13 @@ export default function Home() {
           </div>
 
           <NationContributionCategoryCard />
+
+          {economy && <OveWalletCard contributionPoints={economy.contribution.total} entries={economy.activity} />}
+          {economy && <ActivityTimelineCard entries={economy.activity.slice(0, 5)} />}
+          {economy && <BadgeCard badges={economy.badges} />}
+          <NationNewsCard announcements={announcements} />
+
+          <TextLink href="/ranking">国家ランキングを見る →</TextLink>
 
           <NationBuilderOfferCard isFoundingMember={passport.isFoundingMember} href="/nation-builder" external={false} />
         </div>
