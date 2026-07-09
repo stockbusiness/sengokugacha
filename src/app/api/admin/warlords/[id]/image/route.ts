@@ -43,7 +43,12 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
 
   const { error: uploadError } = await supabase.storage
     .from("warlord-images")
-    .upload(path, resized.buffer, { contentType: resized.contentType, upsert: true });
+    // cacheControl を短くしているのは、SupabaseのCDN層でRangeリクエストの
+    // 応答が誤ってキャッシュされ、以後そのURL全体が壊れて配信され続ける事象が
+    // 確認されたため。ファイル名自体は毎回一意(Date.now()付き)だが、
+    // キャッシュ有効期間を短くすることで、万一同様の事象が起きても
+    // 短時間で正常な応答に復帰できるようにする。
+    .upload(path, resized.buffer, { contentType: resized.contentType, upsert: true, cacheControl: "60" });
   if (uploadError) {
     return NextResponse.json({ error: uploadError.message }, { status: 500 });
   }
