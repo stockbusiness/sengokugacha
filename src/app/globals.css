@@ -6,19 +6,27 @@
    一切使っていないため、この変更による影響はない。 */
 @custom-variant dark (&:where(.dark, .dark *));
 
+/* 画面デザインガイド(UIモックアップ)のデザインシステムに準拠したトークン。
+   カラーパレット・角丸3種・フォント3系統(和文明朝/和文ゴシック/英字)を統一する。 */
 @theme inline {
-  --color-ink: #15100c;
-  --color-ink-raised: #201811;
+  --color-ink: #0b0b0e;
+  --color-ink-raised: #1a1a20;
   --color-ink-line: #4a3620;
-  --color-crimson: #8a1f28;
-  --color-crimson-dark: #5f151c;
-  --color-crimson-soft: #3a1015;
-  --color-gold: #c9a227;
-  --color-gold-soft: #e8cd7a;
-  --color-parchment: #f3ead9;
-  --color-parchment-dim: #b7a888;
+  --color-crimson: #b31c1c;
+  --color-crimson-dark: #7a1313;
+  --color-crimson-soft: #4a1010;
+  --color-gold: #d4af37;
+  --color-gold-soft: #f2d78e;
+  --color-purple: #6b3aa2;
+  --color-green: #2e7d32;
+  --color-parchment: #f5f5f5;
+  --color-parchment-dim: #8f8f8f;
   --font-heading: var(--font-heading);
   --font-body: var(--font-body);
+  --font-accent: var(--font-accent);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
 }
 
 html {
@@ -27,8 +35,8 @@ html {
 
 body {
   background:
-    radial-gradient(ellipse 80% 60% at 50% -10%, rgba(138, 31, 40, 0.35), transparent),
-    radial-gradient(ellipse 60% 50% at 100% 100%, rgba(201, 162, 39, 0.08), transparent),
+    radial-gradient(ellipse 80% 60% at 50% -10%, rgba(179, 28, 28, 0.35), transparent),
+    radial-gradient(ellipse 60% 50% at 100% 100%, rgba(212, 175, 55, 0.08), transparent),
     var(--color-ink);
   background-attachment: fixed;
   color: var(--color-parchment);
@@ -40,6 +48,11 @@ h2,
 h3,
 .font-heading {
   font-family: var(--font-heading), serif;
+}
+
+/* 英字ロゴ・アイキャッチ見出し用(SENGOKU PASSPORT等)。 */
+.font-accent {
+  font-family: var(--font-accent), serif;
 }
 
 /* ガチャ演出アニメーション */
@@ -292,4 +305,24 @@ h3,
   border-right: 2px solid;
   border-bottom: 2px solid;
   border-radius: 0 0 8px 0;
+}
+
+/* サイドメニュー(src/components/SideMenu.tsx)の開閉アニメーション。 */
+@keyframes menu-slide-in {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.menu-slide-in {
+  animation: menu-slide-in 0.25s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .menu-slide-in {
+    animation: none;
+  }
 }

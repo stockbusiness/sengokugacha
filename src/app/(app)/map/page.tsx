@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { TextLink } from "@/components/ui/Button";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { JapanMap, type RegionMarker } from "@/components/map/JapanMap";
 import { MapProgress } from "@/components/map/MapProgress";
 import { ProvinceButton, getProvinceStatus } from "@/components/map/ProvinceButton";
@@ -102,7 +103,7 @@ export default function MapPage() {
         <TextLink href="/">🏯 あなたの国盗りは国家建設率に反映されます。ホームで確認 →</TextLink>
       </div>
 
-      {status === "loading" && <p className="text-center text-parchment-dim">読み込み中...</p>}
+      {status === "loading" && <LoadingSpinner />}
       {status === "error" && (
         <p className="rounded-2xl border border-crimson/50 bg-crimson-soft/40 p-4 text-center text-sm text-parchment">
           {errorMessage}

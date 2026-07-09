@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/Card";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { LinkButton, TextLink } from "@/components/ui/Button";
 import { DailyMissionsCard } from "@/components/dashboard/DailyMissionsCard";
 import { NationalIdCard } from "@/components/dashboard/NationalIdCard";
@@ -132,7 +133,7 @@ export default function Home() {
       <AtmosphereBackground />
 
       <div className="mb-8 text-center">
-        <p className="text-xs tracking-[0.3em] text-gold/70">SENGOKU ECONOMY OS</p>
+        <p className="font-accent text-xs tracking-[0.3em] text-gold/70">SENGOKU ECONOMY OS</p>
         <h1 className="gold-title font-heading mt-1 text-4xl font-bold">戦国パスポート</h1>
         <p className="mt-1 text-[11px] tracking-[0.15em] text-parchment-dim">国家ダッシュボード</p>
         <div className="mx-auto mt-3 h-px w-16 bg-gradient-to-r from-transparent via-gold/60 to-transparent" />
@@ -145,7 +146,7 @@ export default function Home() {
       )}
 
       {status === "initializing" && (
-        <p className="text-center text-parchment-dim">読み込み中...</p>
+        <LoadingSpinner />
       )}
 
       {status === "error" && (

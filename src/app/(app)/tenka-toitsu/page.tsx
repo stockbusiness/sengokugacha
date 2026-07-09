@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/Card";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
@@ -81,7 +82,7 @@ export default function TenkaToitsuPage() {
     <div className="mx-auto w-full max-w-md px-4 py-10">
       <PageHeader title="天下統一" />
 
-      {status === "loading" && <p className="text-center text-parchment-dim">読み込み中...</p>}
+      {status === "loading" && <LoadingSpinner />}
 
       {status === "error" && (
         <Card className="border-crimson/50 bg-crimson-soft/40 text-center text-sm text-parchment">

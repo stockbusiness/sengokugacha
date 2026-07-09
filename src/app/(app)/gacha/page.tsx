@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Card } from "@/components/ui/Card";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button, LinkButton, TextLink } from "@/components/ui/Button";
 import { GachaReveal } from "@/components/gacha/GachaReveal";
@@ -129,7 +130,7 @@ export default function GachaPage() {
     <div className="mx-auto w-full max-w-md px-4 py-10">
       <PageHeader title="武将登用" />
 
-      {status === "initializing" && <p className="text-center text-parchment-dim">読み込み中...</p>}
+      {status === "initializing" && <LoadingSpinner />}
 
       {(status === "idle" || status === "drawing") && (
         <SummonStage>

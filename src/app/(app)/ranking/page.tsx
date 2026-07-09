@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/Card";
+import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TextLink } from "@/components/ui/Button";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
@@ -68,7 +69,7 @@ export default function RankingPage() {
   if (status === "loading") {
     return (
       <div className="mx-auto w-full max-w-md px-4 py-10">
-        <p className="text-center text-parchment-dim">読み込み中...</p>
+        <LoadingSpinner />
       </div>
     );
   }
@@ -106,7 +107,7 @@ export default function RankingPage() {
       </div>
 
       <div className="mt-4">
-        {loadingRanking && <p className="text-center text-parchment-dim">読み込み中...</p>}
+        {loadingRanking && <LoadingSpinner />}
 
         {!loadingRanking && entries.length === 0 && (
           <p className="text-center text-parchment-dim">ランキングデータがありません。</p>
