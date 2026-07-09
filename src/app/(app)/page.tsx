@@ -6,6 +6,9 @@ import { LinkButton, TextLink } from "@/components/ui/Button";
 import { DailyMissionsCard } from "@/components/dashboard/DailyMissionsCard";
 import { NationalIdCard } from "@/components/dashboard/NationalIdCard";
 import { NationBuildingRateCard } from "@/components/dashboard/NationBuildingRateCard";
+import { DevelopmentPlotCard } from "@/components/founding-member/DevelopmentPlotCard";
+import { FoundingMemberPanel } from "@/components/founding-member/FoundingMemberPanel";
+import { NationBuilderOfferCard } from "@/components/founding-member/NationBuilderOfferCard";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
 import type { DailyMissionStatus } from "@/lib/daily-missions";
 import type { PassportData } from "@/lib/passport";
@@ -19,6 +22,9 @@ const FEATURED_LINK_OVERRIDES: Record<string, { label: string; icon: string }> =
   ai_art_school: { label: "AI寺子屋", icon: "📜" },
   nft_marketplace: { label: "マーケット", icon: "🏮" },
 };
+
+// 建国メンバー導線もNationBuilderOfferCardで専用表示するため、送客リンク一覧からは除外する。
+const NATION_BUILDER_LINK_KEY = "nation_builder_program";
 
 function pingMission(key: string) {
   fetch("/api/missions/ping", {
@@ -98,7 +104,10 @@ export default function Home() {
   }, [status]);
 
   const featuredLinks = externalLinks.filter((link) => link.key in FEATURED_LINK_OVERRIDES);
-  const otherLinks = externalLinks.filter((link) => !(link.key in FEATURED_LINK_OVERRIDES));
+  const nationBuilderLink = externalLinks.find((link) => link.key === NATION_BUILDER_LINK_KEY) ?? null;
+  const otherLinks = externalLinks.filter(
+    (link) => !(link.key in FEATURED_LINK_OVERRIDES) && link.key !== NATION_BUILDER_LINK_KEY
+  );
 
   return (
     <div className="mx-auto w-full max-w-md px-4 py-10">
@@ -122,6 +131,8 @@ export default function Home() {
       {status === "ready" && passport && (
         <div className="space-y-4">
           <NationalIdCard passport={passport} />
+          <FoundingMemberPanel passport={passport} />
+          <DevelopmentPlotCard passport={passport} />
           <NationBuildingRateCard rate={passport.nationBuildingRate} />
           <DailyMissionsCard missions={missions} />
 
@@ -177,6 +188,11 @@ export default function Home() {
               );
             })}
           </div>
+
+          <NationBuilderOfferCard
+            isFoundingMember={passport.isFoundingMember}
+            detailUrl={nationBuilderLink?.url ?? null}
+          />
         </div>
       )}
 

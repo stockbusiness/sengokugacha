@@ -46,5 +46,29 @@
 - 高額商品(創設メンバー・建国メンバー)のStripe決済フロー
 - 複雑なミッションDB(管理画面からのミッション編集含む)
 - 完全な国家経済ロジック(国家建設率の本格計算、今月の建設目標、次に建設される機能などの動的表示)
-- 創設メンバー/建国メンバーのDBフラグを管理画面から編集するUI
 - 既存DB/API名の大規模リネーム
+
+---
+
+## Ver2.1: 創設メンバー移行・建国メンバー導線フェーズ
+
+### 変更内容
+
+- `users` テーブルに `development_area`(所属エリア)、`development_plot_status`(開発ステータス。preparing/nation_building/metaverse_pending/priority/confirming の5値)を追加(マイグレーション `20260710000001_founder_migration_v21.sql`)。創設メンバー/建国メンバーの主要フィールドはVer2.0で追加済みのため流用。
+- 既存の外部送客リンク管理(`external_links`)に `nation_builder_program`(建国メンバー募集)を追加。新しいリンク管理機能は作らず、既存の `/admin/links` からURLを設定できるようにした。
+- コンポーネント追加: `FoundingMemberBadge`, `FoundingMemberPanel`, `DevelopmentPlotCard`, `NationBuilderOfferCard`(`src/components/founding-member/`)。国民証(`NationalIdCard`)のバッジ表示も `FoundingMemberBadge` に統一。
+- 国家ダッシュボード(ホーム)に、創設メンバーのみ表示される `FoundingMemberPanel` / `DevelopmentPlotCard` と、全ユーザーに表示される `NationBuilderOfferCard`(創設メンバーには特別価格98,000円、一般ユーザーには一般価格198,000円を表示)を追加。
+- 創設メンバー専用案内ページ `/founding-member` を新設。創設メンバーとは・既存土地の扱い・国家開発区画・メタバース優先権・パスポート内特典・FAQ・建国メンバー導線を掲載。フッター(`LegalFooter`)からもリンク。
+- 管理画面のユーザー検索(`/admin/users`)に、創設メンバー/建国メンバーのバッジ表示・会員区分フィルター(全員/創設メンバーのみ/建国メンバーのみ/一般国民のみ)・インライン編集フォーム(創設/建国フラグ、番号、区画ID、所属エリア、プラン名)を追加。`PATCH /api/admin/users/[id]` を新設。
+
+### 影響範囲
+
+- 既存テーブルへの列追加のみ。既存のINSERT文には影響なし(デフォルト値が適用される)。
+- 既存API・既存ページの動作に変更なし(表示追加のみ)。`is_founding_member`/`is_nation_builder` が false のユーザーには、新規コンポーネントはいずれも「何も表示しない」か「一般ユーザー向け表示」になるため、既存の見た目への影響は最小限。
+
+### 未実装事項
+
+- `development_plots` の別テーブル化(座標情報等の本格管理)は見送り、`users` テーブルへの最小追加のみ
+- 創設メンバー特別価格・建国メンバー価格の管理画面/環境変数からの変更UI(現在は `src/lib/founding-member.ts` の固定値)
+- 実際の決済フロー、権利証NFT、メタバース座標の本格反映
+- 管理画面ユーザー一覧の50件制限を超えたページネーション(既存の検索機能の制約をそのまま踏襲)
