@@ -13,6 +13,12 @@ export default function AdminDashboardLayout({ children }: { children: React.Rea
               <Link href="/admin" className="hover:text-zinc-900 dark:hover:text-zinc-50">
                 管理画面
               </Link>
+              <Link
+                href="/admin/help"
+                className="font-semibold text-red-700 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+              >
+                使い方ガイド
+              </Link>
               <Link href="/admin/line-settings" className="hover:text-zinc-900 dark:hover:text-zinc-50">
                 LIFF/LINE設定
               </Link>

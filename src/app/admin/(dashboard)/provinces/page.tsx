@@ -72,7 +72,14 @@ export default function ProvincesPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">国マスタ({provinces.length}国)</h1>
+      <div>
+        <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">国マスタ({provinces.length}国)</h1>
+        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          日本地図に表示される66国+最終国(美濃)の名称・地方・並び順を編集します。「解放条件(制圧数)」は
+          最終国にのみ表示され、他の国を何か国制圧したら挑戦可能になるかを設定します。「メタバース関連項目」は
+          将来の機能用に用意した項目で、現時点ではゲーム画面に反映されません(入力しても動作は変わりません)。
+        </p>
+      </div>
 
       <div className="space-y-3">
         {provinces.map((p) => (

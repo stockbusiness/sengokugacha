@@ -99,7 +99,14 @@ export default function GachaConfigPage() {
 
   return (
     <div className="max-w-lg space-y-6">
-      <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">ガチャ設定</h1>
+      <div>
+        <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">ガチャ設定</h1>
+        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          1日に引けるガチャの回数を設定します。「base」は普段の上限、「override」はイベント期間中だけ
+          baseの代わりに使う上限です(baseに足されるわけではありません)。下のプリセットボタンを押すと
+          override欄が自動で上書きされるので、手入力中に誤って押さないよう注意してください。
+        </p>
+      </div>
 
       <div className="flex gap-2">
         {(Object.keys(PRESETS) as (keyof typeof PRESETS)[]).map((name) => (

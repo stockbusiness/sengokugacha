@@ -107,6 +107,16 @@ export function AnimationForm({
 
   return (
     <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
+      <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-xs leading-relaxed text-amber-900 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+        <p className="font-semibold">動画の選ばれ方(このページで一番わかりにくい部分です)</p>
+        <p className="mt-1">
+          ガチャを引いた瞬間、まず「状態=公開」かつ「レアリティが一致」かつ「公開期間内」の動画だけが候補になります。
+          候補が複数ある場合は、その中で「優先度」の数値が最も高いものだけに絞り込み、さらに複数残っていれば
+          「weight」の比率でランダムに1本を選びます(weightが大きいほど選ばれやすい、100:50なら約2:1の確率)。
+          該当する動画が1本も無い場合は「デフォルト動画にする」にチェックが付いた動画にフォールバックします。
+        </p>
+      </div>
+
       <div className="space-y-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
         <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">基本情報</h2>
         <label className="block">
@@ -122,6 +132,9 @@ export function AnimationForm({
             placeholder="例: rare_single"
             className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
           />
+          <span className="mt-1 block text-[11px] text-zinc-400 dark:text-zinc-600">
+            他の動画と重複しない管理用の識別名です(ローマ字・アンダースコア推奨)。登録後は変更できません。
+          </span>
         </label>
         <label className="block">
           <span className="mb-1 block text-sm font-medium text-zinc-700 dark:text-zinc-300">動画名</span>
@@ -153,6 +166,9 @@ export function AnimationForm({
             <option value="published">公開</option>
             <option value="stopped">停止</option>
           </select>
+          <span className="mt-1 block text-[11px] text-zinc-400 dark:text-zinc-600">
+            「公開」にするまでガチャでは再生されません。「停止」は一時的に外したいときに使います(削除ではありません)。
+          </span>
         </label>
       </div>
 
@@ -181,12 +197,19 @@ export function AnimationForm({
           />
           <span className="text-sm text-zinc-700 dark:text-zinc-300">新規獲得時のみ再生する</span>
         </label>
+        <p className="text-[11px] text-zinc-400 dark:text-zinc-600">
+          チェックすると、同じ武将を2体目以降引いたとき(すでに図鑑に持っている武将)はこの動画が使われません。
+        </p>
         <label className="flex items-center gap-2">
           <input type="checkbox" checked={values.is_default} onChange={(e) => update("is_default", e.target.checked)} />
           <span className="text-sm text-zinc-700 dark:text-zinc-300">
             デフォルト動画にする(他に該当が無い場合のフォールバック)
           </span>
         </label>
+        <p className="text-[11px] text-zinc-400 dark:text-zinc-600">
+          このレアリティで条件に合う動画が他に無いときの保険用です。各レアリティに最低1本、これにチェックの
+          付いた動画を用意しておくことをおすすめします。
+        </p>
       </div>
 
       <div className="space-y-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
@@ -200,6 +223,9 @@ export function AnimationForm({
               onChange={(e) => update("priority", Number(e.target.value))}
               className="w-full rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
             />
+            <span className="mt-1 block text-[11px] text-zinc-400 dark:text-zinc-600">
+              数値が大きいほど優先されます。他の動画と数値が同じ場合のみweightで抽選します。
+            </span>
           </label>
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">weight(加重ランダム)</span>
@@ -209,6 +235,9 @@ export function AnimationForm({
               onChange={(e) => update("weight", Number(e.target.value))}
               className="w-full rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
             />
+            <span className="mt-1 block text-[11px] text-zinc-400 dark:text-zinc-600">
+              同じ優先度の動画が複数あるときの出現しやすさの比率です。100と50なら約2:1の確率になります。
+            </span>
           </label>
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">公開開始日時(任意)</span>
@@ -218,6 +247,9 @@ export function AnimationForm({
               onChange={(e) => update("starts_at", e.target.value)}
               className="w-full rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
             />
+            <span className="mt-1 block text-[11px] text-zinc-400 dark:text-zinc-600">
+              空欄なら「状態=公開」にした時点からすぐ対象になります。
+            </span>
           </label>
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">公開終了日時(任意)</span>
@@ -227,6 +259,9 @@ export function AnimationForm({
               onChange={(e) => update("ends_at", e.target.value)}
               className="w-full rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
             />
+            <span className="mt-1 block text-[11px] text-zinc-400 dark:text-zinc-600">
+              空欄なら期限なしで公開され続けます。期間限定の演出は必ず設定してください。
+            </span>
           </label>
         </div>
       </div>
@@ -246,6 +281,9 @@ export function AnimationForm({
               onChange={(e) => update("skip_after_ms", Number(e.target.value))}
               className="w-full rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
             />
+            <span className="mt-1 block text-[11px] text-zinc-400 dark:text-zinc-600">
+              ミリ秒単位です(1000ms=1秒)。再生開始から何秒後に「スキップ」ボタンを表示するかの設定です。
+            </span>
           </label>
           <label className="block">
             <span className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">最低再生時間(ms)</span>
@@ -255,6 +293,9 @@ export function AnimationForm({
               onChange={(e) => update("minimum_play_ms", Number(e.target.value))}
               className="w-full rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
             />
+            <span className="mt-1 block text-[11px] text-zinc-400 dark:text-zinc-600">
+              ミリ秒単位です。スキップを許可していても、この時間が経過するまではスキップできません。
+            </span>
           </label>
         </div>
       </div>

@@ -127,6 +127,8 @@ export default function WarlordsPage() {
       <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">武将マスタ({warlords.length}体)</h1>
       <p className="text-xs text-zinc-400 dark:text-zinc-600">
         国・スロット(コモン/中間/レア)の組み替えはガチャ抽選ロジックの前提を崩すため、管理画面からは変更できません。
+        「レアリティ」は表示名の自由入力欄で、抽選確率はスロット(コモン/中間/レア)側で決まります(「排出率設定」ページ参照)。
+        表示名とスロットがずれないよう、既存の値(足軽級/武将級/大名級など)に揃えてください。
       </p>
 
       {grouped.map((group) => (
@@ -194,14 +196,18 @@ export default function WarlordsPage() {
                 </label>
                 <label className="mt-2 block">
                   <span className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">
-                    ステータス(JSON)
+                    ステータス(JSON、将来用・現在ゲーム画面には表示されません)
                   </span>
                   <input
                     type="text"
                     value={statsDraft[w.id] ?? ""}
                     onChange={(e) => setStatsDraft((prev) => ({ ...prev, [w.id]: e.target.value }))}
+                    placeholder='例: {"attack": 80, "defense": 60}'
                     className="w-full rounded-lg border border-zinc-300 px-3 py-2 font-mono text-xs dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
                   />
+                  <span className="mt-1 block text-[11px] text-zinc-400 dark:text-zinc-600">
+                    {"{ }"}で囲んだ「項目名: 数値」の組み合わせで入力してください。空欄でよければ{"{}"}のままにしてください。
+                  </span>
                 </label>
 
                 <div className="mt-2 flex items-center gap-3">
