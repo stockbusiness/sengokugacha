@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/Card";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
+import { CelebrationBurst } from "@/components/effects/CelebrationBurst";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
 
 type OwnedWarlordOption = {
@@ -28,6 +29,7 @@ export default function TenkaToitsuPage() {
   const [status, setStatus] = useState<Status>("loading");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showCelebration, setShowCelebration] = useState(false);
 
   function loadData() {
     return fetch("/api/tenka-toitsu")
@@ -72,6 +74,7 @@ export default function TenkaToitsuPage() {
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "登録に失敗しました。");
       await loadData();
+      setShowCelebration(true);
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "予期しないエラーが発生しました。");
       setStatus("ready");
@@ -81,6 +84,17 @@ export default function TenkaToitsuPage() {
   return (
     <div className="mx-auto w-full max-w-md px-4 py-10">
       <PageHeader title="天下統一" />
+
+      {showCelebration && data?.achieved && (
+        <CelebrationBurst
+          tone="gold"
+          lines={[
+            "称号「天下人」を獲得しました!",
+            ...(data.selectedWarlordName ? [`代表武将: ${data.selectedWarlordName}`] : []),
+          ]}
+          onDismiss={() => setShowCelebration(false)}
+        />
+      )}
 
       {status === "loading" && <LoadingSpinner />}
 

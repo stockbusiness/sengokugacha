@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button, LinkButton, TextLink } from "@/components/ui/Button";
+import { CelebrationBurst } from "@/components/effects/CelebrationBurst";
 import { GachaReveal } from "@/components/gacha/GachaReveal";
 import { GachaVideoOverlay } from "@/components/gacha/GachaVideoOverlay";
 import { SummonStage } from "@/components/gacha/SummonStage";
@@ -49,6 +50,17 @@ type DrawResult = {
 type Mode = "free" | "paid";
 type Status = "initializing" | "idle" | "drawing" | "playing_video" | "revealing" | "done" | "error";
 
+function buildCelebrationLines(result: DrawResult): string[] {
+  const lines: string[] = [];
+  if (result.tenkaToitsuTriggered) lines.push("天下統一達成!");
+  if (result.minoUnlocked) lines.push("美濃国(岐阜)への挑戦権が解放されました!");
+  if (result.regionCompleted) {
+    lines.push(`${result.regionCompleted}地方コンプリート! 石高+${result.regionCompletionBonus.toLocaleString()}`);
+  }
+  if (result.provinceConquered) lines.push(`${result.province.name}国を制圧しました!`);
+  return lines;
+}
+
 function logAnimationEvent(
   eventType: string,
   result: DrawResult,
@@ -78,6 +90,7 @@ export default function GachaPage() {
   const [result, setResult] = useState<DrawResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [needsTickets, setNeedsTickets] = useState(false);
+  const [showCelebration, setShowCelebration] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -167,7 +180,18 @@ export default function GachaPage() {
           onFinish={() => {
             logAnimationEvent("gacha_result_revealed", result);
             setStatus("done");
+            if (result.provinceConquered || result.regionCompleted || result.minoUnlocked || result.tenkaToitsuTriggered) {
+              setShowCelebration(true);
+            }
           }}
+        />
+      )}
+
+      {showCelebration && result && (
+        <CelebrationBurst
+          tone={result.minoUnlocked || result.tenkaToitsuTriggered ? "gold" : "crimson"}
+          lines={buildCelebrationLines(result)}
+          onDismiss={() => setShowCelebration(false)}
         />
       )}
 
