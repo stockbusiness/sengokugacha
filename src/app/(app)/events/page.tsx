@@ -72,7 +72,6 @@ export default function EventsPage() {
 
   const artSchoolUrl = links.find((l) => l.key === "ai_art_school")?.url ?? null;
   const eventReservationUrl = links.find((l) => l.key === "event_reservation")?.url ?? null;
-  const nationBuilderUrl = links.find((l) => l.key === "nation_builder_program")?.url ?? null;
 
   return (
     <div className="mx-auto w-full max-w-md px-4 py-10">
@@ -81,18 +80,6 @@ export default function EventsPage() {
 
       <div className="space-y-3">
         <ExternalLinkCard icon="🎨" title="AIアート教室" description="定期開催のAIアート教室です。" url={artSchoolUrl} />
-        <ExternalLinkCard
-          icon="🏯"
-          title="建国メンバー説明会"
-          description="建国メンバー制度の詳細をご案内するオンライン説明会です。"
-          url={nationBuilderUrl}
-        />
-        <ExternalLinkCard
-          icon="⛩️"
-          title="創設メンバー向け国家建設会議"
-          description="創設メンバー限定の国家建設の進捗共有会です。"
-          url={null}
-        />
         <ExternalLinkCard icon="💻" title="オンライン勉強会" description="AI・戦国経済圏に関する勉強会です。" url={null} />
         <ExternalLinkCard icon="🎪" title="リアルイベント" description="オフラインで開催するイベントです。" url={eventReservationUrl} />
         <ExternalLinkCard

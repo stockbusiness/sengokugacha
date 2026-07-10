@@ -114,12 +114,6 @@ export default function AcademyPage() {
         <MenuTile icon="🪙" label="NFTにする" href="/market" />
       </div>
 
-      <div className="mt-6 text-center">
-        <Link href="/nation-builder" className="text-sm text-parchment-dim underline decoration-gold/30 underline-offset-4 transition hover:text-gold-soft">
-          建国メンバー制度を見る →
-        </Link>
-      </div>
-
       <div className="mt-8 text-center">
         <Link href="/" className="text-sm text-parchment-dim underline decoration-gold/30 underline-offset-4 transition hover:text-gold-soft">
           ホームに戻る

@@ -21,13 +21,12 @@ export const DAILY_MISSIONS: DailyMissionDef[] = [
   { key: "view_terakoya", title: "AI寺子屋を見る", detect: "manual", rewardPoint: MANUAL_ACTIVITY_POINTS.academy_view },
   { key: "view_market", title: "市場を確認する", detect: "manual", rewardPoint: MANUAL_ACTIVITY_POINTS.market_view },
   { key: "view_events", title: "イベント情報を見る", detect: "manual", rewardPoint: MANUAL_ACTIVITY_POINTS.event_view },
-  { key: "view_nation_builder_info", title: "建国メンバー案内を見る", detect: "manual", rewardPoint: 0 },
   { key: "view_announcements", title: "お知らせを読む", detect: "manual", rewardPoint: 0 },
   { key: "login_streak", title: "連続ログインする", detect: "login", rewardPoint: 0 },
 ];
 
 // manual任務のうち、達成時に国家貢献ポイントを実際に付与するものだけを対応付ける
-// (指示書1章の取得例: AI寺子屋・イベント参加・市場閲覧。図鑑確認・お知らせ・建国メンバー案内は
+// (指示書1章の取得例: AI寺子屋・イベント参加・市場閲覧。図鑑確認・お知らせは
 // 完了状態の表示のみで、ポイント付与の対象外とする)。
 const MISSION_ACTIVITY_TYPE: Partial<Record<string, Exclude<ActivityType, "gacha_draw" | "login">>> = {
   view_terakoya: "academy_view",

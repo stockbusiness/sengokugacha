@@ -1,10 +1,6 @@
 import { Card } from "@/components/ui/Card";
-import { FoundingMemberBadge } from "@/components/founding-member/FoundingMemberBadge";
-import { formatFoundingMemberNumber } from "@/lib/founding-member";
 import type { PassportData } from "@/lib/passport";
 
-// 国民証。Ver2.0で追加された「創設メンバー/建国メンバー」は将来の外部データ紐付けを
-// 見据えたフラグで、今はtrueのユーザーがいなければ非表示。
 export function NationalIdCard({ passport }: { passport: PassportData }) {
   return (
     <Card highlight ornate className="relative overflow-hidden">
@@ -37,33 +33,6 @@ export function NationalIdCard({ passport }: { passport: PassportData }) {
         </p>
       </div>
 
-      {passport.developmentPlotId && (
-        <div className="relative mt-1.5 flex items-center justify-between">
-          <p className="text-xs text-parchment-dim">国家開発区画番号</p>
-          <p className="text-xs font-semibold tabular-nums text-parchment">{passport.developmentPlotId}</p>
-        </div>
-      )}
-
-      {(passport.isFoundingMember || passport.isNationBuilder) && (
-        <div className="relative mt-3 flex flex-wrap gap-1.5">
-          {passport.isFoundingMember && (
-            <FoundingMemberBadge
-              variant="founding"
-              suffix={
-                passport.foundingMemberNumber != null
-                  ? `No.${formatFoundingMemberNumber(passport.foundingMemberNumber)}`
-                  : undefined
-              }
-            />
-          )}
-          {passport.isNationBuilder && (
-            <FoundingMemberBadge
-              variant="builder"
-              suffix={passport.nationBuilderPlan ? `(${passport.nationBuilderPlan})` : undefined}
-            />
-          )}
-        </div>
-      )}
     </Card>
   );
 }
