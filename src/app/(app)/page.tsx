@@ -7,9 +7,6 @@ import { LinkButton, TextLink } from "@/components/ui/Button";
 import { DailyMissionsCard } from "@/components/dashboard/DailyMissionsCard";
 import { NationalIdCard } from "@/components/dashboard/NationalIdCard";
 import { NationBuildingRateCard } from "@/components/dashboard/NationBuildingRateCard";
-import { DevelopmentPlotCard } from "@/components/founding-member/DevelopmentPlotCard";
-import { FoundingMemberPanel } from "@/components/founding-member/FoundingMemberPanel";
-import { NationBuilderOfferCard } from "@/components/founding-member/NationBuilderOfferCard";
 import { NationContributionCategoryCard } from "@/components/hubs/NationContributionCategoryCard";
 import { AtmosphereBackground } from "@/components/home/AtmosphereBackground";
 import { PriorityQuickActions } from "@/components/home/PriorityQuickActions";
@@ -30,8 +27,8 @@ type ExternalLink = { key: string; label: string; url: string };
 type EconomyData = { contribution: ContributionSummary; activity: ActivityLogEntry[]; badges: Badge[] };
 
 // AI寺子屋・マーケット・イベントは専用ハブページ(/academy, /market, /events)へ集約したため、
-// ホームの「送客リンク」一覧からは重複表示しない。建国メンバー導線もNationBuilderOfferCardで
-// 専用表示するため同様に除外する。
+// ホームの「送客リンク」一覧からは重複表示しない。建国メンバー案件はアプリ内では扱わない方針の
+// ため(説明会等アプリ外で案内)、一覧からも常に除外する。
 const LINKS_HANDLED_BY_DEDICATED_UI = new Set([
   "ai_art_school",
   "nft_marketplace",
@@ -158,8 +155,6 @@ export default function Home() {
       {status === "ready" && passport && (
         <div className="space-y-4">
           <NationalIdCard passport={passport} />
-          <FoundingMemberPanel passport={passport} />
-          <DevelopmentPlotCard passport={passport} />
           <NationBuildingRateCard rate={passport.nationBuildingRate} />
           {economy && <ContributionCard summary={economy.contribution} />}
           <DailyMissionsCard missions={missions} />
@@ -195,8 +190,6 @@ export default function Home() {
           <NationNewsCard announcements={announcements} />
 
           <TextLink href="/ranking">国家ランキングを見る →</TextLink>
-
-          <NationBuilderOfferCard isFoundingMember={passport.isFoundingMember} href="/nation-builder" external={false} />
         </div>
       )}
 
