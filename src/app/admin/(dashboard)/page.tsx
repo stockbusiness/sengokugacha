@@ -14,14 +14,21 @@ export default async function AdminIndexPage() {
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <KpiTile label="登録ユーザー数" value={kpi.totalUsers.toLocaleString()} />
         <KpiTile label="本日の新規登録" value={kpi.newUsersToday.toLocaleString()} />
-        <KpiTile label="DAU(本日)" value={kpi.dau.toLocaleString()} />
-        <KpiTile label="WAU(直近7日)" value={kpi.wau.toLocaleString()} />
+        <KpiTile label="本日アクセスした人数" value={kpi.dau.toLocaleString()} />
+        <KpiTile label="直近7日でアクセスした人数" value={kpi.wau.toLocaleString()} />
         <KpiTile label="本日のガチャ実行数" value={kpi.gachaDrawsToday.toLocaleString()} />
         <KpiTile label="本日の購入額" value={`¥${kpi.purchasesTodayYen.toLocaleString()}`} />
         <KpiTile label="今月の購入額" value={`¥${kpi.purchasesMonthYen.toLocaleString()}`} />
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
+        <Link
+          href="/admin/help"
+          className="rounded-xl border border-red-300 bg-red-50 p-5 hover:border-red-500 dark:border-red-900 dark:bg-red-950/30"
+        >
+          <p className="font-semibold text-red-800 dark:text-red-300">使い方ガイド</p>
+          <p className="mt-1 text-sm text-red-700/80 dark:text-red-300/70">各ページの目的・項目の意味・用語集</p>
+        </Link>
         <Link
           href="/admin/line-settings"
           className="rounded-xl border border-zinc-200 bg-white p-5 hover:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950"
@@ -41,21 +48,21 @@ export default async function AdminIndexPage() {
           className="rounded-xl border border-zinc-200 bg-white p-5 hover:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950"
         >
           <p className="font-semibold text-zinc-900 dark:text-zinc-50">国マスタ</p>
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">provinces の一覧・編集</p>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">国(66国+最終国)の一覧・編集</p>
         </Link>
         <Link
           href="/admin/warlords"
           className="rounded-xl border border-zinc-200 bg-white p-5 hover:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950"
         >
           <p className="font-semibold text-zinc-900 dark:text-zinc-50">武将マスタ</p>
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">warlords の一覧・編集</p>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">武将の名前・画像・説明文の一覧・編集</p>
         </Link>
         <Link
           href="/admin/agents"
           className="rounded-xl border border-zinc-200 bg-white p-5 hover:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950"
         >
           <p className="font-semibold text-zinc-900 dark:text-zinc-50">代理店管理</p>
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">agents の作成・referral_code発行・ランク更新</p>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">代理店の登録・紹介コード発行・ランク更新</p>
         </Link>
         <Link
           href="/admin/links"
@@ -76,7 +83,7 @@ export default async function AdminIndexPage() {
           className="rounded-xl border border-zinc-200 bg-white p-5 hover:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950"
         >
           <p className="font-semibold text-zinc-900 dark:text-zinc-50">売上ログ</p>
-          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">agent_sales の一覧・CSV出力</p>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">代理店経由の購入記録の一覧・CSV出力</p>
         </Link>
         <Link
           href="/admin/achievements"

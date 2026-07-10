@@ -1,6 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { REGION_SLUGS } from "@/lib/regions";
+
+const SLUG_TO_REGION = Object.fromEntries(Object.entries(REGION_SLUGS).map(([region, slug]) => [slug, region]));
+
+function formatAchievementType(type: string): string {
+  if (type === "tenka_toitsu") return "天下統一達成";
+  const match = type.match(/^region_complete_(.+)$/);
+  if (match) {
+    const region = SLUG_TO_REGION[match[1]] ?? match[1];
+    return `${region}地方コンプリート`;
+  }
+  return type;
+}
 
 type Achievement = {
   id: string;
@@ -30,7 +43,12 @@ export default function AchievementsPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">実績ログ({achievements.length}件)</h1>
+      <div>
+        <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">実績ログ({achievements.length}件)</h1>
+        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          「地方コンプリート(8地方のいずれかを制覇)」「天下統一達成」をしたユーザーの記録です。表示のみで編集はできません。
+        </p>
+      </div>
 
       <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">
         <table className="w-full text-sm">
@@ -50,7 +68,7 @@ export default function AchievementsPage() {
                   {new Date(a.achievedAt).toLocaleString("ja-JP")}
                 </td>
                 <td className="px-4 py-2 text-zinc-900 dark:text-zinc-50">{a.userDisplayName}</td>
-                <td className="px-4 py-2">{a.achievementType}</td>
+                <td className="px-4 py-2">{formatAchievementType(a.achievementType)}</td>
                 <td className="px-4 py-2">{a.selectedWarlordName ?? "-"}</td>
                 <td className="px-4 py-2">{a.referringAgentName ?? "-"}</td>
               </tr>

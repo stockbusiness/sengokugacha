@@ -38,7 +38,11 @@ export default function AdminLoginPage() {
       style={{ colorScheme: "light" }}
     >
       <main className="w-full max-w-sm rounded-2xl border border-zinc-200 bg-white p-8 shadow-sm dark:border-zinc-800 dark:bg-zinc-950">
-        <h1 className="mb-6 text-center text-xl font-bold text-zinc-900 dark:text-zinc-50">管理画面ログイン</h1>
+        <h1 className="mb-2 text-center text-xl font-bold text-zinc-900 dark:text-zinc-50">管理画面ログイン</h1>
+        <p className="mb-6 text-center text-xs text-zinc-500 dark:text-zinc-400">
+          全担当者共通のパスワードでログインします。「担当者名」は本人確認ではなく、誰が操作したか操作ログに
+          記録するための任意項目です。入力しておくと、後から履歴を追いやすくなります。
+        </p>
         <form onSubmit={handleSubmit} className="space-y-4">
           <input
             type="text"

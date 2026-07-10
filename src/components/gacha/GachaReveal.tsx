@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { gsap } from "gsap";
 
 type SlotType = "common" | "mid" | "rare";
 
@@ -81,6 +82,7 @@ type Particle = { key: number; sx: string; sy: string; delay: string };
 export function GachaReveal({ warlord, provinceName, onFinish }: GachaRevealProps) {
   const [phase, setPhase] = useState<Phase>("anticipation");
   const tier = TIER_CONFIG[resolveSlotType(warlord.slotType)];
+  const cardRef = useRef<HTMLDivElement | null>(null);
 
   const particles = useMemo<Particle[]>(
     () =>
@@ -105,6 +107,48 @@ export function GachaReveal({ warlord, provinceName, onFinish }: GachaRevealProp
       clearTimeout(toCard);
     };
   }, []);
+
+  useEffect(() => {
+    if (phase !== "card" || !cardRef.current) return;
+
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const ctx = gsap.context(() => {
+      if (reduceMotion) {
+        gsap.set(cardRef.current, { opacity: 1, rotateY: 0, scale: 1, x: 0, y: 0 });
+        return;
+      }
+
+      const tl = gsap.timeline();
+      tl.fromTo(
+        cardRef.current,
+        { opacity: 0, rotateY: -110, scale: 0.82, y: 16 },
+        {
+          opacity: 1,
+          rotateY: 0,
+          scale: 1,
+          y: 0,
+          duration: tier.shake ? 0.6 : 0.45,
+          ease: "back.out(1.7)",
+        }
+      );
+
+      if (tier.shake) {
+        tl.to(cardRef.current, {
+          keyframes: [
+            { x: -10, y: 4, rotate: -1.5 },
+            { x: 9, y: -3, rotate: 1.2 },
+            { x: -6, y: 2, rotate: -0.8 },
+            { x: 4, y: -1, rotate: 0.4 },
+            { x: 0, y: 0, rotate: 0 },
+          ],
+          duration: 0.4,
+          ease: "power2.out",
+        });
+      }
+    });
+
+    return () => ctx.revert();
+  }, [phase, tier.shake]);
 
   function skip() {
     setPhase("card");
@@ -207,42 +251,38 @@ export function GachaReveal({ warlord, provinceName, onFinish }: GachaRevealProp
 
           <p className={`text-xs font-semibold tracking-[0.3em] ${tier.labelClass}`}>{tier.label}</p>
 
-          {warlord.imageUrl ? (
-            // カード画像自体に武将名・レアリティ・スキル等が焼き込まれているため、
-            // 余計なテキストを重ねずイラストをそのまま主役として見せる。
-            <div
-              className={`w-64 overflow-hidden rounded-2xl border-2 ${tier.cardBorderClass} ${tier.glowClass}`}
-              style={{
-                animation: tier.shake
-                  ? "gacha-card-in 0.45s ease-out, gacha-shake 0.4s ease-out 0.45s"
-                  : "gacha-card-in 0.45s ease-out",
-              }}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={warlord.imageUrl} alt={warlord.name} className="block h-auto w-full" />
-            </div>
-          ) : (
-            <div
-              className={`flex flex-col items-center gap-4 rounded-2xl border-2 ${tier.cardBorderClass} ${tier.glowClass} bg-ink-raised px-8 py-10`}
-              style={{
-                animation: tier.shake
-                  ? "gacha-card-in 0.45s ease-out, gacha-shake 0.4s ease-out 0.45s"
-                  : "gacha-card-in 0.45s ease-out",
-              }}
-            >
+          <div style={{ perspective: "1000px" }}>
+            {warlord.imageUrl ? (
+              // カード画像自体に武将名・レアリティ・スキル等が焼き込まれているため、
+              // 余計なテキストを重ねずイラストをそのまま主役として見せる。
               <div
-                className={`flex h-24 w-24 items-center justify-center rounded-full border-2 ${tier.cardBorderClass} bg-gradient-to-br from-ink to-ink-raised text-3xl font-bold text-gold-soft`}
+                ref={cardRef}
+                className={`w-64 overflow-hidden rounded-2xl border-2 ${tier.cardBorderClass} ${tier.glowClass}`}
+                style={{ opacity: 0 }}
               >
-                {warlord.name.slice(0, 1)}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={warlord.imageUrl} alt={warlord.name} className="block h-auto w-full" />
               </div>
+            ) : (
+              <div
+                ref={cardRef}
+                className={`flex flex-col items-center gap-4 rounded-2xl border-2 ${tier.cardBorderClass} ${tier.glowClass} bg-ink-raised px-8 py-10`}
+                style={{ opacity: 0 }}
+              >
+                <div
+                  className={`flex h-24 w-24 items-center justify-center rounded-full border-2 ${tier.cardBorderClass} bg-gradient-to-br from-ink to-ink-raised text-3xl font-bold text-gold-soft`}
+                >
+                  {warlord.name.slice(0, 1)}
+                </div>
 
-              <div className="text-center">
-                <p className="text-xs text-parchment-dim">{provinceName}国</p>
-                <p className="font-heading text-2xl font-bold text-parchment">{warlord.name}</p>
-                <p className="mt-1 text-sm text-gold-soft">{warlord.rarity}</p>
+                <div className="text-center">
+                  <p className="text-xs text-parchment-dim">{provinceName}国</p>
+                  <p className="font-heading text-2xl font-bold text-parchment">{warlord.name}</p>
+                  <p className="mt-1 text-sm text-gold-soft">{warlord.rarity}</p>
+                </div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
 
           <button
             onClick={onFinish}

@@ -122,7 +122,14 @@ export default function UsersSearchPage() {
 
   return (
     <div className="space-y-4">
-      <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">ユーザー検索</h1>
+      <div>
+        <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">ユーザー検索</h1>
+        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          サポート対応時のユーザー特定・所持数確認に使います。「石高」はガチャを引くための課金通貨、「戦功」は
+          国家貢献ポイントです。「編集」からは創設メンバー/建国メンバーの区分と、それに紐づく国民証表示用の
+          項目(番号・区画ID等)を手動で設定できます。これらの項目に入力形式の決まりはなく、自由入力です。
+        </p>
+      </div>
 
       <form onSubmit={handleSearch} className="flex flex-wrap gap-2">
         <input
