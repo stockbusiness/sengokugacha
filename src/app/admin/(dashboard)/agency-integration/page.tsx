@@ -191,7 +191,7 @@ export default function AgencyIntegrationPage() {
       <div className="space-y-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
         <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">SSOログイン(代理店ポータル)</h2>
         <p className="text-xs text-zinc-500 dark:text-zinc-400">
-          代理店ポータル: <code>/agency</code>(sengoku-ai.comの代理店マイページから <code>aud={settings.sso_audience}</code> 付きでSSO起動)
+          代理店ポータル: <code>/agency</code>(sengoku-ai.comの代理店マイページから <code>client={settings.sso_audience}</code> 付きでSSO起動)
         </p>
         <label className="flex items-center gap-2 text-sm text-zinc-700 dark:text-zinc-300">
           <input
