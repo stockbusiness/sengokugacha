@@ -19,7 +19,9 @@ export async function GET() {
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json(data ?? { id: null, tour_token_ttl_minutes: 60 });
+  return NextResponse.json(
+    data ?? { id: null, tour_token_ttl_minutes: 60, default_property_image_url: null, default_area_image_url: null }
+  );
 }
 
 export async function PUT(request: NextRequest) {

@@ -143,6 +143,15 @@ export default function EditMetaversePropertyPage() {
     await load();
   }
 
+  async function handleResetMainImage() {
+    await fetch(`/api/admin/metaverse/properties/${propertyId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ main_image_url: null }),
+    });
+    await load();
+  }
+
   async function handleAddScene(e: React.FormEvent) {
     e.preventDefault();
     if (!newSceneName.trim()) return;
@@ -365,6 +374,14 @@ export default function EditMetaversePropertyPage() {
             className="block text-xs text-zinc-600 file:mr-2 file:rounded-lg file:border-0 file:bg-zinc-900 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-zinc-700 disabled:opacity-50 dark:text-zinc-400 dark:file:bg-zinc-100 dark:file:text-zinc-900"
           />
         </label>
+        {property.main_image_url && (
+          <button
+            onClick={handleResetMainImage}
+            className="text-xs text-zinc-500 hover:underline dark:text-zinc-400"
+          >
+            メイン画像をデフォルトに戻す(共通のデフォルト画像設定を使う)
+          </button>
+        )}
       </div>
 
       <div className="space-y-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">

@@ -169,6 +169,7 @@
 - 相談申込は既存の代理店紐づけ(`users.referring_agent_id`)をそのまま利用。新しい代理店ロジックは作らず、問い合わせ登録時にユーザーの紹介元代理店IDを参照して`metaverse_inquiries.agent_id`に保存する。
 - 閲覧ログ(`tour_home_view`は未実装だが`property_detail_view`/`tour_start`/`scene_view`/`zoom`/`favorite_add`/`tour_complete`/`return_to_liff`等)をLIFF側・外部内覧側の両方から記録し、管理画面の「閲覧分析」で人気物件・内覧完了率・相談転換率・代理店別実績を、既存の`rankings.ts`と同じ方針(DBビュー/RPCを使わずJS側で集計)で簡易表示する。
 - API命名は指示書の`/api/v1/...`ではなく、既存の他機能と同じバージョンプレフィックスなしの構成にした(`/api/metaverse/...`、外部内覧向けは`/api/public/metaverse/...`、管理画面向けは`/api/admin/metaverse/...`)。
+- エリア・物件の画像未設定時に使う共通のデフォルト画像を追加(`metaverse_tour_settings.default_property_image_url`/`default_area_image_url`、マイグレーション`20260715000001_metaverse_default_images.sql`)。「独自画像かデフォルトか選べるようにしたい」という要望に対し、区画単位で個別に画像をアップロードした場合はそちらを優先し、未アップロード(null)のままなら共通のデフォルト画像にフォールバックする方式にした(`src/lib/metaverse.ts`の`getDefaultImages()`+`mapPropertyRow()`等での`??`適用)。管理画面のエリア一覧ページ(`/admin/metaverse/areas`)にエリアごとの画像アップロードUI(一覧サムネイル/詳細メイン画像。これまで未実装だった)と、共通デフォルト画像の設定パネルを追加。物件編集ページには「メイン画像をデフォルトに戻す」ボタンを追加。
 
 ### 影響範囲
 

@@ -70,19 +70,22 @@ export type MetaverseScene = {
 
 const PLAYER_PROPERTY_STATUSES = ["published", "coming_soon"] as const;
 
-function mapPropertyRow(row: {
-  id: string;
-  property_code: string;
-  name: string;
-  area_id: string;
-  main_image_url: string | null;
-  feature_tags: string[] | null;
-  status: string;
-  is_recommended: boolean;
-  is_new: boolean;
-  metaverse_areas?: { name: string } | null;
-  metaverse_building_types?: { name: string } | null;
-}): MetaversePropertySummary {
+function mapPropertyRow(
+  row: {
+    id: string;
+    property_code: string;
+    name: string;
+    area_id: string;
+    main_image_url: string | null;
+    feature_tags: string[] | null;
+    status: string;
+    is_recommended: boolean;
+    is_new: boolean;
+    metaverse_areas?: { name: string } | null;
+    metaverse_building_types?: { name: string } | null;
+  },
+  defaultImageUrl: string | null = null
+): MetaversePropertySummary {
   return {
     id: row.id,
     propertyCode: row.property_code,
@@ -90,11 +93,30 @@ function mapPropertyRow(row: {
     areaId: row.area_id,
     areaName: row.metaverse_areas?.name ?? "",
     buildingTypeName: row.metaverse_building_types?.name ?? null,
-    mainImageUrl: row.main_image_url,
+    mainImageUrl: row.main_image_url ?? defaultImageUrl,
     featureTags: row.feature_tags ?? [],
     status: row.status === "published" ? "published" : "coming_soon",
     isRecommended: row.is_recommended,
     isNew: row.is_new,
+  };
+}
+
+// エリア・物件の画像が未設定(null)の場合に使う、共通のデフォルト画像。
+// 個別に画像をアップロードすればそちらが優先され、アップロードしていない
+// (=nullのまま)場合だけこのデフォルトにフォールバックする。
+export async function getDefaultImages(): Promise<{ property: string | null; area: string | null }> {
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("metaverse_tour_settings")
+    .select("default_property_image_url, default_area_image_url")
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw error;
+  return {
+    property: data?.default_property_image_url ?? null,
+    area: data?.default_area_image_url ?? null,
   };
 }
 
@@ -105,7 +127,7 @@ export async function getMetaverseOverview(): Promise<{
 }> {
   const supabase = createSupabaseServerClient();
 
-  const [{ count: propertyCount }, { count: areaCount }, { data: recommendedRows, error: recommendedError }] =
+  const [{ count: propertyCount }, { count: areaCount }, { data: recommendedRows, error: recommendedError }, defaults] =
     await Promise.all([
       supabase
         .from("metaverse_properties")
@@ -119,6 +141,7 @@ export async function getMetaverseOverview(): Promise<{
         .eq("is_recommended", true)
         .order("display_order", { ascending: true })
         .limit(6),
+      getDefaultImages(),
     ]);
 
   if (recommendedError) throw recommendedError;
@@ -127,7 +150,7 @@ export async function getMetaverseOverview(): Promise<{
     publishedPropertyCount: propertyCount ?? 0,
     areaCount: areaCount ?? 0,
     recommendedProperties: (recommendedRows ?? []).map((r) =>
-      mapPropertyRow(r as unknown as Parameters<typeof mapPropertyRow>[0])
+      mapPropertyRow(r as unknown as Parameters<typeof mapPropertyRow>[0], defaults.property)
     ),
   };
 }
@@ -144,10 +167,10 @@ export async function getAreas(): Promise<MetaverseAreaSummary[]> {
   if (areasError) throw areasError;
   if (!areas || areas.length === 0) return [];
 
-  const { data: propertyCounts, error: countsError } = await supabase
-    .from("metaverse_properties")
-    .select("area_id")
-    .in("status", PLAYER_PROPERTY_STATUSES);
+  const [{ data: propertyCounts, error: countsError }, defaults] = await Promise.all([
+    supabase.from("metaverse_properties").select("area_id").in("status", PLAYER_PROPERTY_STATUSES),
+    getDefaultImages(),
+  ]);
 
   if (countsError) throw countsError;
 
@@ -161,7 +184,7 @@ export async function getAreas(): Promise<MetaverseAreaSummary[]> {
     slug: a.slug,
     name: a.name,
     shortDescription: a.short_description,
-    thumbnailUrl: a.thumbnail_url,
+    thumbnailUrl: a.thumbnail_url ?? defaults.area,
     isRecommended: a.is_recommended,
     isNew: a.is_new,
     publishedPropertyCount: countByArea.get(a.id) ?? 0,
@@ -171,12 +194,15 @@ export async function getAreas(): Promise<MetaverseAreaSummary[]> {
 export async function getAreaById(areaId: string): Promise<MetaverseAreaDetail | null> {
   const supabase = createSupabaseServerClient();
 
-  const { data: area, error: areaError } = await supabase
-    .from("metaverse_areas")
-    .select("id, slug, name, short_description, description, thumbnail_url, main_image_url, is_recommended, is_new")
-    .eq("id", areaId)
-    .eq("status", "published")
-    .maybeSingle();
+  const [{ data: area, error: areaError }, defaults] = await Promise.all([
+    supabase
+      .from("metaverse_areas")
+      .select("id, slug, name, short_description, description, thumbnail_url, main_image_url, is_recommended, is_new")
+      .eq("id", areaId)
+      .eq("status", "published")
+      .maybeSingle(),
+    getDefaultImages(),
+  ]);
 
   if (areaError) throw areaError;
   if (!area) return null;
@@ -196,12 +222,14 @@ export async function getAreaById(areaId: string): Promise<MetaverseAreaDetail |
     name: area.name,
     shortDescription: area.short_description,
     description: area.description,
-    thumbnailUrl: area.thumbnail_url,
-    mainImageUrl: area.main_image_url,
+    thumbnailUrl: area.thumbnail_url ?? defaults.area,
+    mainImageUrl: area.main_image_url ?? defaults.area,
     isRecommended: area.is_recommended,
     isNew: area.is_new,
     publishedPropertyCount: properties?.length ?? 0,
-    properties: (properties ?? []).map((r) => mapPropertyRow(r as unknown as Parameters<typeof mapPropertyRow>[0])),
+    properties: (properties ?? []).map((r) =>
+      mapPropertyRow(r as unknown as Parameters<typeof mapPropertyRow>[0], defaults.property)
+    ),
   };
 }
 
@@ -218,44 +246,49 @@ export async function getProperties(filters?: { areaId?: string }): Promise<Meta
     query = query.eq("area_id", filters.areaId);
   }
 
-  const { data, error } = await query;
+  const [{ data, error }, defaults] = await Promise.all([query, getDefaultImages()]);
   if (error) throw error;
 
-  return (data ?? []).map((r) => mapPropertyRow(r as unknown as Parameters<typeof mapPropertyRow>[0]));
+  return (data ?? []).map((r) => mapPropertyRow(r as unknown as Parameters<typeof mapPropertyRow>[0], defaults.property));
 }
 
 export async function getPropertyById(propertyId: string, userId: string): Promise<MetaversePropertyDetail | null> {
   const supabase = createSupabaseServerClient();
 
-  const [{ data: property, error: propertyError }, { data: images, error: imagesError }, { data: favorite, error: favoriteError }] =
-    await Promise.all([
-      supabase
-        .from("metaverse_properties")
-        .select(
-          "id, property_code, name, area_id, short_description, description, main_image_url, feature_tags, intended_use, status, is_recommended, is_new, metaverse_areas(name), metaverse_building_types(name)"
-        )
-        .eq("id", propertyId)
-        .in("status", PLAYER_PROPERTY_STATUSES)
-        .maybeSingle(),
-      supabase
-        .from("metaverse_property_images")
-        .select("image_url")
-        .eq("property_id", propertyId)
-        .order("display_order", { ascending: true }),
-      supabase
-        .from("metaverse_favorites")
-        .select("id")
-        .eq("property_id", propertyId)
-        .eq("user_id", userId)
-        .maybeSingle(),
-    ]);
+  const [
+    { data: property, error: propertyError },
+    { data: images, error: imagesError },
+    { data: favorite, error: favoriteError },
+    defaults,
+  ] = await Promise.all([
+    supabase
+      .from("metaverse_properties")
+      .select(
+        "id, property_code, name, area_id, short_description, description, main_image_url, feature_tags, intended_use, status, is_recommended, is_new, metaverse_areas(name), metaverse_building_types(name)"
+      )
+      .eq("id", propertyId)
+      .in("status", PLAYER_PROPERTY_STATUSES)
+      .maybeSingle(),
+    supabase
+      .from("metaverse_property_images")
+      .select("image_url")
+      .eq("property_id", propertyId)
+      .order("display_order", { ascending: true }),
+    supabase
+      .from("metaverse_favorites")
+      .select("id")
+      .eq("property_id", propertyId)
+      .eq("user_id", userId)
+      .maybeSingle(),
+    getDefaultImages(),
+  ]);
 
   if (propertyError) throw propertyError;
   if (imagesError) throw imagesError;
   if (favoriteError) throw favoriteError;
   if (!property) return null;
 
-  const summary = mapPropertyRow(property as unknown as Parameters<typeof mapPropertyRow>[0]);
+  const summary = mapPropertyRow(property as unknown as Parameters<typeof mapPropertyRow>[0], defaults.property);
 
   let agentName: string | null = null;
   const { data: userRow, error: userError } = await supabase
@@ -331,20 +364,23 @@ export async function getPropertyScenes(propertyId: string): Promise<MetaverseSc
 export async function getFavoriteProperties(userId: string): Promise<MetaversePropertySummary[]> {
   const supabase = createSupabaseServerClient();
 
-  const { data, error } = await supabase
-    .from("metaverse_favorites")
-    .select(
-      "property_id, metaverse_properties(id, property_code, name, area_id, main_image_url, feature_tags, status, is_recommended, is_new, metaverse_areas(name), metaverse_building_types(name))"
-    )
-    .eq("user_id", userId)
-    .order("created_at", { ascending: false });
+  const [{ data, error }, defaults] = await Promise.all([
+    supabase
+      .from("metaverse_favorites")
+      .select(
+        "property_id, metaverse_properties(id, property_code, name, area_id, main_image_url, feature_tags, status, is_recommended, is_new, metaverse_areas(name), metaverse_building_types(name))"
+      )
+      .eq("user_id", userId)
+      .order("created_at", { ascending: false }),
+    getDefaultImages(),
+  ]);
 
   if (error) throw error;
 
   return (data ?? [])
     .map((row) => row.metaverse_properties as unknown as Parameters<typeof mapPropertyRow>[0] | null)
     .filter((p): p is Parameters<typeof mapPropertyRow>[0] => !!p)
-    .map(mapPropertyRow);
+    .map((p) => mapPropertyRow(p, defaults.property));
 }
 
 export async function addFavorite(userId: string, propertyId: string): Promise<void> {
@@ -398,11 +434,16 @@ export async function getRecentlyViewedProperties(userId: string, limit = 10): P
     if (orderedUniquePropertyIds.length >= limit) break;
   }
 
-  const { data: properties, error: propertiesError } = await supabase
-    .from("metaverse_properties")
-    .select("id, property_code, name, area_id, main_image_url, feature_tags, status, is_recommended, is_new, metaverse_areas(name), metaverse_building_types(name)")
-    .in("id", orderedUniquePropertyIds)
-    .in("status", PLAYER_PROPERTY_STATUSES);
+  const [{ data: properties, error: propertiesError }, defaults] = await Promise.all([
+    supabase
+      .from("metaverse_properties")
+      .select(
+        "id, property_code, name, area_id, main_image_url, feature_tags, status, is_recommended, is_new, metaverse_areas(name), metaverse_building_types(name)"
+      )
+      .in("id", orderedUniquePropertyIds)
+      .in("status", PLAYER_PROPERTY_STATUSES),
+    getDefaultImages(),
+  ]);
 
   if (propertiesError) throw propertiesError;
 
@@ -410,7 +451,7 @@ export async function getRecentlyViewedProperties(userId: string, limit = 10): P
   return orderedUniquePropertyIds
     .map((id) => byId.get(id))
     .filter((p): p is NonNullable<typeof p> => !!p)
-    .map((p) => mapPropertyRow(p as unknown as Parameters<typeof mapPropertyRow>[0]));
+    .map((p) => mapPropertyRow(p as unknown as Parameters<typeof mapPropertyRow>[0], defaults.property));
 }
 
 export type ViewEventInput = {
@@ -550,21 +591,25 @@ export async function validateTourSession(rawToken: string): Promise<TourSession
     .update({ access_count: session.access_count + 1 })
     .eq("id", session.id);
 
-  const { data: property, error: propertyError } = await supabase
-    .from("metaverse_properties")
-    .select("id, property_code, name, area_id, main_image_url, feature_tags, status, is_recommended, is_new, metaverse_areas(name), metaverse_building_types(name)")
-    .eq("id", session.property_id)
-    .maybeSingle();
+  const [{ data: property, error: propertyError }, scenes, defaults] = await Promise.all([
+    supabase
+      .from("metaverse_properties")
+      .select(
+        "id, property_code, name, area_id, main_image_url, feature_tags, status, is_recommended, is_new, metaverse_areas(name), metaverse_building_types(name)"
+      )
+      .eq("id", session.property_id)
+      .maybeSingle(),
+    getPropertyScenes(session.property_id),
+    getDefaultImages(),
+  ]);
 
   if (propertyError) throw propertyError;
   if (!property) return null;
 
-  const scenes = await getPropertyScenes(session.property_id);
-
   return {
     sessionId: session.id,
     userId: session.user_id,
-    property: mapPropertyRow(property as unknown as Parameters<typeof mapPropertyRow>[0]),
+    property: mapPropertyRow(property as unknown as Parameters<typeof mapPropertyRow>[0], defaults.property),
     scenes,
   };
 }
