@@ -15,7 +15,9 @@ export default async function AgencyLoginPage({
 }) {
   const { error } = await searchParams;
   const settings = await getAgencyIntegrationSettings();
-  const launchUrl = `${settings.sso_issuer_url.replace(/\/$/, "")}/agent/sso_launch.php?aud=${encodeURIComponent(settings.sso_audience)}`;
+  // sengoku-ai.com側の実装は仕様書記載の `aud=` ではなく `client=` パラメータで連携先を識別する
+  // (連携先サイトのサイトキーと同じ値。当アプリでは aud と同じ値をサイトキーとしても登録している)。
+  const launchUrl = `${settings.sso_issuer_url.replace(/\/$/, "")}/agent/sso_launch.php?client=${encodeURIComponent(settings.sso_audience)}`;
 
   return (
     <div className="space-y-6 text-center">
