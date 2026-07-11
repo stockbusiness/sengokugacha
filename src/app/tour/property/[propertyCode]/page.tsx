@@ -21,6 +21,8 @@ type Scene = {
   description: string | null;
   allowZoom: boolean;
   hotspots: Hotspot[];
+  videoUrl: string | null;
+  videoDurationMs: number | null;
 };
 
 type PropertySummary = {
@@ -224,16 +226,28 @@ function ExternalTourInner() {
         onTouchEnd={handleTouchEnd}
         onClick={() => setUiVisible((v) => !v)}
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img
-          src={currentScene.imageUrl}
-          alt={currentScene.name}
-          onDoubleClick={(e) => {
-            e.stopPropagation();
-            handleImageDoubleClick();
-          }}
-          className={`max-h-screen w-full object-contain transition-transform duration-300 ${zoomed ? "scale-[1.8] cursor-zoom-out" : "cursor-zoom-in"}`}
-        />
+        {currentScene.videoUrl ? (
+          <video
+            key={currentScene.id}
+            src={currentScene.videoUrl}
+            poster={currentScene.imageUrl}
+            controls
+            playsInline
+            className="max-h-screen w-full object-contain"
+            onClick={(e) => e.stopPropagation()}
+          />
+        ) : (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={currentScene.imageUrl}
+            alt={currentScene.name}
+            onDoubleClick={(e) => {
+              e.stopPropagation();
+              handleImageDoubleClick();
+            }}
+            className={`max-h-screen w-full object-contain transition-transform duration-300 ${zoomed ? "scale-[1.8] cursor-zoom-out" : "cursor-zoom-in"}`}
+          />
+        )}
 
         {!zoomed &&
           orderedHotspots.map((h) => (
@@ -295,10 +309,13 @@ function ExternalTourInner() {
               <button
                 key={s.id}
                 onClick={() => goToScene(i)}
-                className={`shrink-0 overflow-hidden rounded-lg border-2 ${i === sceneIndex ? "border-gold" : "border-transparent"}`}
+                className={`relative shrink-0 overflow-hidden rounded-lg border-2 ${i === sceneIndex ? "border-gold" : "border-transparent"}`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={s.thumbnailUrl ?? s.imageUrl} alt={s.name} className="h-14 w-20 object-cover" />
+                {s.videoUrl && (
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/20 text-lg text-parchment">▶</span>
+                )}
               </button>
             ))}
           </div>

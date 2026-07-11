@@ -66,6 +66,8 @@ export type MetaverseScene = {
   description: string | null;
   allowZoom: boolean;
   hotspots: MetaverseSceneHotspot[];
+  videoUrl: string | null;
+  videoDurationMs: number | null;
 };
 
 const PLAYER_PROPERTY_STATUSES = ["published", "coming_soon"] as const;
@@ -315,7 +317,7 @@ export async function getPropertyScenes(propertyId: string): Promise<MetaverseSc
 
   const { data: scenes, error: scenesError } = await supabase
     .from("metaverse_tour_scenes")
-    .select("id, name, image_url, thumbnail_url, description, allow_zoom")
+    .select("id, name, image_url, thumbnail_url, description, allow_zoom, video_url, video_duration_ms")
     .eq("property_id", propertyId)
     .eq("is_published", true)
     .order("display_order", { ascending: true });
@@ -358,6 +360,8 @@ export async function getPropertyScenes(propertyId: string): Promise<MetaverseSc
     description: s.description,
     allowZoom: s.allow_zoom,
     hotspots: hotspotsByScene.get(s.id) ?? [],
+    videoUrl: s.video_url,
+    videoDurationMs: s.video_duration_ms,
   }));
 }
 

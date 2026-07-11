@@ -170,6 +170,7 @@
 - 閲覧ログ(`tour_home_view`は未実装だが`property_detail_view`/`tour_start`/`scene_view`/`zoom`/`favorite_add`/`tour_complete`/`return_to_liff`等)をLIFF側・外部内覧側の両方から記録し、管理画面の「閲覧分析」で人気物件・内覧完了率・相談転換率・代理店別実績を、既存の`rankings.ts`と同じ方針(DBビュー/RPCを使わずJS側で集計)で簡易表示する。
 - API命名は指示書の`/api/v1/...`ではなく、既存の他機能と同じバージョンプレフィックスなしの構成にした(`/api/metaverse/...`、外部内覧向けは`/api/public/metaverse/...`、管理画面向けは`/api/admin/metaverse/...`)。
 - エリア・物件の画像未設定時に使う共通のデフォルト画像を追加(`metaverse_tour_settings.default_property_image_url`/`default_area_image_url`、マイグレーション`20260715000001_metaverse_default_images.sql`)。「独自画像かデフォルトか選べるようにしたい」という要望に対し、区画単位で個別に画像をアップロードした場合はそちらを優先し、未アップロード(null)のままなら共通のデフォルト画像にフォールバックする方式にした(`src/lib/metaverse.ts`の`getDefaultImages()`+`mapPropertyRow()`等での`??`適用)。管理画面のエリア一覧ページ(`/admin/metaverse/areas`)にエリアごとの画像アップロードUI(一覧サムネイル/詳細メイン画像。これまで未実装だった)と、共通デフォルト画像の設定パネルを追加。物件編集ページには「メイン画像をデフォルトに戻す」ボタンを追加。
+- 内覧シーンに、静止画に加えて動画(館内ウォークスルー等)をアップロードできる機能を追加(`metaverse_tour_scenes.video_url`/`video_duration_ms`/`video_mime_type`/`video_file_size_bytes`、マイグレーション`20260716000001_metaverse_scene_video.sql`)。既存の「動画ガチャ演出」機能と同じ土台(MP4アップロード、sharp不使用、`src/lib/mp4-probe.ts`の独自パーサーで長さを検証)を再利用し、専用バケット`metaverse-videos`にアップロードする(サイズ上限50MB・長さ上限60秒。`METAVERSE_VIDEO_MAX_BYTES`/`METAVERSE_VIDEO_MAX_DURATION_SECONDS`で変更可)。`image_url`は動画のポスター画像・動画未対応時のフォールバックとして必須のまま維持し、`video_url`が設定されているシーンのみ外部内覧ページ(`/tour/property/[propertyCode]`)で`<video>`再生に切り替わる(動画非対応シーンは従来どおり画像+ズーム表示)。管理画面はシーン編集(物件編集ページ内)に動画アップロード・プレビュー・削除UIを追加(`/api/admin/metaverse/scenes/[id]/video`)。
 
 ### 影響範囲
 

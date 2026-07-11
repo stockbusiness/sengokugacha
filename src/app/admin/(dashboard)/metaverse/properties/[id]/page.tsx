@@ -15,6 +15,8 @@ type Scene = {
   description: string | null;
   is_published: boolean;
   allow_zoom: boolean;
+  video_url: string | null;
+  video_duration_ms: number | null;
 };
 
 type PropertyDetail = {
@@ -438,6 +440,8 @@ function SceneRow({
   onDelete: () => void;
 }) {
   const [uploading, setUploading] = useState(false);
+  const [uploadingVideo, setUploadingVideo] = useState(false);
+  const [videoError, setVideoError] = useState<string | null>(null);
   const [hotspots, setHotspots] = useState<Hotspot[] | null>(null);
   const [newHotspotTitle, setNewHotspotTitle] = useState("");
 
@@ -457,6 +461,37 @@ function SceneRow({
       await onReload();
     } finally {
       setUploading(false);
+    }
+  }
+
+  async function handleVideoUpload(file: File) {
+    setUploadingVideo(true);
+    setVideoError(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const res = await fetch(`/api/admin/metaverse/scenes/${scene.id}/video`, { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "動画のアップロードに失敗しました。");
+      await onReload();
+    } catch (error) {
+      setVideoError(error instanceof Error ? error.message : "動画のアップロードに失敗しました。");
+    } finally {
+      setUploadingVideo(false);
+    }
+  }
+
+  async function handleVideoDelete() {
+    setUploadingVideo(true);
+    setVideoError(null);
+    try {
+      const res = await fetch(`/api/admin/metaverse/scenes/${scene.id}/video`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+      await onReload();
+    } catch {
+      setVideoError("動画の削除に失敗しました。");
+    } finally {
+      setUploadingVideo(false);
     }
   }
 
@@ -536,6 +571,41 @@ function SceneRow({
             }}
             className="block text-xs text-zinc-600 file:mr-2 file:rounded-lg file:border-0 file:bg-zinc-900 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-zinc-700 disabled:opacity-50 dark:text-zinc-400 dark:file:bg-zinc-100 dark:file:text-zinc-900"
           />
+
+          <div className="border-t border-zinc-100 pt-3 dark:border-zinc-800">
+            <p className="mb-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">
+              シーン動画(任意。設定すると外部内覧ページで静止画の代わりに動画を再生します)
+            </p>
+            {scene.video_url ? (
+              <div className="space-y-2">
+                <video src={scene.video_url} controls playsInline className="h-32 w-full rounded-lg bg-black object-contain" />
+                <p className="text-[11px] text-zinc-400">
+                  {scene.video_duration_ms != null ? `長さ: ${(scene.video_duration_ms / 1000).toFixed(1)}秒` : null}
+                </p>
+                <button
+                  onClick={handleVideoDelete}
+                  disabled={uploadingVideo}
+                  className="text-[11px] text-red-700 hover:underline disabled:opacity-50 dark:text-red-400"
+                >
+                  動画を削除(静止画のみに戻す)
+                </button>
+              </div>
+            ) : (
+              <input
+                type="file"
+                accept="video/mp4"
+                disabled={uploadingVideo}
+                onChange={(e) => {
+                  const file = e.target.files?.[0];
+                  e.target.value = "";
+                  if (file) handleVideoUpload(file);
+                }}
+                className="block text-xs text-zinc-600 file:mr-2 file:rounded-lg file:border-0 file:bg-zinc-900 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-zinc-700 disabled:opacity-50 dark:text-zinc-400 dark:file:bg-zinc-100 dark:file:text-zinc-900"
+              />
+            )}
+            {uploadingVideo && <p className="mt-1 text-[11px] text-zinc-400">処理中...</p>}
+            {videoError && <p className="mt-1 text-[11px] text-red-700 dark:text-red-400">{videoError}</p>}
+          </div>
 
           <div>
             <p className="mb-1 text-xs font-medium text-zinc-600 dark:text-zinc-400">説明ポイント</p>
