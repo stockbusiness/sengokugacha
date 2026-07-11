@@ -51,6 +51,13 @@ export default function MetaverseTourPropertyDetailPage() {
             if (cancelled) return;
             setProperty(data);
             setStatus("ready");
+            fetch("/api/metaverse/events", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ eventType: "property_detail_view", propertyId: data.id }),
+            }).catch(() => {
+              /* 閲覧ログの記録失敗は表示に影響させない */
+            });
           });
       })
       .catch((error) => {

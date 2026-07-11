@@ -16,6 +16,7 @@ export default function MetaverseHubPage() {
         <HubCard href="/admin/metaverse/properties" title="区画・物件管理" description="物件の登録・編集・内覧シーン・画像管理" />
         <HubCard href="/admin/metaverse/inquiries" title="問い合わせ管理" description="相談申込の一覧・対応状況の更新" />
         <HubCard href="/admin/metaverse/tour-sessions" title="外部内覧セッション" description="発行された一時内覧トークンの利用状況" />
+        <HubCard href="/admin/metaverse/analytics" title="閲覧分析" description="人気物件・お気に入り率・相談転換率などの集計" />
       </div>
     </div>
   );

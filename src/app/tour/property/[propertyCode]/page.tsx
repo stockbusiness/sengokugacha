@@ -55,6 +55,7 @@ function ExternalTourInner() {
   const [favorited, setFavorited] = useState(false);
 
   const touchStartX = useRef<number | null>(null);
+  const tourCompleteSent = useRef(false);
 
   const sendEvent = useCallback(
     (eventType: string, sceneId?: string) => {
@@ -87,6 +88,10 @@ function ExternalTourInner() {
         setStatus("ready");
         sendEvent("tour_start");
         if (data.scenes[0]) sendEvent("scene_view", data.scenes[0].id);
+        if (data.scenes.length === 1 && !tourCompleteSent.current) {
+          tourCompleteSent.current = true;
+          sendEvent("tour_complete", data.scenes[0]?.id);
+        }
       })
       .catch((error) => {
         setErrorMessage(error instanceof Error ? error.message : EXPIRED_MESSAGE);
@@ -106,6 +111,11 @@ function ExternalTourInner() {
       setZoomed(false);
       const scene = scenes[index];
       if (scene) sendEvent("scene_view", scene.id);
+      // 最終シーンまで到達した時点で「内覧完了」とみなす(一度だけ送信)。
+      if (index === scenes.length - 1 && !tourCompleteSent.current) {
+        tourCompleteSent.current = true;
+        sendEvent("tour_complete", scene?.id);
+      }
     },
     [scenes, sendEvent]
   );
