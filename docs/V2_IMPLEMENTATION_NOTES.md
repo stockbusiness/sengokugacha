@@ -123,3 +123,64 @@
 - OVE送金、ブロックチェーン連携、NFT同期、報酬自動計算(指示書のとおりスコープ外)
 - OVEの正式な換算レート(現在は国家貢献ポイントの1:1仮表示)
 - ランキングの大規模化に伴うDBビュー/RPC化(現在はJS側での全件集計)
+
+---
+
+## Ver2.4: アートディレクション・演出強化・管理画面の使いやすさ改善フェーズ
+
+### 変更内容
+
+- アートディレクション&世界観実装指示書・画面デザインガイド(UIモックアップ)を反映。デザインシステム(カラーパレット・角丸トークン・英字ロゴフォント)を指示書の値に統一、サイドメニュー新設、図鑑のレアリティ別フィルタタブ・色分け、共通ローディングスピナー化などを実施(新規ページは増やさず既存画面の完成度向上に集中)。
+- GSAPを新規導入し、コード駆動のアニメーション基盤を追加。`GachaReveal`(武将登用結果カード)の出現演出をCSSキーフレームから3Dフリップ(GSAPタイムライン)に刷新し、大名級では着地後に小刻みなシェイクが入るようにした。
+- `CelebrationBurst`(`src/components/effects/CelebrationBurst.tsx`)を新設。家紋の光フラッシュ+パーティクルバースト+バナー登場のシーケンスで、国盗り・地方コンプリート・美濃国解放・天下統一達成のタイミングで全画面演出として再生する(`/gacha` の結果画面、`/tenka-toitsu` の代表武将登録完了時)。動画素材が未準備の段階でも着手できるよう、コード駆動アニメーションのみで構成した。
+- 本番のSupabase DBにVer2.0〜2.3のマイグレーションが未適用だったことが判明(CIにマイグレーション適用ステップが存在しないため)。`supabase/migrations/20260713000001_repair_v20_v23_pending_schema.sql` として、`IF NOT EXISTS`等を用いた冪等な再発行マイグレーションを追加し、Supabaseダッシュボードから手動実行して復旧した。
+- 管理画面に「使い方ガイド」(`/admin/help`)を新設。各設定ページの目的・わかりにくい項目の意味(排出率の階層適用ルール、動画演出の優先度/weight選定ロジック、ガチャ設定のbase/override関係等)・用語集(石高/戦功/国/スロット等)をまとめ、ナビ・ダッシュボード両方から導線を追加した。説明文が無かったページ(実績ログ・ガチャ設定・国マスタ・ユーザー検索・ログイン画面)にも説明文を追加し、DB列名・テーブル名の直書きや内部コード(`region_complete_kanto`等)の生表示を平易な日本語に置き換えた。
+- **創設メンバー・建国メンバーの説明・導線をアプリ内から撤去**。これらの会員区分(一般価格198,000円/創設メンバー特別価格98,000円)の販売・説明は、アプリ内では行わずアプリ外の説明会等で行う方針に変更されたため、`/founding-member`・`/nation-builder` ページ、`FoundingMemberPanel`/`DevelopmentPlotCard`/`NationBuilderOfferCard`/`FoundingMemberBadge`(`src/components/founding-member/`)、`src/lib/founding-member.ts` を削除。国民証カードのバッジ表示・国家開発区画番号表示、フッター・AI寺子屋・イベント一覧・本日の任務・実績バッジからの関連導線もあわせて削除した。管理画面(`/admin/users`)での会員区分の記録・編集機能とDBスキーマ(`users.is_founding_member`等)は、社内での会員管理・記録用途のためそのまま維持している。
+
+### 影響範囲
+
+- 既存テーブルへの変更はなし(Ver2.4自体では新規マイグレーションを追加していない。上記の復旧マイグレーションはVer2.0〜2.3で追加済みの列・テーブルの再発行)。
+- `src/app/globals.css` の `gacha-card-in`/`gacha-shake` キーフレームは、GSAPタイムラインへの置き換えに伴い削除。他のCSSキーフレーム(パーティクル・雷光演出等)は変更なし。
+- 創設メンバー・建国メンバー関連ページの削除により、`/founding-member`・`/nation-builder` へのアクセスは404になる。LINEリッチメニュー(6ボタン: ホーム/ガチャ/図鑑/地図/購入/ヘルプ)にはこれらのページへの導線が元々無かったため、リッチメニュー側の変更は不要だった。
+- 既存機能(LIFFログイン、ガチャ抽選、Stripe決済、図鑑、国盗り、管理画面、動画ガチャ演出)への影響なし。
+
+### 未実装事項
+
+- 画面デザインガイドのうち、国家ダッシュボードの民の数/総収入等や城下町の土地・資源マーケットなど、新規のゲーム経済システムが必要な項目(既存スコープ方針と衝突するため未着手)
+- 動画素材(武将登用演出の本格的な動画版)。`docs/ASSET_GUIDE_ANIMATION.md` に必要な素材仕様をまとめ、素材到着後に差し込む前提で設計している
+- Supabaseマイグレーションの自動適用(CI/CDへのSupabase CLI組み込み等)。今回は復旧のみで、再発防止の仕組み自体は未整備
+
+---
+
+## Ver2.5: 城下町デジタル内覧フェーズ
+
+「戦国城下町デジタル内覧」ハイブリッド機能追加指示書に基づく。実装前の既存システム調査・実装計画は
+`docs/metaverse-tour-existing-system-analysis.md` / `docs/metaverse-tour-implementation-plan.md` を参照。
+
+### 変更内容
+
+- 未完成の戦国メタバース内に建設予定の武家屋敷・商人屋敷等を画像ベースで疑似内覧できる機能を、LIFF内(閲覧・お気に入り・相談申込)+外部全画面内覧ページ(高解像度画像・スワイプ・ズーム)のハイブリッド構成で追加。
+- **販売情報(価格・権利内容・特典・商業的な販売状態)はプレイヤー向け画面に一切表示しない方針で実装した**。指示書は本来「価格表示+相談フォームで代理店へ誘導」という設計だったが、直前のVer2.4で創設/建国メンバーの説明・販売をアプリ内から撤去したばかりであり、同じ方針をこの機能にも適用すべきとユーザーと確認した上で調整した。価格・権利・特典は管理画面の入力欄(`internal_price_yen`等)としてのみ保持し、社内の営業活動・将来準備のための記録に留める。
+- DB: `metaverse_areas`, `metaverse_building_types`, `metaverse_properties`, `metaverse_property_images`, `metaverse_tour_scenes`, `metaverse_scene_hotspots`, `metaverse_maps`, `metaverse_map_hotspots`, `metaverse_favorites`, `metaverse_recent_views`, `metaverse_tour_sessions`, `metaverse_tour_settings`, `metaverse_view_events`, `metaverse_inquiries`, `metaverse_inquiry_histories` を新規追加(`supabase/migrations/20260714000001_metaverse_tour.sql`)。データアクセス層は `src/lib/metaverse.ts` に集約。
+- 一時内覧トークンはJWTではなく、`crypto.randomBytes`のランダム値をSHA-256でハッシュ化してDBに保存する方式にした。有効期限(既定60分、管理画面から変更可)・アクセス回数・失効状態をDB側で厳密に管理でき、個人情報(userId等)をトークン自体にもレスポンスにも含めない設計にできるため。
+- LIFF側: `/metaverse-tour`(内覧トップ)、`/metaverse-tour/areas`、`/metaverse-tour/areas/[areaId]`、`/metaverse-tour/properties/[propertyId]`、`/metaverse-tour/favorites`、`/metaverse-tour/inquiries/new`・`[id]`。ホーム画面に入口カード(`MetaverseTourEntryCard`)を追加。
+- 外部全画面内覧ページ: `/tour/property/[propertyCode]`。既存の`(app)`ルートグループ(SideMenu/BottomNav/LegalFooter付き、縦画面前提)とは別の`src/app/tour/`ルートグループとして実装し、スマートフォン横画面・タブレット・PCを想定したシンプルな専用レイアウトにした。スワイプ・矢印キー・サムネイル切替・ダブルタップズーム・説明ポイント表示・UI表示切替・「LINEに戻って相談する」に対応。
+- 管理画面: `/admin/metaverse`配下にエリア・物件(内覧シーン・説明ポイント・画像ギャラリーを含む)・問い合わせ・外部内覧セッション・閲覧分析を追加。既存のフラットな横並びナビをこれ以上増やさないよう、ナビには「メタバース内覧」1項目だけ追加し、`/admin`トップページと同じ「ハブ+カードリンク」パターンでサブ機能へ遷移する構成にした。
+- 相談申込は既存の代理店紐づけ(`users.referring_agent_id`)をそのまま利用。新しい代理店ロジックは作らず、問い合わせ登録時にユーザーの紹介元代理店IDを参照して`metaverse_inquiries.agent_id`に保存する。
+- 閲覧ログ(`tour_home_view`は未実装だが`property_detail_view`/`tour_start`/`scene_view`/`zoom`/`favorite_add`/`tour_complete`/`return_to_liff`等)をLIFF側・外部内覧側の両方から記録し、管理画面の「閲覧分析」で人気物件・内覧完了率・相談転換率・代理店別実績を、既存の`rankings.ts`と同じ方針(DBビュー/RPCを使わずJS側で集計)で簡易表示する。
+- API命名は指示書の`/api/v1/...`ではなく、既存の他機能と同じバージョンプレフィックスなしの構成にした(`/api/metaverse/...`、外部内覧向けは`/api/public/metaverse/...`、管理画面向けは`/api/admin/metaverse/...`)。
+- エリア・物件の画像未設定時に使う共通のデフォルト画像を追加(`metaverse_tour_settings.default_property_image_url`/`default_area_image_url`、マイグレーション`20260715000001_metaverse_default_images.sql`)。「独自画像かデフォルトか選べるようにしたい」という要望に対し、区画単位で個別に画像をアップロードした場合はそちらを優先し、未アップロード(null)のままなら共通のデフォルト画像にフォールバックする方式にした(`src/lib/metaverse.ts`の`getDefaultImages()`+`mapPropertyRow()`等での`??`適用)。管理画面のエリア一覧ページ(`/admin/metaverse/areas`)にエリアごとの画像アップロードUI(一覧サムネイル/詳細メイン画像。これまで未実装だった)と、共通デフォルト画像の設定パネルを追加。物件編集ページには「メイン画像をデフォルトに戻す」ボタンを追加。
+- 内覧シーンに、静止画に加えて動画(館内ウォークスルー等)をアップロードできる機能を追加(`metaverse_tour_scenes.video_url`/`video_duration_ms`/`video_mime_type`/`video_file_size_bytes`、マイグレーション`20260716000001_metaverse_scene_video.sql`)。既存の「動画ガチャ演出」機能と同じ土台(MP4アップロード、sharp不使用、`src/lib/mp4-probe.ts`の独自パーサーで長さを検証)を再利用し、専用バケット`metaverse-videos`にアップロードする(サイズ上限50MB・長さ上限60秒。`METAVERSE_VIDEO_MAX_BYTES`/`METAVERSE_VIDEO_MAX_DURATION_SECONDS`で変更可)。`image_url`は動画のポスター画像・動画未対応時のフォールバックとして必須のまま維持し、`video_url`が設定されているシーンのみ外部内覧ページ(`/tour/property/[propertyCode]`)で`<video>`再生に切り替わる(動画非対応シーンは従来どおり画像+ズーム表示)。管理画面はシーン編集(物件編集ページ内)に動画アップロード・プレビュー・削除UIを追加(`/api/admin/metaverse/scenes/[id]/video`)。
+
+### 影響範囲
+
+- 既存テーブルへの変更はなし(新規テーブル追加のみ)。既存機能(LIFFログイン、ガチャ抽選、Stripe決済、図鑑、国盗り、管理画面、動画ガチャ演出)への影響なし。
+- LINEリッチメニュー(6ボタン: ホーム/ガチャ/図鑑/地図/購入/ヘルプ)には新規ページへの導線を追加していない(ホーム画面の入口カード経由でのみ到達する)。
+
+### 未実装事項
+
+- 指示書28章の代理店専用ログイン・権限分離(自代理店の問い合わせ・実績のみ閲覧可能にする)。今回は運営者(共有パスワードでログインする既存の管理画面ユーザー)が全代理店分を閲覧できる状態のまま。
+- 実際のメタバース座標との紐付け。`external_world_ref`列は用意したが、実データの投入・座標変換ロジックは将来のメタバース仕様確定後に対応する。
+- 城下町マップ(指示書24章)の本格実装。LIFF側の縮小プレビュー・外部内覧側の全画面マップ(ピンチズーム・エリアポイント等)は、DB(`metaverse_maps`/`metaverse_map_hotspots`)と管理画面のCRUD APIのみ用意し、実際の表示画面は今回のスコープでは省略した(エリア一覧のカードUIで代替)。
+- 自動ツアー(`is_auto_tour_target`列は用意したが自動再生ロジックは未実装)、初回アクセス時の簡単な利用案内モーダル(指示書7章)。
+- 実機(iPhone/Android/LINE内ブラウザ/Safari/Chrome/横画面/タブレット/PC)での動作確認は未実施。開発環境でのPlaywright目視確認のみ。

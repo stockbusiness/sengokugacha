@@ -58,6 +58,13 @@ export default async function AdminIndexPage() {
           <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">武将の名前・画像・説明文の一覧・編集</p>
         </Link>
         <Link
+          href="/admin/metaverse"
+          className="rounded-xl border border-zinc-200 bg-white p-5 hover:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950"
+        >
+          <p className="font-semibold text-zinc-900 dark:text-zinc-50">メタバース内覧</p>
+          <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">城下町デジタル内覧のエリア・物件・問い合わせ管理</p>
+        </Link>
+        <Link
           href="/admin/agents"
           className="rounded-xl border border-zinc-200 bg-white p-5 hover:border-zinc-400 dark:border-zinc-800 dark:bg-zinc-950"
         >

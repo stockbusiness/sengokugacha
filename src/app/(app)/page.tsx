@@ -9,6 +9,7 @@ import { NationalIdCard } from "@/components/dashboard/NationalIdCard";
 import { NationBuildingRateCard } from "@/components/dashboard/NationBuildingRateCard";
 import { NationContributionCategoryCard } from "@/components/hubs/NationContributionCategoryCard";
 import { AtmosphereBackground } from "@/components/home/AtmosphereBackground";
+import { MetaverseTourEntryCard } from "@/components/home/MetaverseTourEntryCard";
 import { PriorityQuickActions } from "@/components/home/PriorityQuickActions";
 import { ContributionCard } from "@/components/economy/ContributionCard";
 import { ActivityTimelineCard } from "@/components/economy/ActivityTimelineCard";
@@ -183,6 +184,7 @@ export default function Home() {
           </div>
 
           <NationContributionCategoryCard />
+          <MetaverseTourEntryCard />
 
           {economy && <OveWalletCard contributionPoints={economy.contribution.total} entries={economy.activity} />}
           {economy && <ActivityTimelineCard entries={economy.activity.slice(0, 5)} />}
