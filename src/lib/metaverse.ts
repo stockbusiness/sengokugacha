@@ -498,6 +498,28 @@ export async function createTourSession(
   return { rawToken, expiresAt };
 }
 
+// events/favorites等、外部内覧ページからの軽量な呼び出し用。validateTourSession()と違い
+// アクセス回数の加算やシーン一覧の取得は行わず、トークンからuser_id/session_idだけを解決する。
+export async function resolveTourSessionByToken(
+  rawToken: string
+): Promise<{ sessionId: string; userId: string; propertyId: string } | null> {
+  const supabase = createSupabaseServerClient();
+  const tokenHash = hashToken(rawToken);
+
+  const { data: session, error } = await supabase
+    .from("metaverse_tour_sessions")
+    .select("id, user_id, property_id, expires_at, status")
+    .eq("token_hash", tokenHash)
+    .maybeSingle();
+
+  if (error) throw error;
+  if (!session) return null;
+  if (session.status !== "active") return null;
+  if (new Date(session.expires_at).getTime() < Date.now()) return null;
+
+  return { sessionId: session.id, userId: session.user_id, propertyId: session.property_id };
+}
+
 export type TourSessionValidation = {
   sessionId: string;
   userId: string;
