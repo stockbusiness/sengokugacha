@@ -1,11 +1,12 @@
 # 戦国経済圏OS 実装済み機能一覧
 
-最終更新: 2026-07-11(戦国パスポート Ver2.5まで反映)
+最終更新: 2026-07-11(戦国パスポート Ver2.6まで反映)
 
 Ver2.0以降の変更内容・影響範囲・未実装事項の詳細は [`docs/V2_IMPLEMENTATION_NOTES.md`](./V2_IMPLEMENTATION_NOTES.md) を参照。
 城下町デジタル内覧機能の既存システム調査・実装計画は [`docs/metaverse-tour-existing-system-analysis.md`](./metaverse-tour-existing-system-analysis.md) / [`docs/metaverse-tour-implementation-plan.md`](./metaverse-tour-implementation-plan.md) を参照。
+外部代理店システム(sengoku-ai.com)連携の実装計画は [`docs/agency-integration-implementation-plan.md`](./agency-integration-implementation-plan.md) を参照。
 
-## 0. 戦国パスポート Ver2.0〜2.5(国家ダッシュボード・経済圏エンジン・演出強化・城下町デジタル内覧)
+## 0. 戦国パスポート Ver2.0〜2.6(国家ダッシュボード・経済圏エンジン・演出強化・城下町デジタル内覧・外部代理店連携)
 
 既存のガチャ中心アプリを「戦国経済圏OS」として段階的に拡張したレイヤー。
 
@@ -47,6 +48,13 @@ Ver2.0以降の変更内容・影響範囲・未実装事項の詳細は [`docs/
 - 閲覧ログ(内覧開始/シーン閲覧/ズーム/お気に入り/相談転換等)を記録し、管理画面の「閲覧分析」で人気物件・内覧完了率・相談転換率・代理店別実績を簡易集計
 - エリア・物件それぞれに画像アップロード機能(管理画面)。区画単位で独自の画像を設定でき、未設定の場合は共通のデフォルト画像(管理画面で1枚ずつ設定)にフォールバックする
 - 内覧シーンに動画(MP4)をアップロード可能。設定したシーンは外部内覧ページで静止画の代わりに動画を再生する(既存の動画ガチャ演出と同じアップロード基盤を再利用)
+
+### 外部代理店システム(sengoku-ai.com)連携(Ver2.6)
+- sengoku-ai.comが発行する代理店データを受信し、代理店(`agents`)を自動で登録・更新する連携API(`POST /api/integrations/agencies`)。`external_id`をキーに同期し、階層(親子関係)も保存する(表示・参照のみ。報酬按分計算には使わない方針)
+- 双方向同期(管理画面ON/OFF切替可): このアプリで作成・編集した代理店もsengoku-ai.comへ自動送信(失敗しても管理画面の保存処理は継続)
+- 管理画面から代理店階層を手動で一括取得する「階層を手動で全件同期」機能
+- SSOログインによる代理店専用ポータル(`/agency`)を新設。代理店本人がsengoku-ai.comの代理店マイページ経由でパスワード入力なしにログインし、自分の紹介URL・紹介実績・配下代理店(表示のみ)を確認できる。これまで存在しなかった「代理店が自分の紹介URLを確認できる手段」を提供する
+- 管理画面(`/admin/agency-integration`)で受信用APIキーの発行・送信先URL/APIキー・SSO設定を管理
 
 ## 1. ユーザー向け機能(LIFF)
 

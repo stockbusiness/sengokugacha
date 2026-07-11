@@ -184,3 +184,30 @@
 - 城下町マップ(指示書24章)の本格実装。LIFF側の縮小プレビュー・外部内覧側の全画面マップ(ピンチズーム・エリアポイント等)は、DB(`metaverse_maps`/`metaverse_map_hotspots`)と管理画面のCRUD APIのみ用意し、実際の表示画面は今回のスコープでは省略した(エリア一覧のカードUIで代替)。
 - 自動ツアー(`is_auto_tour_target`列は用意したが自動再生ロジックは未実装)、初回アクセス時の簡単な利用案内モーダル(指示書7章)。
 - 実機(iPhone/Android/LINE内ブラウザ/Safari/Chrome/横画面/タブレット/PC)での動作確認は未実施。開発環境でのPlaywright目視確認のみ。
+
+## Ver2.6: 外部代理店システム(sengoku-ai.com)連携フェーズ
+
+「代理店連携API仕様書」「代理店システム連携 開発者向け説明書」「代理店システム SSO連携仕様書」(いずれもVersion 3.6.40/3.6.45)に基づく。
+実装計画は `docs/agency-integration-implementation-plan.md` を参照。
+
+### 変更内容
+
+- `agents`テーブルに`external_id`(一意)・`parent_agent_id`/`parent_external_id`(階層)・`contact_name`/`contact_email`/`login_email`/`phone`/`line_url`・`status`・`role_level`・`source`(`local`/`sengoku-ai`)・`lp_urls`・`updated_at`を追加(マイグレーション`20260717000001_agency_integration.sql`)。既存の`rank`(`アドバイザー`/`ディレクター`/`エージェント`)は仕様書の`role_level` 1/2/3の`role_label`と完全一致していたため、そのまま同期先として利用した。
+- 受信API `POST /api/integrations/agencies`(仕様書指定の固定パス、`/api/admin/...`ではない)を新設。`x-api-key`/`Authorization: Bearer`のどちらでも認証し、`external_id`をキーにupsert、`parent_external_id`で親を解決(親が未登録でもエラーにせず保存し、該当の親が後で届いた時点で子側を再紐付けする)。`event=connection_test`/`dry_run=true`は認証確認のみで保存しない。
+- 双方向同期: 管理画面で代理店を新規作成・編集すると、設定がONの場合`src/lib/agents.ts`の`pushAgentToExternal()`がsengoku-ai.comへbest-effortでPOSTする(失敗してもログ記録のみで管理画面の保存処理は継続する。仕様書の「AI側は外部送信に失敗しても本体処理を止めない」という方針を踏襲)。ローカル作成の代理店には`local-<uuid>`形式で`external_id`を自動採番する。
+- 階層取得API(`GET /api/hierarchy.php`)を使った手動一括同期(`/admin/agency-integration`の「階層を手動で全件同期」ボタン)。
+- SSOログイン(代理店ポータル): `RS256`署名JWTを`jose`の`createRemoteJWKSet`で検証(`src/lib/agency-sso.ts`)。`iss`/`aud`/`exp`/`jti`を検証し、`jti`の再利用は`agency_sso_used_jti`テーブルのunique制約(23505)で防止する。検証成功後は代理店専用セッションCookie(`sengoku_agent_session`、JWT、`src/lib/agent-session.ts`)を発行する。ポータル本体(`/agency`)では紹介URL・紹介実績(簡易集計)・配下代理店(表示のみ)を表示する。LIFF共通レイアウトを持たない専用ルートグループ`src/app/agency/**`として実装した(`/tour/**`と同じ方針)。これまで存在しなかった「代理店が自分の紹介URLを確認できる手段」を提供する。
+- 受信用APIキーは内覧トークンと同じ「ランダム値+SHA-256ハッシュ」方式(`src/lib/agents.ts`の`regenerateInboundApiKey()`)。発行時のみ平文を管理画面に表示し、以降は末尾4桁のみ表示する。送信用APIキー(sengoku-ai.com発行)は実際にリクエストへ使う必要があるため、`payment_settings`のStripeキーと同じ方針で平文保存する。
+- 接続設定(送信先URL・送信用APIキー・SSO設定・ON/OFFトグル)は`agency_integration_settings`テーブル(シングルトン。`payment_settings`/`line_settings`と同じパターン)で管理する。
+
+### 影響範囲
+
+- 既存の`agents`/`agent_sales`テーブルへの列追加のみ(削除・型変更なし)。既存の紹介コード方式(`?ref=<referral_code>`によるURL紐付け)への影響なし。sengoku-ai.com同期で作成される代理店の`referral_code`は`external_id`と同じ値を自動採番するため、同期直後から紹介URLとして機能する。
+- 既存の管理画面(`/admin/agents`)の代理店作成・編集フローに変更はなく、双方向同期は追加の非同期送信として動作する(同期無効時は一切外部通信しない)。
+
+### 未実装事項
+
+- 階層に応じた報酬按分計算(ユーザー確認の上で「表示・参照のみ」の方針としたため、意図的に未実装)。
+- sengoku-ai.com側の実装(このアプリはRP/受信側としてのみ動作する。IdP側の実装はスコープ外)。
+- 実際の接続情報(送信先URL・送信用APIキー・受信用APIキーのsengoku-ai.com側への登録)を用いた本番疎通確認は未実施。管理画面から入力後、双方の「接続テスト」機能で確認する必要がある。
+- 代理店ポータル(`/agency`)の実機・実際のSSOフロー(sengoku-ai.com側のSSO起動URLからの遷移)を通した動作確認は未実施。
