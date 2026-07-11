@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminSession } from "@/lib/admin-session";
+import { pushAgentToExternal } from "@/lib/agents";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 // Phase1は代理店ランクの自動判定を行わない(02_additional_considerations 5章)ため、
@@ -18,8 +19,12 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 
   const supabase = createSupabaseServerClient();
-  const { data, error } = await supabase.from("agents").update({ rank }).eq("id", id).select("*").single();
+  const { data, error } = await supabase.from("agents").update({ rank, updated_at: new Date().toISOString() }).eq("id", id).select("*").single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // 外部連携(双方向同期)は失敗しても本体の保存処理には影響させない。
+  pushAgentToExternal(id).catch((err) => console.error("代理店データの外部送信に失敗しました", err));
+
   return NextResponse.json(data);
 }

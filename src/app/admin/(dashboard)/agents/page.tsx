@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 type Agent = {
   id: string;
@@ -8,6 +9,9 @@ type Agent = {
   rank: string;
   referral_code: string;
   created_at: string;
+  external_id: string | null;
+  source: "local" | "sengoku-ai";
+  status: "active" | "inactive";
 };
 
 const RANKS = ["アドバイザー", "ディレクター", "エージェント"] as const;
@@ -71,10 +75,16 @@ export default function AgentsPage() {
 
   return (
     <div className="space-y-6">
-      <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">代理店管理</h1>
+      <div className="flex items-center justify-between">
+        <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">代理店管理</h1>
+        <Link href="/admin/agency-integration" className="text-xs text-red-700 hover:underline dark:text-red-400">
+          外部代理店システム(sengoku-ai.com)連携設定 →
+        </Link>
+      </div>
       <p className="text-xs text-zinc-400 dark:text-zinc-600">
         紹介リンクは <code>https://liff.line.me/&lt;LIFF ID&gt;?ref=&lt;referral_code&gt;</code>
         の形式で発行してください。新規登録時のみ users.referring_agent_id に記録され、既存ユーザーには影響しません。
+        「種別」が sengoku-ai の代理店は外部システムから同期されたデータです(referral_codeは外部の代理店コードと同じ値です)。
         売上集計・ランク自動昇格はPhase2以降です。
       </p>
 
@@ -121,6 +131,8 @@ export default function AgentsPage() {
               <th className="px-4 py-2">代理店名</th>
               <th className="px-4 py-2">referral_code</th>
               <th className="px-4 py-2">ランク</th>
+              <th className="px-4 py-2">種別</th>
+              <th className="px-4 py-2">状態</th>
               <th className="px-4 py-2">作成日</th>
             </tr>
           </thead>
@@ -143,6 +155,12 @@ export default function AgentsPage() {
                       </option>
                     ))}
                   </select>
+                </td>
+                <td className="px-4 py-2 text-xs text-zinc-500 dark:text-zinc-400">
+                  {agent.source === "sengoku-ai" ? "sengoku-ai同期" : "ローカル"}
+                </td>
+                <td className="px-4 py-2 text-xs text-zinc-500 dark:text-zinc-400">
+                  {agent.status === "inactive" ? "停止中" : "有効"}
                 </td>
                 <td className="px-4 py-2 text-xs text-zinc-400">
                   {new Date(agent.created_at).toLocaleDateString("ja-JP")}

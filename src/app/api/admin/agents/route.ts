@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminSession } from "@/lib/admin-session";
+import { pushAgentToExternal } from "@/lib/agents";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export async function GET() {
@@ -41,5 +42,9 @@ export async function POST(request: NextRequest) {
     .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  // 外部連携(双方向同期)は失敗しても本体の保存処理には影響させない。
+  pushAgentToExternal(data.id).catch((err) => console.error("代理店データの外部送信に失敗しました", err));
+
   return NextResponse.json(data);
 }
