@@ -68,7 +68,9 @@ export default function MetaverseTourSessionsPage() {
         </Link>
         <h1 className="mt-1 text-xl font-bold text-zinc-900 dark:text-zinc-50">外部内覧セッション</h1>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          「全画面で内覧する」を押した際に発行される一時トークンの発行状況です。個人情報はトークンに含まれません。
+          LIFF内の物件詳細ページで「全画面で内覧する」を押した際に発行される一時トークンの発行状況です。
+          個人情報(氏名・LINE ID等)はトークンにもこの画面のレスポンスにも含まれません。有効期限を過ぎたリンクは
+          自動的に失効し、下のフォームから既定の有効期限(分)を変更できます。非公開の物件にはトークンを発行できません。
         </p>
       </div>
 

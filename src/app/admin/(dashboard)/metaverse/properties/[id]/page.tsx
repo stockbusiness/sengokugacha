@@ -183,6 +183,9 @@ export default function EditMetaversePropertyPage() {
 
       <div className="space-y-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
         <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">基本情報</h2>
+        <p className="text-xs text-zinc-400 dark:text-zinc-600">
+          「公開状態」を「公開中」または「近日公開」にするとLIFF・外部内覧ページに表示されます。「下書き」「非公開」は表示されません。
+        </p>
         <div className="grid grid-cols-2 gap-3">
           <Field label="区画番号">
             <input
@@ -343,6 +346,10 @@ export default function EditMetaversePropertyPage() {
 
       <div className="space-y-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
         <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">画像ギャラリー</h2>
+        <p className="text-xs text-zinc-400 dark:text-zinc-600">
+          物件一覧・詳細ページに表示する画像です。「メイン」バッジの画像が一覧のサムネイルとして使われます。
+          未設定の場合は、エリア管理ページの「デフォルト画像設定」で登録した共通画像が使われます。
+        </p>
         <div className="flex flex-wrap gap-3">
           {property.images.map((img) => (
             <div key={img.id} className="relative">
@@ -388,6 +395,10 @@ export default function EditMetaversePropertyPage() {
 
       <div className="space-y-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
         <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">内覧シーン({property.scenes.length}件)</h2>
+        <p className="text-xs text-zinc-400 dark:text-zinc-600">
+          外部内覧ページ(スワイプで切り替わる画面)で表示するシーンです。各シーンをクリックして展開すると、
+          画像・動画・説明ポイント(タップすると説明が出る印)を設定できます。「公開する」を押したシーンのみ表示されます。
+        </p>
         <div className="space-y-2">
           {property.scenes.map((scene) => (
             <SceneRow

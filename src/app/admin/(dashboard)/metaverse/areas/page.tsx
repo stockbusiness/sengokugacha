@@ -176,7 +176,10 @@ export default function MetaverseAreasPage() {
         </Link>
         <h1 className="mt-1 text-xl font-bold text-zinc-900 dark:text-zinc-50">エリア管理({areas.length}件)</h1>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          城下町の「エリア」(区画のグループ)と「建物タイプ」(物件登録時に選ぶ種別)を管理します。
           「状態」を「公開」にするとLIFF・外部内覧ページに表示されます。「下書き」の間は表示されません。
+          画像は各エリアの行から個別にアップロードでき、未設定の場合はページ下部の「デフォルト画像設定」で
+          登録した共通画像が使われます。物件(区画)の登録は「区画・物件管理」ページから行います。
         </p>
       </div>
 
