@@ -3,18 +3,7 @@ import { logAdminAction } from "@/lib/admin-audit-log";
 import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
-const EDITABLE_FIELDS = [
-  "name",
-  "is_active",
-  "status",
-  "map_code",
-  "version",
-  "viewbox_width",
-  "viewbox_height",
-  "origin_x",
-  "origin_y",
-  "unity_scale",
-] as const;
+const EDITABLE_FIELDS = ["status", "start_date", "end_date", "order_reference"] as const;
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!(await getAdminSession())) {
@@ -31,14 +20,18 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   for (const key of EDITABLE_FIELDS) {
     if (key in body) fields[key] = body[key];
   }
-  if (fields.status === "published") fields.published_at = new Date().toISOString();
 
   const supabase = createSupabaseServerClient();
-  const { data, error } = await supabase.from("metaverse_maps").update(fields).eq("id", id).select("*").single();
+  const { data, error } = await supabase
+    .from("metaverse_plot_rights")
+    .update(fields)
+    .eq("id", id)
+    .select("*, metaverse_properties(id, property_code, name), users(id, display_name), agents(id, name)")
+    .single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  await logAdminAction(await getAdminActorName(), "metaverse_map_update", `id=${id}`);
+  await logAdminAction(await getAdminActorName(), "metaverse_plot_right_update", `id=${id}`);
   return NextResponse.json(data);
 }
 
@@ -49,13 +42,10 @@ export async function DELETE(request: NextRequest, { params }: { params: Promise
 
   const { id } = await params;
   const supabase = createSupabaseServerClient();
+  const { error } = await supabase.from("metaverse_plot_rights").delete().eq("id", id);
 
-  const { error: hotspotsError } = await supabase.from("metaverse_map_hotspots").delete().eq("map_id", id);
-  if (hotspotsError) return NextResponse.json({ error: hotspotsError.message }, { status: 500 });
-
-  const { error } = await supabase.from("metaverse_maps").delete().eq("id", id);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  await logAdminAction(await getAdminActorName(), "metaverse_map_delete", `id=${id}`);
+  await logAdminAction(await getAdminActorName(), "metaverse_plot_right_delete", `id=${id}`);
   return NextResponse.json({ ok: true });
 }

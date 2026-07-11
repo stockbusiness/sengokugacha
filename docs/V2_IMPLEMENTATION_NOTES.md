@@ -232,3 +232,31 @@
 
 - ポリゴン(色分け領域)方式のホットスポット、ピンチズーム、外部内覧側(`/tour/**`)での全画面マップ表示は未実装。
 - 実際のマップイラスト素材を使った本番確認は未実施(素材が用意でき次第、管理画面からアップロードして確認する運用)。
+
+## Ver2.8: 城下町マップ・区画座標基盤(ポリゴン・街区・所有権)
+
+「戦国メタバース 城下町マップ・区画座標実装指示書」に基づく。実装計画は`docs/plot-coordinate-implementation-plan.md`を参照。Ver2.7の点(ピン)方式のホットスポットを、区画IDを基準にしたポリゴン方式へ拡張し、将来のUnityメタバース連携を見据えた座標基盤を整備した。
+
+### 変更内容
+
+- 指示書の`maps`/`areas`/`plots`/`buildings`テーブル案は、二重管理を避けるため既存の`metaverse_maps`/`metaverse_areas`/`metaverse_properties`への列追加として統合した(詳細は実装計画のマッピング表を参照)。`metaverse_properties`(=区画/plot)に`polygon`/`anchor_x`/`anchor_y`/`frontage_angle`/`block_id`/`road_id`/`unity_x,y,z,rotation_y`(列のみ、値・変換ロジックは未実装)/`exterior_variant`等を追加。新規テーブルとして`metaverse_blocks`(街区)・`metaverse_roads`・`metaverse_points_of_interest`・`metaverse_plot_rights`(所有権・代理店特別利用権)・`metaverse_plot_geometry_history`(座標変更履歴)を追加(マイグレーション`20260719000001_metaverse_plot_coordinates.sql`)。
+- バージョン管理は指示書のようなエリア・街区単位までの汎用マルチバージョンではなく、**マップ単位のdraft/review/published**に簡略化した(`metaverse_maps.status`)。区画のポリゴン・建物アンカーの変更は都度`metaverse_plot_geometry_history`に記録する(`src/lib/metaverse.ts`の`recordPlotGeometryChange()`、`/api/admin/metaverse/properties/[id]`のPATCHでpolygon/anchor変更時に自動記録)。
+- ポリゴン描画は新規共通コンポーネント`src/components/admin/PolygonCanvas.tsx`(SVG+`getScreenCTM().inverse()`によるクリック位置→viewBox座標変換。画像のアスペクト比に関わらず正確にクリック位置を取得できる)を作成し、管理画面の3箇所で再利用: `/admin/metaverse/maps`(エリアポリゴン。既存の点ホットスポットモードと切替式)、`/admin/metaverse/blocks`(新設。街区ポリゴン+街区内の区画ポリゴン。エリア/街区の範囲だけ`viewBox`を絞ることで、専用の画像を用意せず同じマップ画像を「ズームした」ように表示する)。
+- 区画の自動生成(指示書13章): 街区ポリゴンの外接矩形を行数×列数で分割し、区画番号の接頭辞から連番で`metaverse_properties`を一括作成するツールを`/admin/metaverse/blocks`に実装。
+- 所有権・代理店特別利用権の管理画面`/admin/metaverse/plot-rights`(新設)。区画・権利種別(所有権/特別利用権/賃貸/管理委託/予約)・城主(既存`/api/admin/users`の検索を流用)・代理店(既存`agents`)・期間を登録する。購入データの自動取込みは行わず、手動登録の運用とした(指示書14章の「仮割当→承認」フローは今回のスコープ外)。
+- LIFF側: `/metaverse-tour/areas`のマップ表示をSVGポリゴンオーバーレイに対応(エリアにポリゴンがあればそちらを優先表示し、無いエリアは従来の点ホットスポットにフォールバック)。エリア詳細ページ(`/metaverse-tour/areas/[areaId]`)に街区フィルタのチップUIを追加(街区が無いエリアは従来どおり全物件をカード表示)。ただしユーザーの選択操作としての街区・区画レベルはユーザー提供モックの「建物選択」画面と同じ**カード一覧**を維持し、ポリゴンタップ操作は全体マップ(エリア選択)レベルのみに絞った(モック自体もこの2段階構成だったため)。
+- LIFF側「あなたの区画」(`/metaverse-tour`トップページ): `metaverse_plot_rights.user_id`が自分と一致し`status=active`な区画を一覧表示する(`getMyPlotRights()`)。
+
+### 影響範囲
+
+- 既存テーブルへの列追加のみ(削除・型変更なし)。ポリゴン・街区・所有権いずれも未設定の状態では、既存の物件カード一覧の挙動に変化はない。
+
+### 未実装事項
+
+- Unity用JSONエクスポートAPI、2D→Unity座標変換ロジック(列のみ用意)。
+- CSV/Excel/GeoJSONのインポート・エクスポート機能。
+- 購入データの自動取込〜仮割当〜本配置ワークフロー(指示書14章)。
+- エリア・街区単位の個別バージョニング(マップ単位のみ実装)。
+- `metaverse_roads`/`metaverse_points_of_interest`の管理画面UI(テーブルのみ用意。区画の`road_id`は手動でAPI経由の設定を想定)。
+- モデル地域(約50区画・4エリア)への実データ投入は運営側の作業として未着手。
+- 実機・実際のマップイラスト素材を用いた動作確認は未実施。ポリゴンのクリック位置計算ロジックは一時的なdev-previewページ+Playwrightで正確性を確認した上でコードから削除した(検証用ファイルはコミットしていない)。

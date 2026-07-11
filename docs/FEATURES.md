@@ -1,12 +1,13 @@
 # 戦国経済圏OS 実装済み機能一覧
 
-最終更新: 2026-07-11(戦国パスポート Ver2.7まで反映)
+最終更新: 2026-07-11(戦国パスポート Ver2.8まで反映)
 
 Ver2.0以降の変更内容・影響範囲・未実装事項の詳細は [`docs/V2_IMPLEMENTATION_NOTES.md`](./V2_IMPLEMENTATION_NOTES.md) を参照。
 城下町デジタル内覧機能の既存システム調査・実装計画は [`docs/metaverse-tour-existing-system-analysis.md`](./metaverse-tour-existing-system-analysis.md) / [`docs/metaverse-tour-implementation-plan.md`](./metaverse-tour-implementation-plan.md) を参照。
 外部代理店システム(sengoku-ai.com)連携の実装計画は [`docs/agency-integration-implementation-plan.md`](./agency-integration-implementation-plan.md) を参照。
+城下町マップ・区画座標基盤の実装計画は [`docs/plot-coordinate-implementation-plan.md`](./plot-coordinate-implementation-plan.md) を参照。
 
-## 0. 戦国パスポート Ver2.0〜2.7(国家ダッシュボード・経済圏エンジン・演出強化・城下町デジタル内覧・外部代理店連携)
+## 0. 戦国パスポート Ver2.0〜2.8(国家ダッシュボード・経済圏エンジン・演出強化・城下町デジタル内覧・外部代理店連携・区画座標基盤)
 
 既存のガチャ中心アプリを「戦国経済圏OS」として段階的に拡張したレイヤー。
 
@@ -49,6 +50,7 @@ Ver2.0以降の変更内容・影響範囲・未実装事項の詳細は [`docs/
 - エリア・物件それぞれに画像アップロード機能(管理画面)。区画単位で独自の画像を設定でき、未設定の場合は共通のデフォルト画像(管理画面で1枚ずつ設定)にフォールバックする
 - 内覧シーンに動画(MP4)をアップロード可能。設定したシーンは外部内覧ページで静止画の代わりに動画を再生する(既存の動画ガチャ演出と同じアップロード基盤を再利用)
 - 城下町の俯瞰イラストマップ+タップ可能なエリアホットスポット(管理画面でマップ画像をアップロードし、画像をクリックしてエリアを配置)。マップ未設定の間はこれまでどおりカード一覧のみが表示される
+- 区画IDを基準にした座標基盤(エリア→街区→区画のポリゴン座標、建物配置アンカー、所有権・代理店特別利用権、座標変更履歴、マップのdraft/review/published管理)。将来のUnityメタバース連携を見据えた設計(Unity座標列は用意済み、変換・エクスポートは未実装)。管理画面から街区・区画ポリゴンの描画、格子状の一括生成、所有権登録が可能
 
 ### 外部代理店システム(sengoku-ai.com)連携(Ver2.6)
 - sengoku-ai.comが発行する代理店データを受信し、代理店(`agents`)を自動で登録・更新する連携API(`POST /api/integrations/agencies`)。`external_id`をキーに同期し、階層(親子関係)も保存する(表示・参照のみ。報酬按分計算には使わない方針)

@@ -133,22 +133,33 @@ export type MetaverseMapHotspot = {
   icon: string | null;
 };
 
+export type MetaverseMapAreaPolygon = {
+  id: string;
+  slug: string;
+  name: string;
+  polygon: [number, number][];
+};
+
 export type MetaverseMap = {
   id: string;
   name: string;
   imageUrl: string;
+  viewBoxWidth: number;
+  viewBoxHeight: number;
   hotspots: MetaverseMapHotspot[];
+  areaPolygons: MetaverseMapAreaPolygon[];
 };
 
-// LIFF側の全体マップ表示用。マップ画像が未設定(管理画面で未アップロード)の場合はnullを返し、
-// 呼び出し側は既存のカード一覧表示にフォールバックする。
+// LIFF側の全体マップ表示用。マップ画像が未設定、または公開(status=published)されていない場合は
+// nullを返し、呼び出し側は既存のカード一覧表示にフォールバックする。
 export async function getActiveMap(): Promise<MetaverseMap | null> {
   const supabase = createSupabaseServerClient();
 
   const { data: map, error: mapError } = await supabase
     .from("metaverse_maps")
-    .select("id, name, image_url")
+    .select("id, name, image_url, viewbox_width, viewbox_height")
     .eq("is_active", true)
+    .eq("status", "published")
     .neq("image_url", "")
     .order("created_at", { ascending: false })
     .limit(1)
@@ -156,20 +167,29 @@ export async function getActiveMap(): Promise<MetaverseMap | null> {
   if (mapError) throw mapError;
   if (!map) return null;
 
-  const { data: hotspots, error: hotspotsError } = await supabase
-    .from("metaverse_map_hotspots")
-    .select(
-      "id, position_x, position_y, label, icon, metaverse_areas!inner(id, slug, name, status)"
-    )
-    .eq("map_id", map.id)
-    .eq("metaverse_areas.status", "published")
-    .order("display_order", { ascending: true });
+  const [{ data: hotspots, error: hotspotsError }, { data: areas, error: areasError }] = await Promise.all([
+    supabase
+      .from("metaverse_map_hotspots")
+      .select("id, position_x, position_y, label, icon, metaverse_areas!inner(id, slug, name, status)")
+      .eq("map_id", map.id)
+      .eq("metaverse_areas.status", "published")
+      .order("display_order", { ascending: true }),
+    supabase
+      .from("metaverse_areas")
+      .select("id, slug, name, polygon")
+      .eq("map_id", map.id)
+      .eq("status", "published")
+      .not("polygon", "is", null),
+  ]);
   if (hotspotsError) throw hotspotsError;
+  if (areasError) throw areasError;
 
   return {
     id: map.id,
     name: map.name,
     imageUrl: map.image_url,
+    viewBoxWidth: map.viewbox_width,
+    viewBoxHeight: map.viewbox_height,
     hotspots: (hotspots ?? []).map((h) => {
       const area = h.metaverse_areas as unknown as { id: string; slug: string; name: string };
       return {
@@ -183,7 +203,137 @@ export async function getActiveMap(): Promise<MetaverseMap | null> {
         icon: h.icon,
       };
     }),
+    areaPolygons: (areas ?? []).map((a) => ({
+      id: a.id,
+      slug: a.slug,
+      name: a.name,
+      polygon: a.polygon as [number, number][],
+    })),
   };
+}
+
+export type MetaverseBlockPolygon = {
+  id: string;
+  blockCode: string;
+  displayName: string;
+  polygon: [number, number][] | null;
+};
+
+// エリア詳細ページの「街区を選ぶ」表示用。街区が無いエリアは空配列を返し、
+// 呼び出し側は既存の物件カード一覧にフォールバックする。
+export async function getBlocksForArea(areaId: string): Promise<MetaverseBlockPolygon[]> {
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("metaverse_blocks")
+    .select("id, block_code, display_name, polygon")
+    .eq("area_id", areaId)
+    .eq("status", "published")
+    .order("display_order", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((b) => ({
+    id: b.id,
+    blockCode: b.block_code,
+    displayName: b.display_name,
+    polygon: (b.polygon as [number, number][] | null) ?? null,
+  }));
+}
+
+export type MetaversePlotPolygon = {
+  id: string;
+  propertyCode: string;
+  name: string;
+  status: MetaversePropertySummary["status"];
+  polygon: [number, number][] | null;
+};
+
+// 街区詳細表示用。区画(物件)のポリゴンと、タップ先の物件詳細への導線に必要な最小限の情報のみ返す。
+export async function getPlotsForBlock(blockId: string): Promise<MetaversePlotPolygon[]> {
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("metaverse_properties")
+    .select("id, property_code, name, status, polygon")
+    .eq("block_id", blockId)
+    .in("status", PLAYER_PROPERTY_STATUSES)
+    .order("display_order", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((p) => ({
+    id: p.id,
+    propertyCode: p.property_code,
+    name: p.name,
+    status: p.status as MetaversePropertySummary["status"],
+    polygon: (p.polygon as [number, number][] | null) ?? null,
+  }));
+}
+
+export type PlotGeometryChangeInput = {
+  propertyId: string;
+  oldPolygon: [number, number][] | null;
+  newPolygon: unknown;
+  oldAnchorX: number | null;
+  oldAnchorY: number | null;
+  newAnchorX: number | null;
+  newAnchorY: number | null;
+  changedBy: string | null;
+  mapVersion: string | null;
+  reason?: string;
+};
+
+// 区画のポリゴン・建物アンカーの変更履歴を記録する(指示書16章)。
+export async function recordPlotGeometryChange(input: PlotGeometryChangeInput): Promise<void> {
+  const supabase = createSupabaseServerClient();
+  const { error } = await supabase.from("metaverse_plot_geometry_history").insert({
+    property_id: input.propertyId,
+    old_polygon: input.oldPolygon,
+    new_polygon: input.newPolygon,
+    old_anchor_x: input.oldAnchorX,
+    old_anchor_y: input.oldAnchorY,
+    new_anchor_x: input.newAnchorX,
+    new_anchor_y: input.newAnchorY,
+    changed_by: input.changedBy,
+    reason: input.reason ?? null,
+    map_version: input.mapVersion,
+  });
+  if (error) throw error;
+}
+
+export type MetaverseMyPlot = {
+  propertyId: string;
+  propertyCode: string;
+  name: string;
+  areaName: string | null;
+  rightType: string;
+  status: string;
+};
+
+// LIFF側「自分の区画」表示用。所有権・特別利用権が有効(active)な区画のみ返す。
+export async function getMyPlotRights(userId: string): Promise<MetaverseMyPlot[]> {
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("metaverse_plot_rights")
+    .select(
+      "right_type, status, metaverse_properties!inner(id, property_code, name, metaverse_areas(name))"
+    )
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .order("assigned_at", { ascending: false });
+  if (error) throw error;
+
+  return (data ?? []).map((r) => {
+    const property = r.metaverse_properties as unknown as {
+      id: string;
+      property_code: string;
+      name: string;
+      metaverse_areas: { name: string } | null;
+    };
+    return {
+      propertyId: property.id,
+      propertyCode: property.property_code,
+      name: property.name,
+      areaName: property.metaverse_areas?.name ?? null,
+      rightType: r.right_type,
+      status: r.status,
+    };
+  });
 }
 
 export async function getMetaverseOverview(): Promise<{

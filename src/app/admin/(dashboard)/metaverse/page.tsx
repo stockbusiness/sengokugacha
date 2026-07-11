@@ -28,8 +28,10 @@ export default function MetaverseHubPage() {
 
       <div className="grid gap-3 sm:grid-cols-3">
         <HubCard href="/admin/metaverse/areas" title="エリア管理" description="城下町のエリア・建物タイプの登録・編集。画像アップロード、共通デフォルト画像の設定もここから" />
-        <HubCard href="/admin/metaverse/maps" title="全体マップ管理" description="城下町の俯瞰イラスト画像のアップロードと、エリアへのタップ可能なホットスポット配置" />
+        <HubCard href="/admin/metaverse/maps" title="全体マップ管理" description="城下町の俯瞰イラスト画像のアップロードと、エリアへのタップ可能なホットスポット・ポリゴン配置" />
+        <HubCard href="/admin/metaverse/blocks" title="街区・区画ポリゴン管理" description="エリア内の街区、街区内の区画(物件)のポリゴンを描画・自動生成" />
         <HubCard href="/admin/metaverse/properties" title="区画・物件管理" description="物件の登録・編集・内覧シーン(画像/動画)・説明ポイント・画像ギャラリー管理" />
+        <HubCard href="/admin/metaverse/plot-rights" title="所有権・利用権管理" description="区画ごとの所有権・代理店特別利用権・賃貸・管理委託の登録" />
         <HubCard href="/admin/metaverse/inquiries" title="問い合わせ管理" description="LIFF内フォームからの相談申込の一覧・対応状況の更新" />
         <HubCard href="/admin/metaverse/tour-sessions" title="外部内覧セッション" description="発行された一時内覧トークンの有効期限設定・利用状況の確認" />
         <HubCard href="/admin/metaverse/analytics" title="閲覧分析" description="人気物件・内覧完了率・相談転換率・代理店別実績の簡易集計" />

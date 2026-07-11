@@ -32,6 +32,8 @@ type AreaDetail = {
   properties: PropertySummary[];
 };
 
+type Block = { id: string; blockCode: string; displayName: string };
+
 type Status = "loading" | "ready" | "error";
 
 export default function MetaverseTourAreaDetailPage() {
@@ -39,6 +41,9 @@ export default function MetaverseTourAreaDetailPage() {
   const [status, setStatus] = useState<Status>("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [area, setArea] = useState<AreaDetail | null>(null);
+  const [blocks, setBlocks] = useState<Block[]>([]);
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
+  const [blockPropertyIds, setBlockPropertyIds] = useState<Set<string> | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,16 +51,18 @@ export default function MetaverseTourAreaDetailPage() {
     ensureLiffSession()
       .then((session) => {
         if (cancelled || session.status === "redirecting") return;
-        return fetch(`/api/metaverse/areas/${params.areaId}`)
-          .then((res) => {
+        return Promise.all([
+          fetch(`/api/metaverse/areas/${params.areaId}`).then((res) => {
             if (!res.ok) throw new Error("エリア情報の取得に失敗しました。");
             return res.json();
-          })
-          .then((data: AreaDetail) => {
-            if (cancelled) return;
-            setArea(data);
-            setStatus("ready");
-          });
+          }),
+          fetch(`/api/metaverse/areas/${params.areaId}/blocks`).then((res) => res.json()),
+        ]).then(([areaData, blockData]: [AreaDetail, Block[]]) => {
+          if (cancelled) return;
+          setArea(areaData);
+          setBlocks(blockData);
+          setStatus("ready");
+        });
       })
       .catch((error) => {
         if (cancelled) return;
@@ -68,6 +75,23 @@ export default function MetaverseTourAreaDetailPage() {
     };
   }, [params.areaId]);
 
+  function handleSelectBlock(blockId: string | null) {
+    setSelectedBlockId(blockId);
+    if (!blockId) {
+      setBlockPropertyIds(null);
+      return;
+    }
+    fetch(`/api/metaverse/blocks/${blockId}/plots`)
+      .then((res) => res.json())
+      .then((plots: { id: string }[]) => setBlockPropertyIds(new Set(plots.map((p) => p.id))));
+  }
+
+  const visibleProperties = area
+    ? blockPropertyIds
+      ? area.properties.filter((p) => blockPropertyIds.has(p.id))
+      : area.properties
+    : [];
+
   return (
     <div className="mx-auto w-full max-w-md px-4 py-10">
       {status === "loading" && <LoadingSpinner />}
@@ -79,8 +103,28 @@ export default function MetaverseTourAreaDetailPage() {
         <div className="space-y-4">
           <PageHeader title={area.name} subtitle={area.description ?? undefined} />
 
+          {blocks.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => handleSelectBlock(null)}
+                className={`rounded-full border px-3 py-1 text-xs font-semibold ${!selectedBlockId ? "border-gold bg-gold/20 text-gold-soft" : "border-gold/20 text-parchment-dim"}`}
+              >
+                すべて
+              </button>
+              {blocks.map((b) => (
+                <button
+                  key={b.id}
+                  onClick={() => handleSelectBlock(b.id)}
+                  className={`rounded-full border px-3 py-1 text-xs font-semibold ${selectedBlockId === b.id ? "border-gold bg-gold/20 text-gold-soft" : "border-gold/20 text-parchment-dim"}`}
+                >
+                  {b.displayName}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
-            {area.properties.map((p) => (
+            {visibleProperties.map((p) => (
               <Link key={p.id} href={`/metaverse-tour/properties/${p.id}`} className="block">
                 <Card className="p-0 overflow-hidden transition hover:border-gold/50">
                   {p.mainImageUrl ? (
@@ -98,7 +142,7 @@ export default function MetaverseTourAreaDetailPage() {
               </Link>
             ))}
           </div>
-          {area.properties.length === 0 && <p className="text-center text-sm text-parchment-dim">このエリアにはまだ物件がありません。</p>}
+          {visibleProperties.length === 0 && <p className="text-center text-sm text-parchment-dim">このエリアにはまだ物件がありません。</p>}
 
           <div className="pt-4 text-center">
             <TextLink href="/metaverse-tour/areas">← エリア一覧に戻る</TextLink>

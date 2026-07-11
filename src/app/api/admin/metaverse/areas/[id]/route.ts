@@ -19,6 +19,10 @@ const EDITABLE_FIELDS = [
   "closed_at",
   "external_world_ref",
   "internal_price_range_note",
+  "map_id",
+  "area_code",
+  "internal_type",
+  "polygon",
 ] as const;
 
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
