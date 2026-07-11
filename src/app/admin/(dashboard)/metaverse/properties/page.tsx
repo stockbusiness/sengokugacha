@@ -53,6 +53,11 @@ export default function MetaversePropertiesPage() {
             新規物件を追加
           </Link>
         </div>
+        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          物件(区画)の一覧です。「編集」から、基本情報・画像ギャラリー・内覧シーン(画像/動画)・説明ポイントを設定できます。
+          「状態」が「公開中」または「近日公開」の物件のみLIFF・外部内覧ページに表示されます(「下書き」「非公開」は表示されません)。
+          物件を登録する前に、先に「エリア管理」でエリア・建物タイプを登録しておいてください。
+        </p>
       </div>
 
       <div className="overflow-x-auto rounded-xl border border-zinc-200 bg-white dark:border-zinc-800 dark:bg-zinc-950">

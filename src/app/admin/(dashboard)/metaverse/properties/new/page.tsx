@@ -63,6 +63,9 @@ export default function NewMetaversePropertyPage() {
         ← 区画・物件管理
       </Link>
       <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">新規物件を追加</h1>
+      <p className="text-sm text-zinc-500 dark:text-zinc-400">
+        ここでは基本情報のみ登録します。画像・内覧シーン(画像/動画)・説明ポイントは、保存後に移動する編集ページから追加してください。
+      </p>
 
       <form onSubmit={handleSubmit} className="space-y-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
         <label className="block">

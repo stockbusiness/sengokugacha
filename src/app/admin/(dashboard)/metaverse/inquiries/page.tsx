@@ -72,6 +72,10 @@ export default function MetaverseInquiriesPage() {
           ← メタバース内覧管理
         </Link>
         <h1 className="mt-1 text-xl font-bold text-zinc-900 dark:text-zinc-50">問い合わせ管理({inquiries.length}件)</h1>
+        <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
+          LIFF内の相談申込フォームから送られた問い合わせの一覧です。ユーザーの紹介元代理店(登録済みの場合)へ自動で紐づきます。
+          対応状況はここから更新できます。
+        </p>
       </div>
 
       <div className="space-y-3">
