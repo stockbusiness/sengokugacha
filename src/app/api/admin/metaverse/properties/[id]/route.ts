@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { logAdminAction } from "@/lib/admin-audit-log";
 import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
+import { recordPlotGeometryChange } from "@/lib/metaverse";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 const EDITABLE_FIELDS = [
@@ -21,7 +22,23 @@ const EDITABLE_FIELDS = [
   "internal_price_yen",
   "internal_rights_note",
   "internal_benefits_note",
+  "block_id",
+  "internal_category",
+  "polygon",
+  "anchor_x",
+  "anchor_y",
+  "frontage_angle",
+  "road_id",
+  "size_rank",
+  "location_rank",
+  "map_version",
+  "exterior_variant",
+  "interior_variant",
+  "crest_asset",
+  "nameplate_text",
 ] as const;
+
+const GEOMETRY_FIELDS = ["polygon", "anchor_x", "anchor_y"] as const;
 
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!(await getAdminSession())) {
@@ -66,11 +83,38 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     if (key in body) fields[key] = body[key];
   }
 
+  const touchesGeometry = GEOMETRY_FIELDS.some((key) => key in fields);
   const supabase = createSupabaseServerClient();
+
+  let before: { polygon: unknown; anchor_x: unknown; anchor_y: unknown } | null = null;
+  if (touchesGeometry) {
+    const { data: existing, error: existingError } = await supabase
+      .from("metaverse_properties")
+      .select("polygon, anchor_x, anchor_y")
+      .eq("id", id)
+      .maybeSingle();
+    if (existingError) return NextResponse.json({ error: existingError.message }, { status: 500 });
+    before = existing;
+  }
+
   const { data, error } = await supabase.from("metaverse_properties").update(fields).eq("id", id).select("*").single();
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  if (touchesGeometry && before) {
+    await recordPlotGeometryChange({
+      propertyId: id,
+      oldPolygon: before.polygon as [number, number][] | null,
+      newPolygon: data.polygon,
+      oldAnchorX: before.anchor_x != null ? Number(before.anchor_x) : null,
+      oldAnchorY: before.anchor_y != null ? Number(before.anchor_y) : null,
+      newAnchorX: data.anchor_x != null ? Number(data.anchor_x) : null,
+      newAnchorY: data.anchor_y != null ? Number(data.anchor_y) : null,
+      changedBy: await getAdminActorName(),
+      mapVersion: data.map_version,
+    });
   }
 
   await logAdminAction(await getAdminActorName(), "metaverse_property_update", `id=${id}`);
