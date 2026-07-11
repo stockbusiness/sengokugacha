@@ -122,6 +122,70 @@ export async function getDefaultImages(): Promise<{ property: string | null; are
   };
 }
 
+export type MetaverseMapHotspot = {
+  id: string;
+  areaId: string;
+  areaSlug: string;
+  areaName: string;
+  positionX: number;
+  positionY: number;
+  label: string | null;
+  icon: string | null;
+};
+
+export type MetaverseMap = {
+  id: string;
+  name: string;
+  imageUrl: string;
+  hotspots: MetaverseMapHotspot[];
+};
+
+// LIFF側の全体マップ表示用。マップ画像が未設定(管理画面で未アップロード)の場合はnullを返し、
+// 呼び出し側は既存のカード一覧表示にフォールバックする。
+export async function getActiveMap(): Promise<MetaverseMap | null> {
+  const supabase = createSupabaseServerClient();
+
+  const { data: map, error: mapError } = await supabase
+    .from("metaverse_maps")
+    .select("id, name, image_url")
+    .eq("is_active", true)
+    .neq("image_url", "")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (mapError) throw mapError;
+  if (!map) return null;
+
+  const { data: hotspots, error: hotspotsError } = await supabase
+    .from("metaverse_map_hotspots")
+    .select(
+      "id, position_x, position_y, label, icon, metaverse_areas!inner(id, slug, name, status)"
+    )
+    .eq("map_id", map.id)
+    .eq("metaverse_areas.status", "published")
+    .order("display_order", { ascending: true });
+  if (hotspotsError) throw hotspotsError;
+
+  return {
+    id: map.id,
+    name: map.name,
+    imageUrl: map.image_url,
+    hotspots: (hotspots ?? []).map((h) => {
+      const area = h.metaverse_areas as unknown as { id: string; slug: string; name: string };
+      return {
+        id: h.id,
+        areaId: area.id,
+        areaSlug: area.slug,
+        areaName: area.name,
+        positionX: Number(h.position_x),
+        positionY: Number(h.position_y),
+        label: h.label,
+        icon: h.icon,
+      };
+    }),
+  };
+}
+
 export async function getMetaverseOverview(): Promise<{
   publishedPropertyCount: number;
   areaCount: number;
