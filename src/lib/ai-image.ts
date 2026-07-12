@@ -68,7 +68,9 @@ async function generateWithOpenAi(
         Authorization: `Bearer ${settings.api_key}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ model: settings.model, prompt: fullPrompt, size, response_format: "b64_json" }),
+      // gpt-image-1はresponse_formatパラメータに未対応(常にb64_jsonで返る。dall-e-2/3限定のパラメータ)。
+      // 付けると「Unknown parameter: 'response_format'」エラーになる。
+      body: JSON.stringify({ model: settings.model, prompt: fullPrompt, size }),
     });
   }
 
