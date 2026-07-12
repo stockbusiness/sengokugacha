@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { logAdminAction } from "@/lib/admin-audit-log";
 import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
-import { resizeForLine } from "@/lib/image-upload";
+import { resizeForLine, uploadImageAndVerify, ImageUploadVerificationError } from "@/lib/image-upload";
 import { AI_IMAGE_TARGETS, isAiImageEntityType, type AiImageEntityType } from "@/lib/ai-image-targets";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
@@ -62,14 +62,15 @@ export async function POST(request: NextRequest) {
   }
 
   const path = `${targetDef.pathPrefix}/${entityId}-ai-${Date.now()}.${resized.extension}`;
-  const { error: uploadError } = await supabase.storage
-    .from(targetDef.bucket)
-    .upload(path, resized.buffer, { contentType: resized.contentType, upsert: true, cacheControl: "60" });
-  if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 500 });
-
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from(targetDef.bucket).getPublicUrl(path);
+  let publicUrl: string;
+  try {
+    ({ publicUrl } = await uploadImageAndVerify(supabase, targetDef.bucket, path, resized.buffer, resized.contentType));
+  } catch (error) {
+    if (error instanceof ImageUploadVerificationError) {
+      return NextResponse.json({ error: error.message }, { status: 502 });
+    }
+    throw error;
+  }
 
   const column = targetDef.resolveColumn(generation.target as string | null);
   const fields: Record<string, unknown> = { [column]: publicUrl };
@@ -80,19 +81,14 @@ export async function POST(request: NextRequest) {
       const portraitBuffer = Buffer.from(portrait_base64, "base64");
       const resizedPortrait = await resizeForLine(portraitBuffer);
       const portraitPath = `warlords/portraits/${entityId}-ai-${Date.now()}.${resizedPortrait.extension}`;
-      const { error: portraitUploadError } = await supabase.storage
-        .from(targetDef.bucket)
-        .upload(portraitPath, resizedPortrait.buffer, {
-          contentType: resizedPortrait.contentType,
-          upsert: true,
-          cacheControl: "60",
-        });
-      if (!portraitUploadError) {
-        const {
-          data: { publicUrl: portraitPublicUrl },
-        } = supabase.storage.from(targetDef.bucket).getPublicUrl(portraitPath);
-        fields.ai_portrait_url = portraitPublicUrl;
-      }
+      const { publicUrl: portraitPublicUrl } = await uploadImageAndVerify(
+        supabase,
+        targetDef.bucket,
+        portraitPath,
+        resizedPortrait.buffer,
+        resizedPortrait.contentType
+      );
+      fields.ai_portrait_url = portraitPublicUrl;
     } catch (error) {
       // 素のイラストの保存に失敗しても、カード画像自体の採用は継続する(次回の参照精度が
       // 落ちるだけなので、ここで全体を失敗させるほどではない)。
