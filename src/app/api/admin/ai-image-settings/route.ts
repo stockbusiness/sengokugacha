@@ -29,6 +29,9 @@ export async function GET() {
     api_key_set: !!data?.api_key,
     api_key_last4: last4(data?.api_key ?? null),
     model: data?.model ?? "gpt-image-1",
+    gemini_api_key_set: !!data?.gemini_api_key,
+    gemini_api_key_last4: last4(data?.gemini_api_key ?? null),
+    gemini_model: data?.gemini_model ?? "gemini-2.5-flash-image",
     style_prompt_template: data?.style_prompt_template ?? null,
     warlord_reference_image_url: data?.warlord_reference_image_url ?? null,
     metaverse_reference_image_url: data?.metaverse_reference_image_url ?? null,
@@ -57,7 +60,9 @@ export async function PUT(request: NextRequest) {
   if (fetchError) return NextResponse.json({ error: fetchError.message }, { status: 500 });
 
   const fields: Record<string, unknown> = {
+    provider: body.provider === "gemini" ? "gemini" : "openai",
     model: body.model,
+    gemini_model: body.gemini_model,
     style_prompt_template: body.style_prompt_template ?? null,
     enabled_for_warlords: !!body.enabled_for_warlords,
     enabled_for_metaverse: !!body.enabled_for_metaverse,
@@ -67,6 +72,9 @@ export async function PUT(request: NextRequest) {
   // 空文字は「変更しない」を意味する(GETでは値そのものを返さないため)。
   if (typeof body.api_key === "string" && body.api_key.length > 0) {
     fields.api_key = body.api_key;
+  }
+  if (typeof body.gemini_api_key === "string" && body.gemini_api_key.length > 0) {
+    fields.gemini_api_key = body.gemini_api_key;
   }
 
   const query = existing

@@ -4,10 +4,13 @@ import { useEffect, useState } from "react";
 
 type AiImageSettingsView = {
   id: string | null;
-  provider: string;
+  provider: "openai" | "gemini";
   api_key_set: boolean;
   api_key_last4: string | null;
   model: string;
+  gemini_api_key_set: boolean;
+  gemini_api_key_last4: string | null;
+  gemini_model: string;
   style_prompt_template: string | null;
   warlord_reference_image_url: string | null;
   metaverse_reference_image_url: string | null;
@@ -18,6 +21,7 @@ type AiImageSettingsView = {
 export default function AiImageSettingsPage() {
   const [data, setData] = useState<AiImageSettingsView | null>(null);
   const [apiKey, setApiKey] = useState("");
+  const [geminiApiKey, setGeminiApiKey] = useState("");
   const [status, setStatus] = useState<"loading" | "ready" | "saving" | "error">("loading");
   const [message, setMessage] = useState<string | null>(null);
   const [uploadingKey, setUploadingKey] = useState<string | null>(null);
@@ -46,8 +50,11 @@ export default function AiImageSettingsPage() {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          provider: data.provider,
           api_key: apiKey,
           model: data.model,
+          gemini_api_key: geminiApiKey,
+          gemini_model: data.gemini_model,
           style_prompt_template: data.style_prompt_template,
           enabled_for_warlords: data.enabled_for_warlords,
           enabled_for_metaverse: data.enabled_for_metaverse,
@@ -56,6 +63,7 @@ export default function AiImageSettingsPage() {
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "保存に失敗しました。");
       setApiKey("");
+      setGeminiApiKey("");
       await load();
       setMessage("保存しました。");
     } catch (error) {
@@ -91,13 +99,38 @@ export default function AiImageSettingsPage() {
       <div>
         <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">AI画像生成設定</h1>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          武将カード画像・城下町デジタル内覧の各種画像を、OpenAIの画像生成APIで作成できるようにする設定です。
-          ここで設定した共通スタイル文・参照画像は、各生成画面で自動的に使われます。実際の生成操作は
-          武将マスタ・メタバース内覧の各管理画面から行います。
+          武将カード画像・城下町デジタル内覧の各種画像を、OpenAIまたはGoogle Geminiの画像生成APIで作成できるようにする設定です。
+          「同じ人物・建物として再現する」再現性を重視する場合はGeminiの方が強いという報告が多く、画風の作り込みや
+          プロンプト追従性を重視する場合はOpenAIが安定しています。両方のAPIキーを設定しておき、下の「使用するAPI」で
+          切り替えて試すこともできます。ここで設定した共通スタイル文・参照画像は、各生成画面で自動的に使われます。
+          実際の生成操作は武将マスタ・メタバース内覧の各管理画面から行います。
         </p>
       </div>
 
+      <div className="space-y-3 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
+        <p className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">使用するAPI</p>
+        <div className="flex gap-4 text-sm text-zinc-600 dark:text-zinc-400">
+          <label className="flex items-center gap-1.5">
+            <input
+              type="radio"
+              checked={data.provider === "openai"}
+              onChange={() => setData({ ...data, provider: "openai" })}
+            />
+            OpenAI(gpt-image-1)
+          </label>
+          <label className="flex items-center gap-1.5">
+            <input
+              type="radio"
+              checked={data.provider === "gemini"}
+              onChange={() => setData({ ...data, provider: "gemini" })}
+            />
+            Google Gemini(2.5 Flash Image)
+          </label>
+        </div>
+      </div>
+
       <div className="space-y-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
+        <p className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">OpenAI</p>
         <Field label={`APIキー ${data.api_key_set ? `(設定済み: ****${data.api_key_last4})` : "(未設定)"}`}>
           <input
             type="password"
@@ -115,6 +148,33 @@ export default function AiImageSettingsPage() {
             className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
           />
         </Field>
+      </div>
+
+      <div className="space-y-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
+        <p className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">Google Gemini</p>
+        <Field label={`APIキー ${data.gemini_api_key_set ? `(設定済み: ****${data.gemini_api_key_last4})` : "(未設定)"}`}>
+          <input
+            type="password"
+            value={geminiApiKey}
+            onChange={(e) => setGeminiApiKey(e.target.value)}
+            placeholder="AIza..."
+            className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+          />
+        </Field>
+        <Field label="モデル">
+          <input
+            type="text"
+            value={data.gemini_model}
+            onChange={(e) => setData({ ...data, gemini_model: e.target.value })}
+            className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+          />
+        </Field>
+        <p className="text-xs text-zinc-400 dark:text-zinc-600">
+          Geminiはアスペクト比(正方形指定等)を直接指定できないため、各生成画面のプロンプト文の指示に従います。
+        </p>
+      </div>
+
+      <div className="space-y-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
         <Field label="共通スタイルプロンプト(毎回自動で先頭に付加されます)">
           <textarea
             value={data.style_prompt_template ?? ""}

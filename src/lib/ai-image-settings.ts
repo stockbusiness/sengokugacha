@@ -1,10 +1,14 @@
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
+export type AiImageProvider = "openai" | "gemini";
+
 export type AiImageSettings = {
   id: string | null;
-  provider: string;
+  provider: AiImageProvider;
   api_key: string | null;
   model: string;
+  gemini_api_key: string | null;
+  gemini_model: string;
   style_prompt_template: string | null;
   warlord_reference_image_url: string | null;
   metaverse_reference_image_url: string | null;
@@ -23,6 +27,8 @@ const DEFAULT_SETTINGS: AiImageSettings = {
   provider: "openai",
   api_key: null,
   model: "gpt-image-1",
+  gemini_api_key: null,
+  gemini_model: "gemini-2.5-flash-image",
   style_prompt_template: DEFAULT_STYLE_PROMPT_TEMPLATE,
   warlord_reference_image_url: null,
   metaverse_reference_image_url: null,

@@ -285,3 +285,12 @@
 - `ai_generated_images`の一覧・ギャラリー閲覧UI(データは記録するが閲覧画面は未実装)。
 - 動画・シーンサムネイルのAI生成(静止画のみ対象。シーン動画は引き続き手動アップロードのみ)。
 - 実際のOpenAI APIキーを使った本番生成確認は未実施(このサンドボックス環境の送信プロキシがapi.openai.comへの疎通を許可していないため)。`generateImage()`のエラーハンドリング・分岐ロジックはfetchをモックしたユニットテストで検証済み(検証用テストファイルはコミットしていない)。APIキー設定後の実際の生成確認はユーザー側で実施が必要。
+
+### 追記: Gemini(2.5 Flash Image)を第2プロバイダとして追加
+
+「同じ人物・建物として再現する」再現性は、OpenAIの`/v1/images/edits`(画像編集ベース)よりGoogle Gemini(2.5 Flash Image、通称Nano Banana)の方が強いという報告が多いため、比較・使い分けができるよう2プロバイダ対応にした。
+
+- マイグレーション`20260721000001_ai_image_gemini_provider.sql`: `ai_image_settings`に`gemini_api_key`/`gemini_model`(既定値`gemini-2.5-flash-image`)を追加。プロバイダごとにAPIキーを別カラムで保持し、切り替え時に誤って別プロバイダへキーを送ってしまわないようにした(既存の`provider`カラムでどちらを使うか切り替える)。
+- `src/lib/ai-image.ts`の`generateImage()`を`generateWithOpenAi()`/`generateWithGemini()`に分割し、`settings.provider`で呼び分ける構成にした。呼び出し側(APIルート)の変更は不要。Geminiは`POST https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent`(`x-goog-api-key`ヘッダ、`generationConfig.responseModalities: ["IMAGE"]`)を呼び、参照画像は`inline_data`としてcontentsに含める。GeminiのAPIにはOpenAIの`size`のような明示的なアスペクト比指定パラメータが無いため、正方形指定等は各生成画面の自動プロンプト文言(「正方形の構図で描いてください」等)に委ねている。
+- 管理画面`/admin/ai-image-settings`に「使用するAPI」ラジオボタンとGemini用のAPIキー・モデル欄を追加。OpenAI/Geminiの両方のAPIキーを同時に保存しておき、ラジオボタンで切り替えて比較できる。
+- 検証: OpenAI/Gemini双方の分岐をfetchモックしたユニットテストで確認(検証用テストファイルはコミットしていない)。実際のAPIキーでの生成品質比較はユーザー側で実施が必要。
