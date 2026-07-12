@@ -8,6 +8,7 @@ const EDITABLE_FIELDS = [
   "name",
   "rarity",
   "lore",
+  "skill_name",
   "stats_json",
   "image_url",
   "gacha_reveal_animation_url",

@@ -11,6 +11,7 @@ type Warlord = {
   slot_type: "common" | "mid" | "rare";
   stats_json: Record<string, number>;
   lore: string | null;
+  skill_name: string | null;
   image_url: string | null;
   gacha_reveal_animation_url: string | null;
   tenka_toitsu_image_url: string | null;
@@ -38,6 +39,8 @@ export default function WarlordsPage() {
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [savingId, setSavingId] = useState<string | null>(null);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [generatingSkillId, setGeneratingSkillId] = useState<string | null>(null);
+  const [batchProgress, setBatchProgress] = useState<{ done: number; total: number } | null>(null);
   const [messageById, setMessageById] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -88,6 +91,7 @@ export default function WarlordsPage() {
           name: warlord.name,
           rarity: warlord.rarity,
           lore: warlord.lore,
+          skill_name: warlord.skill_name,
           stats_json: statsJson,
           image_url: warlord.image_url,
           gacha_reveal_animation_url: warlord.gacha_reveal_animation_url,
@@ -132,6 +136,44 @@ export default function WarlordsPage() {
     }
   }
 
+  async function handleGenerateSkillName(warlord: Warlord) {
+    setGeneratingSkillId(warlord.id);
+    setMessageById((prev) => ({ ...prev, [warlord.id]: "" }));
+    try {
+      const res = await fetch(`/api/admin/warlords/${warlord.id}/skill-name`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "スキル名の生成に失敗しました。");
+      updateField(warlord.id, "skill_name", data.skill_name as string);
+      setMessageById((prev) => ({ ...prev, [warlord.id]: "スキル名を生成しました" }));
+    } catch (error) {
+      setMessageById((prev) => ({
+        ...prev,
+        [warlord.id]: error instanceof Error ? error.message : "スキル名の生成に失敗しました。",
+      }));
+    } finally {
+      setGeneratingSkillId(null);
+    }
+  }
+
+  // 1件ずつ順番に呼ぶ(サーバーレス関数のタイムアウトを避けるため、一括生成をサーバー側の
+  // 1リクエストにまとめず、クライアント側でループする)。
+  async function handleGenerateMissingSkillNames() {
+    const targets = warlords.filter((w) => !w.skill_name);
+    if (targets.length === 0) return;
+    setBatchProgress({ done: 0, total: targets.length });
+    for (let i = 0; i < targets.length; i++) {
+      try {
+        const res = await fetch(`/api/admin/warlords/${targets[i].id}/skill-name`, { method: "POST" });
+        const data = await res.json();
+        if (res.ok) updateField(targets[i].id, "skill_name", data.skill_name as string);
+      } catch {
+        // 1件失敗しても続行し、未設定分は個別の「AIで生成」で後から補う。
+      }
+      setBatchProgress({ done: i + 1, total: targets.length });
+    }
+    setBatchProgress(null);
+  }
+
   if (status === "loading") return <p className="text-zinc-500 dark:text-zinc-400">読み込み中...</p>;
   if (status === "error") return <p className="text-red-700 dark:text-red-400">読み込みに失敗しました。</p>;
 
@@ -143,6 +185,19 @@ export default function WarlordsPage() {
         「レアリティ」は表示名の自由入力欄で、抽選確率はスロット(コモン/中間/レア)側で決まります(「排出率設定」ページ参照)。
         表示名とスロットがずれないよう、既存の値(足軽級/武将級/大名級など)に揃えてください。
       </p>
+
+      <div className="flex items-center gap-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950">
+        <button
+          onClick={handleGenerateMissingSkillNames}
+          disabled={batchProgress !== null}
+          className="rounded-lg border border-red-700 px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-400 dark:text-red-400 dark:hover:bg-red-950"
+        >
+          {batchProgress ? `生成中... (${batchProgress.done}/${batchProgress.total})` : "未設定のスキル名をAIで一括生成"}
+        </button>
+        <span className="text-xs text-zinc-400 dark:text-zinc-600">
+          スキル名が未設定の武将だけを対象に、1件ずつ生成します(AI画像生成設定のOpenAI APIキーを使用)。
+        </span>
+      </div>
 
       {grouped.map((group) => (
         <section
@@ -205,6 +260,28 @@ export default function WarlordsPage() {
                   currentImageUrl={w.image_url}
                   onAdopted={(url) => updateField(w.id, "image_url", url)}
                 />
+
+                <div className="mt-2">
+                  <span className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+                    スキル名(カード画像に合成されます)
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={w.skill_name ?? ""}
+                      onChange={(e) => updateField(w.id, "skill_name", e.target.value || null)}
+                      placeholder="例: 吹雪の槍列"
+                      className="flex-1 rounded-lg border border-zinc-300 px-2 py-1.5 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+                    />
+                    <button
+                      onClick={() => handleGenerateSkillName(w)}
+                      disabled={generatingSkillId === w.id}
+                      className="rounded-lg border border-red-700 px-2 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-400 dark:text-red-400 dark:hover:bg-red-950"
+                    >
+                      {generatingSkillId === w.id ? "生成中..." : "AIで生成"}
+                    </button>
+                  </div>
+                </div>
 
                 <label className="mt-2 block">
                   <span className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">逸話</span>

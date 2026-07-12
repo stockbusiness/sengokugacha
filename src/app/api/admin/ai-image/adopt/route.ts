@@ -3,6 +3,7 @@ import { logAdminAction } from "@/lib/admin-audit-log";
 import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
 import { resizeForLine } from "@/lib/image-upload";
 import { AI_IMAGE_TARGETS, isAiImageEntityType, type AiImageEntityType } from "@/lib/ai-image-targets";
+import { renderWarlordCard } from "@/lib/card-template";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export async function POST(request: NextRequest) {
@@ -44,6 +45,34 @@ export async function POST(request: NextRequest) {
     inputBuffer = Buffer.from(image_base64, "base64");
   } catch {
     return NextResponse.json({ error: "画像データの読み込みに失敗しました" }, { status: 400 });
+  }
+
+  // 武将カードのみ、AI生成イラストの上にレアリティ別の枠・武将名・スキル名・ステータス・
+  // フレーバーテキストを合成する(AIにテキストまで生成させるとDBの実データとズレるため)。
+  if (entityType === "warlord") {
+    const { data: warlord, error: warlordError } = await supabase
+      .from("warlords")
+      .select("name, rarity, skill_name, stats_json, lore, provinces(name)")
+      .eq("id", entityId)
+      .maybeSingle();
+    if (warlordError) return NextResponse.json({ error: warlordError.message }, { status: 500 });
+    if (warlord) {
+      const province = warlord.provinces as unknown as { name: string } | { name: string }[] | null;
+      const provinceName = Array.isArray(province) ? (province[0]?.name ?? "") : (province?.name ?? "");
+      try {
+        inputBuffer = await renderWarlordCard(inputBuffer, {
+          name: warlord.name,
+          rarity: warlord.rarity,
+          provinceName,
+          skillName: warlord.skill_name,
+          stats: warlord.stats_json as Record<string, unknown> | null,
+          lore: warlord.lore,
+        });
+      } catch (error) {
+        console.error("カードテンプレートの合成に失敗しました", error);
+        return NextResponse.json({ error: "カードの合成に失敗しました。" }, { status: 500 });
+      }
+    }
   }
 
   let resized;
