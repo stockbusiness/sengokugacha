@@ -124,7 +124,11 @@ export async function uploadImageAndVerify(
       continue;
     }
 
-    const { data: verifyData, error: verifyError } = await supabase.storage.from(bucket).download(attemptPath);
+    // cacheNonceで検証用ダウンロードのキャッシュを明示的に無効化し、書き込み直後の
+    // 読み取りがどこかのキャッシュ層から古い(または無関係の)応答を返す可能性を減らす。
+    const { data: verifyData, error: verifyError } = await supabase.storage
+      .from(bucket)
+      .download(attemptPath, { cacheNonce: `${Date.now()}-${attempt}` });
     if (verifyError || !verifyData) {
       lastErrorMessage = verifyError?.message ?? "アップロード後の検証用ダウンロードに失敗しました";
       continue;
@@ -132,7 +136,18 @@ export async function uploadImageAndVerify(
 
     const verifyBuffer = Buffer.from(await verifyData.arrayBuffer());
     if (!verifyBuffer.equals(buffer)) {
-      lastErrorMessage = `保存されたファイルがアップロードしたデータと一致しません(${verifyBuffer.length}バイト / 期待値${buffer.length}バイト)`;
+      // 実機で「全く別サイズの中身が返る」事象が確認されているため、切り分け用に
+      // ダウンロードできた中身が実際どんな画像として解釈できるか(先頭バイト・
+      // sharpでのデコード結果)もエラーに含めておく。
+      const headHex = verifyBuffer.subarray(0, 16).toString("hex");
+      let decodedInfo = "デコード不可";
+      try {
+        const meta = await sharp(verifyBuffer).metadata();
+        decodedInfo = `${meta.format ?? "?"} ${meta.width ?? "?"}x${meta.height ?? "?"}`;
+      } catch {
+        // デコード不可のまま
+      }
+      lastErrorMessage = `保存されたファイルがアップロードしたデータと一致しません(${verifyBuffer.length}バイト / 期待値${buffer.length}バイト、先頭16バイト=${headHex}、内容=${decodedInfo})`;
       continue;
     }
 
