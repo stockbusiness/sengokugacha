@@ -1,13 +1,13 @@
 # 戦国経済圏OS 実装済み機能一覧
 
-最終更新: 2026-07-11(戦国パスポート Ver2.8まで反映)
+最終更新: 2026-07-12(戦国パスポート Ver2.9まで反映)
 
 Ver2.0以降の変更内容・影響範囲・未実装事項の詳細は [`docs/V2_IMPLEMENTATION_NOTES.md`](./V2_IMPLEMENTATION_NOTES.md) を参照。
 城下町デジタル内覧機能の既存システム調査・実装計画は [`docs/metaverse-tour-existing-system-analysis.md`](./metaverse-tour-existing-system-analysis.md) / [`docs/metaverse-tour-implementation-plan.md`](./metaverse-tour-implementation-plan.md) を参照。
 外部代理店システム(sengoku-ai.com)連携の実装計画は [`docs/agency-integration-implementation-plan.md`](./agency-integration-implementation-plan.md) を参照。
 城下町マップ・区画座標基盤の実装計画は [`docs/plot-coordinate-implementation-plan.md`](./plot-coordinate-implementation-plan.md) を参照。
 
-## 0. 戦国パスポート Ver2.0〜2.8(国家ダッシュボード・経済圏エンジン・演出強化・城下町デジタル内覧・外部代理店連携・区画座標基盤)
+## 0. 戦国パスポート Ver2.0〜2.9(国家ダッシュボード・経済圏エンジン・演出強化・城下町デジタル内覧・外部代理店連携・区画座標基盤・AI画像生成)
 
 既存のガチャ中心アプリを「戦国経済圏OS」として段階的に拡張したレイヤー。
 
@@ -58,6 +58,12 @@ Ver2.0以降の変更内容・影響範囲・未実装事項の詳細は [`docs/
 - 管理画面から代理店階層を手動で一括取得する「階層を手動で全件同期」機能
 - SSOログインによる代理店専用ポータル(`/agency`)を新設。代理店本人がsengoku-ai.comの代理店マイページ経由でパスワード入力なしにログインし、自分の紹介URL・紹介実績・配下代理店(表示のみ)を確認できる。これまで存在しなかった「代理店が自分の紹介URLを確認できる手段」を提供する
 - 管理画面(`/admin/agency-integration`)で受信用APIキーの発行・送信先URL/APIキー・SSO設定を管理
+
+### AI画像生成機能(Ver2.9)
+- 武将カード画像・城下町デジタル内覧の各種画像(エリア・物件・内覧シーン・全体マップ)を、OpenAI(gpt-image-1)の画像生成APIで作成できる機能。既存の手作業ガイド(Midjourney/ChatGPT運用ガイド)のスタイル一貫性ノウハウをAPI化した
+- 生成〜採用の2段階フロー(プレビュー確認→採用ボタンで初めて保存)。採用時は既存の手動アップロードと全く同じリサイズ・保存パイプラインを通るため、表示側の挙動は変わらない
+- 参照画像を「全体のスタイル基準」または「現在の画像」から選べ、画風の統一と同一人物・建物の再現性の両方に対応
+- 管理画面(`/admin/ai-image-settings`)でAPIキー・共通スタイルプロンプト・基準参照画像・機能の有効化を管理
 
 ## 1. ユーザー向け機能(LIFF)
 
@@ -119,6 +125,7 @@ Ver2.0以降の変更内容・影響範囲・未実装事項の詳細は [`docs/
 - 法的ページ編集
 - FAQ・お知らせ編集
 - 決済設定(Stripe等)管理
+- AI画像生成設定(`/admin/ai-image-settings`)
 
 ## 3. 基盤・非機能
 
@@ -135,3 +142,4 @@ Ver2.0以降の変更内容・影響範囲・未実装事項の詳細は [`docs/
 - 動画ガチャの実アップロード→抽選→再生のエンドツーエンド確認は未報告
 - **Supabaseマイグレーションの自動適用は未整備**: CI(GitHub Actions)はlint/型チェック/テスト/ビルドのみで、マイグレーションを本番DBへ適用する仕組みが無い。過去に複数バージョン分のマイグレーションが未適用のまま本番稼働していた事象があり、`supabase/migrations/20260713000001_repair_v20_v23_pending_schema.sql`(冪等な再発行)で復旧した。今後追加するマイグレーションも、Supabaseダッシュボードから手動で実行する運用が必要(城下町デジタル内覧のマイグレーションも同様に手動適用が必要)
 - 城下町デジタル内覧の代理店専用ログイン・権限分離(自代理店データのみ閲覧)は未実装。将来のメタバース座標との紐付け(`external_world_ref`列)は列を用意したのみで実データ投入は未着手
+- AI画像生成機能は、実際のOpenAI APIキーを使った本番生成確認が未報告(管理画面からAPIキーを設定後、実際に生成・採用してみて確認する運用が必要)

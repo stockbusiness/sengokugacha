@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import AiImageGeneratePanel from "@/components/admin/AiImageGeneratePanel";
 
 type Area = {
   id: string;
@@ -263,20 +264,40 @@ export default function MetaverseAreasPage() {
             </label>
 
             <div className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
-              <ImageSlot
-                label="一覧サムネイル画像"
-                imageUrl={area.thumbnail_url}
-                uploading={uploadingKey === `${area.id}-thumbnail`}
-                onUpload={(file) => handleImageUpload(area.id, "thumbnail", file)}
-                onClear={() => handleClearImage(area.id, "thumbnail")}
-              />
-              <ImageSlot
-                label="詳細ページのメイン画像"
-                imageUrl={area.main_image_url}
-                uploading={uploadingKey === `${area.id}-main`}
-                onUpload={(file) => handleImageUpload(area.id, "main", file)}
-                onClear={() => handleClearImage(area.id, "main")}
-              />
+              <div>
+                <ImageSlot
+                  label="一覧サムネイル画像"
+                  imageUrl={area.thumbnail_url}
+                  uploading={uploadingKey === `${area.id}-thumbnail`}
+                  onUpload={(file) => handleImageUpload(area.id, "thumbnail", file)}
+                  onClear={() => handleClearImage(area.id, "thumbnail")}
+                />
+                <AiImageGeneratePanel
+                  entityType="metaverse_area"
+                  entityId={area.id}
+                  target="thumbnail"
+                  autoPrompt={`日本の戦国時代の城下町にある「${area.name}」エリアの俯瞰イラストを正方形構図で描いてください。${area.short_description ?? ""}`}
+                  currentImageUrl={area.thumbnail_url}
+                  onAdopted={(url) => updateField(area.id, "thumbnail_url", url)}
+                />
+              </div>
+              <div>
+                <ImageSlot
+                  label="詳細ページのメイン画像"
+                  imageUrl={area.main_image_url}
+                  uploading={uploadingKey === `${area.id}-main`}
+                  onUpload={(file) => handleImageUpload(area.id, "main", file)}
+                  onClear={() => handleClearImage(area.id, "main")}
+                />
+                <AiImageGeneratePanel
+                  entityType="metaverse_area"
+                  entityId={area.id}
+                  target="main"
+                  autoPrompt={`日本の戦国時代の城下町にある「${area.name}」エリアの俯瞰イラストを描いてください。${area.short_description ?? ""}`}
+                  currentImageUrl={area.main_image_url}
+                  onAdopted={(url) => updateField(area.id, "main_image_url", url)}
+                />
+              </div>
             </div>
             <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-600">
               未設定の場合は、下部の「デフォルト画像設定」で登録した共通画像が使われます。

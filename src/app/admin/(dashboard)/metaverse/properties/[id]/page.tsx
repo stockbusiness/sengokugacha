@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import AiImageGeneratePanel from "@/components/admin/AiImageGeneratePanel";
 
 type Area = { id: string; name: string };
 type BuildingType = { id: string; name: string };
@@ -383,6 +384,13 @@ export default function EditMetaversePropertyPage() {
             className="block text-xs text-zinc-600 file:mr-2 file:rounded-lg file:border-0 file:bg-zinc-900 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-zinc-700 disabled:opacity-50 dark:text-zinc-400 dark:file:bg-zinc-100 dark:file:text-zinc-900"
           />
         </label>
+        <AiImageGeneratePanel
+          entityType="metaverse_property"
+          entityId={propertyId}
+          autoPrompt={`日本の戦国時代の城下町にある「${property.name}」という区画(建物)の外観を横長構図で描いてください。${property.short_description ?? ""}`}
+          currentImageUrl={property.main_image_url}
+          onAdopted={() => load()}
+        />
         {property.main_image_url && (
           <button
             onClick={handleResetMainImage}
@@ -581,6 +589,13 @@ function SceneRow({
               if (file) handleImageUpload(file);
             }}
             className="block text-xs text-zinc-600 file:mr-2 file:rounded-lg file:border-0 file:bg-zinc-900 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-zinc-700 disabled:opacity-50 dark:text-zinc-400 dark:file:bg-zinc-100 dark:file:text-zinc-900"
+          />
+          <AiImageGeneratePanel
+            entityType="metaverse_scene"
+            entityId={scene.id}
+            autoPrompt={`日本の戦国時代の城下町の内覧シーン「${scene.name}」の室内・外観の様子を横長構図で描いてください。`}
+            currentImageUrl={scene.image_url}
+            onAdopted={() => onReload()}
           />
 
           <div className="border-t border-zinc-100 pt-3 dark:border-zinc-800">

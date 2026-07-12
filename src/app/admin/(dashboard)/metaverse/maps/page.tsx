@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { PolygonCanvas } from "@/components/admin/PolygonCanvas";
+import AiImageGeneratePanel from "@/components/admin/AiImageGeneratePanel";
 
 type MapRow = {
   id: string;
@@ -271,6 +272,16 @@ function MapEditor({ map, areas, onReload }: { map: MapRow; areas: Area[]; onRel
           className="block text-xs text-zinc-600 file:mr-2 file:rounded-lg file:border-0 file:bg-zinc-900 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-zinc-700 disabled:opacity-50 dark:text-zinc-400 dark:file:bg-zinc-100 dark:file:text-zinc-900"
         />
       </label>
+      <p className="text-[11px] text-zinc-400 dark:text-zinc-600">
+        AI生成の場合も、必ず正方形(1:1)の構図で生成してください(座標系が正方形前提のため)。
+      </p>
+      <AiImageGeneratePanel
+        entityType="metaverse_map"
+        entityId={map.id}
+        autoPrompt={`日本の戦国時代の城下町「${map.name}」を俯瞰した全体マップイラストを、必ず正方形(1:1)の構図で描いてください。各エリアの境界が視覚的に判別できるよう、色分け・区画線を入れてください。`}
+        currentImageUrl={map.image_url}
+        onAdopted={() => onReload()}
+      />
 
       {map.image_url && (
         <>
