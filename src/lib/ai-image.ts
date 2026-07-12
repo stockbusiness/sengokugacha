@@ -1,4 +1,4 @@
-import { getAiImageSettings, type AiImageSettings } from "@/lib/ai-image-settings";
+import { getAiImageSettings, getStylePromptTemplate, type AiImageAudience, type AiImageSettings } from "@/lib/ai-image-settings";
 import type { AiImageSize } from "@/lib/ai-image-targets";
 
 export class AiImageGenerationError extends Error {
@@ -13,6 +13,7 @@ export class AiImageGenerationError extends Error {
 type GenerateImageOptions = {
   referenceImageUrl?: string | null;
   size?: AiImageSize;
+  audience?: AiImageAudience;
 };
 
 type OpenAiImageResponse = {
@@ -132,17 +133,28 @@ async function generateWithGemini(
   return Buffer.from(b64, "base64");
 }
 
+export type GenerateImageResult = {
+  buffer: Buffer;
+  stylePromptUsed: string | null;
+};
+
 // 05/06番ガイドの「参考画像+共通スタイル指示+個別特徴」の3点セットをそのままAPI化する。
-// style_prompt_templateは毎回プロンプトの先頭に自動付加される。providerによってOpenAI/Geminiを
-// 呼び分けるが、呼び出し側(APIルート)はこの関数だけを見ればよい。
-export async function generateImage(prompt: string, options?: GenerateImageOptions): Promise<Buffer> {
+// スタイルプロンプトは武将カード用/城下町内覧用で別々に持たせており(内覧画像は将来のUnity製
+// メタバースとの見た目のギャップを避けるため、フォトリアルではなくゲームエンジン風の指示にして
+// いる)、audienceで自動的に切り替える。providerによってOpenAI/Geminiを呼び分けるが、
+// 呼び出し側(APIルート)はこの関数だけを見ればよい。
+export async function generateImage(prompt: string, options?: GenerateImageOptions): Promise<GenerateImageResult> {
   const settings = await getAiImageSettings();
-  const fullPrompt = settings.style_prompt_template ? `${settings.style_prompt_template}\n\n${prompt}` : prompt;
+  const audience = options?.audience ?? "metaverse";
+  const stylePrompt = getStylePromptTemplate(settings, audience);
+  const fullPrompt = stylePrompt ? `${stylePrompt}\n\n${prompt}` : prompt;
   const size = options?.size ?? "1024x1024";
   const referenceImageUrl = options?.referenceImageUrl ?? null;
 
-  if (settings.provider === "gemini") {
-    return generateWithGemini(settings, fullPrompt, referenceImageUrl);
-  }
-  return generateWithOpenAi(settings, fullPrompt, referenceImageUrl, size);
+  const buffer =
+    settings.provider === "gemini"
+      ? await generateWithGemini(settings, fullPrompt, referenceImageUrl)
+      : await generateWithOpenAi(settings, fullPrompt, referenceImageUrl, size);
+
+  return { buffer, stylePromptUsed: stylePrompt };
 }

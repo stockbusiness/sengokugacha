@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { logAdminAction } from "@/lib/admin-audit-log";
 import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
+import { getAiImageSettings } from "@/lib/ai-image-settings";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 function last4(value: string | null): string | null {
@@ -13,30 +14,23 @@ export async function GET() {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const supabase = createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from("ai_image_settings")
-    .select("*")
-    .order("updated_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
-
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const settings = await getAiImageSettings();
 
   return NextResponse.json({
-    id: data?.id ?? null,
-    provider: data?.provider ?? "openai",
-    api_key_set: !!data?.api_key,
-    api_key_last4: last4(data?.api_key ?? null),
-    model: data?.model ?? "gpt-image-1",
-    gemini_api_key_set: !!data?.gemini_api_key,
-    gemini_api_key_last4: last4(data?.gemini_api_key ?? null),
-    gemini_model: data?.gemini_model ?? "gemini-2.5-flash-image",
-    style_prompt_template: data?.style_prompt_template ?? null,
-    warlord_reference_image_url: data?.warlord_reference_image_url ?? null,
-    metaverse_reference_image_url: data?.metaverse_reference_image_url ?? null,
-    enabled_for_warlords: data?.enabled_for_warlords ?? true,
-    enabled_for_metaverse: data?.enabled_for_metaverse ?? true,
+    id: settings.id,
+    provider: settings.provider,
+    api_key_set: !!settings.api_key,
+    api_key_last4: last4(settings.api_key),
+    model: settings.model,
+    gemini_api_key_set: !!settings.gemini_api_key,
+    gemini_api_key_last4: last4(settings.gemini_api_key),
+    gemini_model: settings.gemini_model,
+    warlord_style_prompt_template: settings.warlord_style_prompt_template,
+    metaverse_style_prompt_template: settings.metaverse_style_prompt_template,
+    warlord_reference_image_url: settings.warlord_reference_image_url,
+    metaverse_reference_image_url: settings.metaverse_reference_image_url,
+    enabled_for_warlords: settings.enabled_for_warlords,
+    enabled_for_metaverse: settings.enabled_for_metaverse,
   });
 }
 
@@ -63,7 +57,8 @@ export async function PUT(request: NextRequest) {
     provider: body.provider === "gemini" ? "gemini" : "openai",
     model: body.model,
     gemini_model: body.gemini_model,
-    style_prompt_template: body.style_prompt_template ?? null,
+    warlord_style_prompt_template: body.warlord_style_prompt_template ?? null,
+    metaverse_style_prompt_template: body.metaverse_style_prompt_template ?? null,
     enabled_for_warlords: !!body.enabled_for_warlords,
     enabled_for_metaverse: !!body.enabled_for_metaverse,
     updated_at: new Date().toISOString(),
