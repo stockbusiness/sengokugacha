@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import AiImageGeneratePanel from "@/components/admin/AiImageGeneratePanel";
 
 type Warlord = {
   id: string;
@@ -18,6 +19,18 @@ type Warlord = {
 
 const SLOT_ORDER: Record<Warlord["slot_type"], number> = { common: 0, mid: 1, rare: 2 };
 const SLOT_LABEL: Record<Warlord["slot_type"], string> = { common: "コモン枠", mid: "中間枠", rare: "レア枠" };
+
+// 05/06番ガイドのレアリティ別演出差を自動プロンプトの元にする。実名は使わず外見の特徴のみを記述する。
+const SLOT_PROMPT: Record<Warlord["slot_type"], string> = {
+  common: "素朴で落ち着いた表情、装飾は控えめな簡素な鎧を身につけた、日本の戦国時代の足軽級の武将",
+  mid: "貫禄のある表情で、鎧に金の装飾を加えた、日本の戦国時代の武将級の武将",
+  rare: "鋭い眼光で躍動感のあるポーズを取り、豪華な金の装飾と背景の家紋・城のシルエットを配した、日本の戦国時代の大名格の武将",
+};
+
+function buildWarlordAutoPrompt(warlord: Warlord): string {
+  const provinceName = warlord.provinces?.name ?? "";
+  return `${provinceName}にゆかりのある、${SLOT_PROMPT[warlord.slot_type]}の縦長の肖像画を描いてください。武将の実名は使用せず、外見の特徴のみで表現してください。`;
+}
 
 export default function WarlordsPage() {
   const [warlords, setWarlords] = useState<Warlord[]>([]);
@@ -184,6 +197,14 @@ export default function WarlordsPage() {
                     )}
                   </label>
                 </div>
+
+                <AiImageGeneratePanel
+                  entityType="warlord"
+                  entityId={w.id}
+                  autoPrompt={buildWarlordAutoPrompt(w)}
+                  currentImageUrl={w.image_url}
+                  onAdopted={(url) => updateField(w.id, "image_url", url)}
+                />
 
                 <label className="mt-2 block">
                   <span className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">逸話</span>
