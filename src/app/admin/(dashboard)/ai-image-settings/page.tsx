@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 type AiImageSettingsView = {
   id: string | null;
@@ -99,7 +100,12 @@ export default function AiImageSettingsPage() {
   return (
     <div className="max-w-lg space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">AI画像生成設定</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">AI画像生成設定</h1>
+          <Link href="/admin/ai-image-history" className="text-xs text-red-700 hover:underline dark:text-red-400">
+            生成履歴・使用状況を見る →
+          </Link>
+        </div>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
           武将カード画像・城下町デジタル内覧の各種画像を、OpenAIまたはGoogle Geminiの画像生成APIで作成できるようにする設定です。
           「同じ人物・建物として再現する」再現性を重視する場合はGeminiの方が強いという報告が多く、画風の作り込みや

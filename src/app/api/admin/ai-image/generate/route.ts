@@ -69,6 +69,8 @@ export async function POST(request: NextRequest) {
 
   let imageBuffer: Buffer;
   let stylePromptUsed: string | null;
+  let providerUsed: "openai" | "gemini";
+  let modelUsed: string;
   try {
     const result = await generateImage(prompt, {
       referenceImageUrl,
@@ -77,6 +79,8 @@ export async function POST(request: NextRequest) {
     });
     imageBuffer = result.buffer;
     stylePromptUsed = result.stylePromptUsed;
+    providerUsed = result.providerUsed;
+    modelUsed = result.modelUsed;
   } catch (error) {
     if (error instanceof AiImageGenerationError) {
       return NextResponse.json({ error: error.message }, { status: error.status });
@@ -94,8 +98,8 @@ export async function POST(request: NextRequest) {
       prompt,
       style_prompt_snapshot: stylePromptUsed,
       reference_image_url: referenceImageUrl,
-      provider: settings.provider,
-      model: settings.model,
+      provider: providerUsed,
+      model: modelUsed,
       adopted: false,
     })
     .select("id")
@@ -105,11 +109,13 @@ export async function POST(request: NextRequest) {
   await logAdminAction(
     await getAdminActorName(),
     "ai_image_generate",
-    `entity_type=${entity_type} entity_id=${entity_id}`
+    `entity_type=${entity_type} entity_id=${entity_id} provider=${providerUsed}`
   );
 
   return NextResponse.json({
     generation_id: generation.id,
     image_base64: imageBuffer.toString("base64"),
+    provider_used: providerUsed,
+    fallback_used: providerUsed !== settings.provider,
   });
 }

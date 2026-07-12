@@ -136,7 +136,25 @@ async function generateWithGemini(
 export type GenerateImageResult = {
   buffer: Buffer;
   stylePromptUsed: string | null;
+  providerUsed: "openai" | "gemini";
+  modelUsed: string;
 };
+
+function hasProviderKey(settings: AiImageSettings, provider: "openai" | "gemini"): boolean {
+  return provider === "gemini" ? !!settings.gemini_api_key : !!settings.api_key;
+}
+
+async function generateWithProvider(
+  provider: "openai" | "gemini",
+  settings: AiImageSettings,
+  fullPrompt: string,
+  referenceImageUrl: string | null,
+  size: AiImageSize
+): Promise<Buffer> {
+  return provider === "gemini"
+    ? generateWithGemini(settings, fullPrompt, referenceImageUrl)
+    : generateWithOpenAi(settings, fullPrompt, referenceImageUrl, size);
+}
 
 // 05/06番ガイドの「参考画像+共通スタイル指示+個別特徴」の3点セットをそのままAPI化する。
 // スタイルプロンプトは武将カード用/城下町内覧用で別々に持たせており(内覧画像は将来のUnity製
@@ -151,10 +169,20 @@ export async function generateImage(prompt: string, options?: GenerateImageOptio
   const size = options?.size ?? "1024x1024";
   const referenceImageUrl = options?.referenceImageUrl ?? null;
 
-  const buffer =
-    settings.provider === "gemini"
-      ? await generateWithGemini(settings, fullPrompt, referenceImageUrl)
-      : await generateWithOpenAi(settings, fullPrompt, referenceImageUrl, size);
+  const primary = settings.provider;
+  const fallback: "openai" | "gemini" = primary === "gemini" ? "openai" : "gemini";
 
-  return { buffer, stylePromptUsed: stylePrompt };
+  const modelFor = (provider: "openai" | "gemini") => (provider === "gemini" ? settings.gemini_model : settings.model);
+
+  try {
+    const buffer = await generateWithProvider(primary, settings, fullPrompt, referenceImageUrl, size);
+    return { buffer, stylePromptUsed: stylePrompt, providerUsed: primary, modelUsed: modelFor(primary) };
+  } catch (error) {
+    // 主プロバイダが失敗し、もう一方にAPIキーが設定されていれば1回だけ自動でフォールバックする
+    // (レート制限・モデレーション拒否等、プロバイダを変えると成功する可能性があるため)。
+    if (!hasProviderKey(settings, fallback)) throw error;
+    console.warn(`AI画像生成: ${primary}が失敗したため${fallback}にフォールバックします`, error);
+    const buffer = await generateWithProvider(fallback, settings, fullPrompt, referenceImageUrl, size);
+    return { buffer, stylePromptUsed: stylePrompt, providerUsed: fallback, modelUsed: modelFor(fallback) };
+  }
 }
