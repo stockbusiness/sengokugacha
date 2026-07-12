@@ -22,12 +22,14 @@ export default function AiImageGeneratePanel({ entityType, entityId, target, aut
   const [previewBase64, setPreviewBase64] = useState<string | null>(null);
   const [generationId, setGenerationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   async function handleGenerate() {
     if (!window.confirm("AI画像を生成します。API利用料が発生する場合があります。よろしいですか?")) return;
 
     setState("generating");
     setError(null);
+    setNotice(null);
     try {
       const res = await fetch("/api/admin/ai-image/generate", {
         method: "POST",
@@ -38,6 +40,9 @@ export default function AiImageGeneratePanel({ entityType, entityId, target, aut
       if (!res.ok) throw new Error(body.error ?? "生成に失敗しました。");
       setPreviewBase64(body.image_base64);
       setGenerationId(body.generation_id);
+      if (body.fallback_used) {
+        setNotice(`設定中のAPIが利用できなかったため、${body.provider_used === "gemini" ? "Gemini" : "OpenAI"}で生成しました。`);
+      }
       setState("previewing");
     } catch (e) {
       setError(e instanceof Error ? e.message : "予期しないエラーが発生しました。");
@@ -70,6 +75,7 @@ export default function AiImageGeneratePanel({ entityType, entityId, target, aut
     setPreviewBase64(null);
     setGenerationId(null);
     setError(null);
+    setNotice(null);
   }
 
   if (state === "idle") {
@@ -135,6 +141,7 @@ export default function AiImageGeneratePanel({ entityType, entityId, target, aut
 
       {(state === "previewing" || state === "adopting") && previewBase64 && (
         <>
+          {notice && <p className="text-xs text-amber-600 dark:text-amber-400">{notice}</p>}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src={`data:image/png;base64,${previewBase64}`} alt="生成プレビュー" className="max-h-64 w-full rounded-lg object-contain" />
           <div className="flex items-center gap-2">

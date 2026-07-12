@@ -136,15 +136,21 @@ export default function WarlordsPage() {
     }
   }
 
+  // 画像生成と同じく、生成しただけではDBに保存しない(欄に反映するのみ)。反映後に
+  // 内容を確認・編集してから、通常の「保存」ボタンで確定する。
   async function handleGenerateSkillName(warlord: Warlord) {
     setGeneratingSkillId(warlord.id);
     setMessageById((prev) => ({ ...prev, [warlord.id]: "" }));
     try {
-      const res = await fetch(`/api/admin/warlords/${warlord.id}/skill-name`, { method: "POST" });
+      const res = await fetch(`/api/admin/warlords/${warlord.id}/skill-name`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ persist: false }),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "スキル名の生成に失敗しました。");
       updateField(warlord.id, "skill_name", data.skill_name as string);
-      setMessageById((prev) => ({ ...prev, [warlord.id]: "スキル名を生成しました" }));
+      setMessageById((prev) => ({ ...prev, [warlord.id]: "スキル名を生成しました(「保存」を押すまで確定しません)" }));
     } catch (error) {
       setMessageById((prev) => ({
         ...prev,
@@ -155,15 +161,20 @@ export default function WarlordsPage() {
     }
   }
 
-  // 1件ずつ順番に呼ぶ(サーバーレス関数のタイムアウトを避けるため、一括生成をサーバー側の
-  // 1リクエストにまとめず、クライアント側でループする)。
+  // 一括生成は75体分を1件ずつ確認する運用が非現実的なため、生成と同時に保存する
+  // (persist: true)。1件ずつ順番に呼ぶのは、サーバーレス関数のタイムアウトを避けるため
+  // クライアント側でループする設計にしているため。
   async function handleGenerateMissingSkillNames() {
     const targets = warlords.filter((w) => !w.skill_name);
     if (targets.length === 0) return;
     setBatchProgress({ done: 0, total: targets.length });
     for (let i = 0; i < targets.length; i++) {
       try {
-        const res = await fetch(`/api/admin/warlords/${targets[i].id}/skill-name`, { method: "POST" });
+        const res = await fetch(`/api/admin/warlords/${targets[i].id}/skill-name`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ persist: true }),
+        });
         const data = await res.json();
         if (res.ok) updateField(targets[i].id, "skill_name", data.skill_name as string);
       } catch {
@@ -195,7 +206,8 @@ export default function WarlordsPage() {
           {batchProgress ? `生成中... (${batchProgress.done}/${batchProgress.total})` : "未設定のスキル名をAIで一括生成"}
         </button>
         <span className="text-xs text-zinc-400 dark:text-zinc-600">
-          スキル名が未設定の武将だけを対象に、1件ずつ生成します(AI画像生成設定のOpenAI APIキーを使用)。
+          スキル名が未設定の武将だけを対象に、1件ずつ生成してそのまま保存します(AI画像生成設定のOpenAI APIキーを使用)。
+          個別の「AIで生成」ボタンは、確認・編集してから「保存」を押すまで確定しません。
         </span>
       </div>
 

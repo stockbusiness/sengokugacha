@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 
 type AiImageSettingsView = {
   id: string | null;
@@ -11,7 +12,8 @@ type AiImageSettingsView = {
   gemini_api_key_set: boolean;
   gemini_api_key_last4: string | null;
   gemini_model: string;
-  style_prompt_template: string | null;
+  warlord_style_prompt_template: string | null;
+  metaverse_style_prompt_template: string | null;
   warlord_reference_image_url: string | null;
   metaverse_reference_image_url: string | null;
   enabled_for_warlords: boolean;
@@ -55,7 +57,8 @@ export default function AiImageSettingsPage() {
           model: data.model,
           gemini_api_key: geminiApiKey,
           gemini_model: data.gemini_model,
-          style_prompt_template: data.style_prompt_template,
+          warlord_style_prompt_template: data.warlord_style_prompt_template,
+          metaverse_style_prompt_template: data.metaverse_style_prompt_template,
           enabled_for_warlords: data.enabled_for_warlords,
           enabled_for_metaverse: data.enabled_for_metaverse,
         }),
@@ -97,13 +100,18 @@ export default function AiImageSettingsPage() {
   return (
     <div className="max-w-lg space-y-6">
       <div>
-        <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">AI画像生成設定</h1>
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">AI画像生成設定</h1>
+          <Link href="/admin/ai-image-history" className="text-xs text-red-700 hover:underline dark:text-red-400">
+            生成履歴・使用状況を見る →
+          </Link>
+        </div>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
           武将カード画像・城下町デジタル内覧の各種画像を、OpenAIまたはGoogle Geminiの画像生成APIで作成できるようにする設定です。
           「同じ人物・建物として再現する」再現性を重視する場合はGeminiの方が強いという報告が多く、画風の作り込みや
           プロンプト追従性を重視する場合はOpenAIが安定しています。両方のAPIキーを設定しておき、下の「使用するAPI」で
-          切り替えて試すこともできます。ここで設定した共通スタイル文・参照画像は、各生成画面で自動的に使われます。
-          実際の生成操作は武将マスタ・メタバース内覧の各管理画面から行います。
+          切り替えて試すこともできます。ここで設定したスタイルプロンプト・参照画像は、武将カード用/城下町内覧用で
+          別々に管理でき、各生成画面で自動的に使われます。実際の生成操作は武将マスタ・メタバース内覧の各管理画面から行います。
         </p>
       </div>
 
@@ -175,14 +183,31 @@ export default function AiImageSettingsPage() {
       </div>
 
       <div className="space-y-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
-        <Field label="共通スタイルプロンプト(毎回自動で先頭に付加されます)">
+        <Field label="武将カード用スタイルプロンプト(毎回自動で先頭に付加されます)">
           <textarea
-            value={data.style_prompt_template ?? ""}
-            onChange={(e) => setData({ ...data, style_prompt_template: e.target.value })}
+            value={data.warlord_style_prompt_template ?? ""}
+            onChange={(e) => setData({ ...data, warlord_style_prompt_template: e.target.value })}
             rows={6}
             className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
           />
         </Field>
+      </div>
+
+      <div className="space-y-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
+        <Field label="城下町内覧画像用スタイルプロンプト(毎回自動で先頭に付加されます)">
+          <textarea
+            value={data.metaverse_style_prompt_template ?? ""}
+            onChange={(e) => setData({ ...data, metaverse_style_prompt_template: e.target.value })}
+            rows={6}
+            className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+          />
+        </Field>
+        <p className="text-xs text-zinc-400 dark:text-zinc-600">
+          内覧画像は将来Unity製メタバースとして実装される想定のため、武将カードとは別のスタイル指示にしています。
+          写真のようなフォトリアルにすると、実際に完成したメタバース(ゲームエンジンで描画されたスタイライズド3D)との
+          見た目のギャップが大きくなってしまうため、デフォルトでは「ゲームエンジン風・過度な質感の書き込みを避ける」
+          という指示を入れています。
+        </p>
       </div>
 
       <div className="space-y-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
