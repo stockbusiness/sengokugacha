@@ -278,7 +278,7 @@ function MapEditor({ map, areas, onReload }: { map: MapRow; areas: Area[]; onRel
       <AiImageGeneratePanel
         entityType="metaverse_map"
         entityId={map.id}
-        autoPrompt={`日本の戦国時代の城下町「${map.name}」を俯瞰した全体マップイラストを、必ず正方形(1:1)の構図で描いてください。各エリアの境界が視覚的に判別できるよう、色分け・区画線を入れてください。`}
+        autoPrompt={`日本の戦国時代の城下町「${map.name}」を、山の上の城から川沿いに広がる城下町全体を見渡す、ドローン撮影のような壮大な俯瞰構図で描いてください。必ず正方形(1:1)の構図にしてください。地形(山・川・木々)や街並みの奥行き・光と影を丁寧に描き込み、ゲームエンジンでレンダリングしたような臨場感のある仕上がりにしてください。区画の境界を示す色分けやライン等の図示的な要素は入れないでください(実際のエリア範囲は別途管理画面側でポリゴンとして重ねて設定します)。`}
         currentImageUrl={map.image_url}
         onAdopted={() => onReload()}
       />

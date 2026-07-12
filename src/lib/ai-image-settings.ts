@@ -28,14 +28,14 @@ const DEFAULT_WARLORD_STYLE_PROMPT_TEMPLATE = `この参考画像と同じアー
 - 光と影のコントラストを強めにした、シネマティックで高級感のある仕上がり`;
 
 // 城下町デジタル内覧の画像は、将来Unity製メタバースとして実装される想定の「予告編」的な
-// 位置付けのため、写真のようなフォトリアルにし過ぎると、実際に完成したメタバースの見た目
-// (ゲームエンジンで描画されたスタイライズド3D)との間に大きなギャップが生まれてしまう。
-// そのため武将カードとは別の、控えめでゲームアセット寄りのスタイル指示をデフォルトにする。
-const DEFAULT_METAVERSE_STYLE_PROMPT_TEMPLATE = `この参考画像と同じ配色・世界観で生成してください。ただし写真のような過度なフォトリアルは避けてください。
-- 将来Unity製の3Dメタバース空間として実装される想定の「コンセプトアート」であることを意識し、ゲームエンジンで描画したような、やや簡略化されたスタイライズド3Dの質感にする
-- 金・黒・赤を基調にした、戦国時代の城下町の世界観
-- 陰影は控えめで、現実の3D空間として違和感のない、クリーンで明瞭な仕上がりにする
-- 過度な質感の書き込み(毛穴・シワ・写真的なノイズ等)は避ける`;
+// 位置付け。当初は「フォトリアルを避ける」ことを重視しすぎ、平面的な2Dマップ図・アイコン風の
+// イラストになってしまったため、方向性を修正。目指すのは「実写の観光写真」ではなく
+// 「良質なゲームエンジンでレンダリングされた、奥行き・立体感のある3D空間」であること。
+const DEFAULT_METAVERSE_STYLE_PROMPT_TEMPLATE = `将来Unity製の3Dメタバース空間として実装される想定の、ゲームの世界観に沿った環境コンセプトアートを生成してください。
+- 参考画像と同じ配色・世界観(金・黒・赤を基調にした、戦国時代の城下町の世界観)を踏襲する
+- 高品質なゲームエンジンでレンダリングしたような、地形・建物・植生に奥行きと立体感のある仕上がりにする(平面的な2Dマップ図・アイコン風のイラストにはしない)
+- ドラマチックな自然光・雲・山並みなど、臨場感のある空気感を出す
+- ただし、現代的な要素(現代の車・電線・看板等)が写り込む「実写の観光写真」には見えないようにする。あくまでファンタジー世界のゲーム空間である`;
 
 const DEFAULT_SETTINGS: AiImageSettings = {
   id: null,
@@ -63,7 +63,20 @@ export async function getAiImageSettings(): Promise<AiImageSettings> {
     .maybeSingle();
 
   if (error) throw error;
-  return data ? { ...DEFAULT_SETTINGS, ...data } : DEFAULT_SETTINGS;
+  if (!data) return DEFAULT_SETTINGS;
+
+  // 単純な{...DEFAULT_SETTINGS, ...data}だと、後から追加した列(例:
+  // metaverse_style_prompt_template)が既存行ではnullのままになっている場合、そのnullで
+  // コード側のデフォルト値が上書きされてしまう(nullも「値がある」として扱われるため)。
+  //列ごとにnull/undefinedならデフォルトへフォールバックするようにする。
+  const merged = { ...DEFAULT_SETTINGS };
+  for (const key of Object.keys(DEFAULT_SETTINGS) as (keyof AiImageSettings)[]) {
+    const value = (data as Record<string, unknown>)[key];
+    if (value !== null && value !== undefined) {
+      (merged as Record<string, unknown>)[key] = value;
+    }
+  }
+  return merged;
 }
 
 export function getStylePromptTemplate(settings: AiImageSettings, audience: AiImageAudience): string | null {
