@@ -294,3 +294,29 @@
 - `src/lib/ai-image.ts`の`generateImage()`を`generateWithOpenAi()`/`generateWithGemini()`に分割し、`settings.provider`で呼び分ける構成にした。呼び出し側(APIルート)の変更は不要。Geminiは`POST https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent`(`x-goog-api-key`ヘッダ、`generationConfig.responseModalities: ["IMAGE"]`)を呼び、参照画像は`inline_data`としてcontentsに含める。GeminiのAPIにはOpenAIの`size`のような明示的なアスペクト比指定パラメータが無いため、正方形指定等は各生成画面の自動プロンプト文言(「正方形の構図で描いてください」等)に委ねている。
 - 管理画面`/admin/ai-image-settings`に「使用するAPI」ラジオボタンとGemini用のAPIキー・モデル欄を追加。OpenAI/Geminiの両方のAPIキーを同時に保存しておき、ラジオボタンで切り替えて比較できる。
 - 検証: OpenAI/Gemini双方の分岐をfetchモックしたユニットテストで確認(検証用テストファイルはコミットしていない)。実際のAPIキーでの生成品質比較はユーザー側で実施が必要。
+
+## Ver2.10: 武将カードテンプレート合成(レアリティ別の枠・バッジ・ステータス表示)
+
+実際にAI生成画像を試したところ、見本の完成カードイメージ(枠・レアリティバッジ・武将名・スキル名・ステータス数値・フレーバーテキストが焼き込まれたもの)と、AI生成の素のイラストとの間に大きな差があることが判明。`GachaReveal.tsx`には「カード画像自体にテキストが焼き込まれている前提」というコメントがあったが、実際にはCSS枠のみで文字要素は存在しなかった。AI画像生成に正確な日本語テキスト(特にDBの実データと一致する数値)を安定して描かせるのは現実的でないため、**AIはイラストのみ生成し、枠・バッジ・武将名・スキル名・ステータス・フレーバーテキストはコード側(`next/og`のImageResponse=Satori+resvg)で正確に合成する**方式にした。
+
+### 変更内容
+
+- マイグレーション`20260722000001_warlord_skill_name.sql`: `warlords`に`skill_name`列を追加(スキル名は独立した表示要素のため、既存の`stats_json`/`lore`とは別カラム)。
+- `assets/fonts/NotoSansJP-Bold.woff`(新規、約580KB): `next/og`のImageResponseは日本語フォントの明示的な埋め込みが必須(サーバー環境に日本語フォントが入っている保証がないため)。Google Fonts「Noto Sans JP」(OFL-1.1)のBold(700)を、`fonttools`で常用漢字2136字+かな+基本英数字+旧国名等に絞ってサブセット化(元は可変フォント約9.6MB→約580KBのWOFF)。取得・再生成手順は`assets/fonts/README.md`に記載。
+- `src/lib/card-template.tsx`(新規)の`renderWarlordCard()`: AI生成イラストを背景に、レアリティ表示名(足軽級〜大名級)ごとに割り当てたバッジ文字(C/UC/R/SR/SSR)・枠色・コーナー装飾サイズで、武将名・国名・スキル名・ステータス上位3件(`stats_json`から動的取得)・フレーバーテキスト(`lore`を46文字に切り詰め)を合成した1024×1536のPNGを返す。SR/SSRほど枠色を明るく(金→金白)・コーナー装飾を大きくして質感の差を付けている。
+- `/api/admin/ai-image/adopt`: `entity_type === "warlord"`の場合のみ、`resizeForLine()`の前に`renderWarlordCard()`を挟むよう変更(合成後の画像を最終的な1080px上限のWebPに変換して保存する)。メタバース内覧側の画像生成には影響しない。
+- `src/lib/ai-text.ts`(新規)の`generateSkillName()`: OpenAIのChat Completions API(`gpt-4o-mini`固定)で、国名・レアリティ・逸話から短いスキル名を1つ生成する。画像生成と同じ`ai_image_settings.api_key`(OpenAI)を再利用する。05/06番ガイドの方針を踏襲し、武将の実名はプロンプトに含めない。
+- `/api/admin/warlords/[id]/skill-name`(新規POST): 1件分のスキル名を生成して保存。管理画面の武将マスタページに「AIで生成」ボタンと、既存75体分をまとめて処理する「未設定のスキル名をAIで一括生成」ボタン(サーバーレス関数のタイムアウトを避けるため、サーバー側で一括処理せずクライアント側で1件ずつ順番にリクエストするループにした)を追加。
+
+### 影響範囲
+
+- 既存の`warlords`テーブルへの列追加のみ。スキル名が未設定の武将は、カード合成時にスキル名の欄が表示されないだけで、既存の画像アップロードフロー・表示側のコードには影響しない。
+- カード合成が適用されるのはAI生成→採用フローを通した場合のみ。手動アップロードした既存の武将画像は今回変更されない。
+
+### 未実装事項
+
+- 家紋・国章のグラフィック合成(専用素材が無いため、今回は国名の文字バッジのみ)。
+- レアリティ以外の動的演出(箔押し風グラデーションやアニメーション等)。
+- カードテンプレートのレイアウト自体を管理画面から編集する機能(現状はコード側で固定)。
+- 常用漢字外の文字(一部の人名・地名等)を含む場合、埋め込みフォントに無い字形は正しく表示されない可能性がある(サブセット対象を増やすには`assets/fonts/README.md`の手順で再生成が必要)。
+- Vercel本番環境でのフォント読み込み(`next.config.ts`の`outputFileTracingIncludes`で明示的に含めているが)・実際のカード合成結果の確認はユーザー側で実施が必要。
