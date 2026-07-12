@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { logAdminAction } from "@/lib/admin-audit-log";
 import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
-import { resizeForLine } from "@/lib/image-upload";
+import { resizeForLine, uploadImageAndVerify, ImageUploadVerificationError } from "@/lib/image-upload";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -43,16 +43,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const supabase = createSupabaseServerClient();
   const path = `areas/${id}-${target}-${Date.now()}.${resized.extension}`;
 
-  const { error: uploadError } = await supabase.storage
-    .from("metaverse-images")
-    .upload(path, resized.buffer, { contentType: resized.contentType, upsert: true, cacheControl: "60" });
-  if (uploadError) {
-    return NextResponse.json({ error: uploadError.message }, { status: 500 });
+  let publicUrl: string;
+  try {
+    ({ publicUrl } = await uploadImageAndVerify(supabase, "metaverse-images", path, resized.buffer, resized.contentType));
+  } catch (error) {
+    if (error instanceof ImageUploadVerificationError) {
+      return NextResponse.json({ error: error.message }, { status: 502 });
+    }
+    throw error;
   }
-
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from("metaverse-images").getPublicUrl(path);
 
   const column = TARGET_COLUMNS[target as keyof typeof TARGET_COLUMNS];
   const { data, error } = await supabase

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { logAdminAction } from "@/lib/admin-audit-log";
 import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
-import { resizeForLine } from "@/lib/image-upload";
+import { resizeForLine, uploadImageAndVerify, ImageUploadVerificationError } from "@/lib/image-upload";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024; // 10MB(指示書29章の上限に合わせる)
@@ -39,16 +39,15 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const supabase = createSupabaseServerClient();
   const path = `properties/${id}-${Date.now()}.${resized.extension}`;
 
-  const { error: uploadError } = await supabase.storage
-    .from("metaverse-images")
-    .upload(path, resized.buffer, { contentType: resized.contentType, upsert: true, cacheControl: "60" });
-  if (uploadError) {
-    return NextResponse.json({ error: uploadError.message }, { status: 500 });
+  let publicUrl: string;
+  try {
+    ({ publicUrl } = await uploadImageAndVerify(supabase, "metaverse-images", path, resized.buffer, resized.contentType));
+  } catch (error) {
+    if (error instanceof ImageUploadVerificationError) {
+      return NextResponse.json({ error: error.message }, { status: 502 });
+    }
+    throw error;
   }
-
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from("metaverse-images").getPublicUrl(path);
 
   const { data: imageRow, error: insertError } = await supabase
     .from("metaverse_property_images")

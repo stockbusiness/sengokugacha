@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { logAdminAction } from "@/lib/admin-audit-log";
 import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
-import { resizeForRichMenu } from "@/lib/image-upload";
+import { resizeForRichMenu, uploadImageAndVerify, ImageUploadVerificationError } from "@/lib/image-upload";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // 15MB(リサイズ前の元画像用)
@@ -39,18 +39,15 @@ export async function POST(request: NextRequest) {
   const supabase = createSupabaseServerClient();
   const path = `rich-menu-${Date.now()}.${resized.extension}`;
 
-  const { error: uploadError } = await supabase.storage
-    .from("rich-menu-images")
-    // cacheControlを短くしている理由は武将画像アップロード時と同じ
-    // (CDN層でのキャッシュ不具合が確認されているため)。
-    .upload(path, resized.buffer, { contentType: resized.contentType, upsert: true, cacheControl: "60" });
-  if (uploadError) {
-    return NextResponse.json({ error: uploadError.message }, { status: 500 });
+  let publicUrl: string;
+  try {
+    ({ publicUrl } = await uploadImageAndVerify(supabase, "rich-menu-images", path, resized.buffer, resized.contentType));
+  } catch (error) {
+    if (error instanceof ImageUploadVerificationError) {
+      return NextResponse.json({ error: error.message }, { status: 502 });
+    }
+    throw error;
   }
-
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from("rich-menu-images").getPublicUrl(path);
 
   const { data: existing, error: fetchError } = await supabase
     .from("line_settings")
