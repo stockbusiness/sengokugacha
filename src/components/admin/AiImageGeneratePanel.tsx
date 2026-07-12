@@ -20,6 +20,7 @@ export default function AiImageGeneratePanel({ entityType, entityId, target, aut
   const [prompt, setPrompt] = useState(autoPrompt);
   const [useReference, setUseReference] = useState<UseReference>("style");
   const [previewBase64, setPreviewBase64] = useState<string | null>(null);
+  const [portraitBase64, setPortraitBase64] = useState<string | null>(null);
   const [generationId, setGenerationId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -39,6 +40,7 @@ export default function AiImageGeneratePanel({ entityType, entityId, target, aut
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "生成に失敗しました。");
       setPreviewBase64(body.image_base64);
+      setPortraitBase64(body.portrait_base64 ?? null);
       setGenerationId(body.generation_id);
       if (body.fallback_used) {
         setNotice(`設定中のAPIが利用できなかったため、${body.provider_used === "gemini" ? "Gemini" : "OpenAI"}で生成しました。`);
@@ -58,7 +60,7 @@ export default function AiImageGeneratePanel({ entityType, entityId, target, aut
       const res = await fetch("/api/admin/ai-image/adopt", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ generation_id: generationId, image_base64: previewBase64 }),
+        body: JSON.stringify({ generation_id: generationId, image_base64: previewBase64, portrait_base64: portraitBase64 }),
       });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "採用に失敗しました。");
@@ -73,6 +75,7 @@ export default function AiImageGeneratePanel({ entityType, entityId, target, aut
   function handleCancel() {
     setState("idle");
     setPreviewBase64(null);
+    setPortraitBase64(null);
     setGenerationId(null);
     setError(null);
     setNotice(null);
@@ -157,6 +160,7 @@ export default function AiImageGeneratePanel({ entityType, entityId, target, aut
               type="button"
               onClick={() => {
                 setPreviewBase64(null);
+                setPortraitBase64(null);
                 setGenerationId(null);
                 setState("editing");
               }}
