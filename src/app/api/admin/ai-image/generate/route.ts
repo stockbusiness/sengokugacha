@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import sharp from "sharp";
 import { logAdminAction } from "@/lib/admin-audit-log";
 import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
 import { AiImageGenerationError, generateImage } from "@/lib/ai-image";
@@ -8,6 +9,16 @@ import { renderWarlordCard } from "@/lib/card-template";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 type UseReference = "none" | "style" | "current";
+
+// OpenAI/Geminiが返す生成直後の画像はPNGでかなり大きく(1〜3MB程度)、武将カードの場合は
+// 素のイラスト+カード合成後の2枚をプレビューとして返す必要があるため、そのままbase64化すると
+// リクエスト/レスポンスボディがVercelのペイロード上限を超えてエラーになることがあった
+// ("Unexpected token 'R', "Request En"..." = "Request Entity Too Large"の頭が混ざったエラー)。
+// 転送用にWebPへ軽量変換してから返す(最終的な保存時はadopt側のresizeForLine()で
+// 改めて適切な形式に変換されるため、ここでの変換が画質に影響することはない)。
+async function compressForTransit(buffer: Buffer): Promise<Buffer> {
+  return sharp(buffer).webp({ quality: 85 }).toBuffer();
+}
 
 export async function POST(request: NextRequest) {
   if (!(await getAdminSession())) {
@@ -148,10 +159,20 @@ export async function POST(request: NextRequest) {
     `entity_type=${entity_type} entity_id=${entity_id} provider=${providerUsed}`
   );
 
+  let previewBuffer: Buffer;
+  let portraitTransitBuffer: Buffer | undefined;
+  try {
+    previewBuffer = await compressForTransit(cardImageBuffer ?? portraitBuffer);
+    portraitTransitBuffer = cardImageBuffer ? await compressForTransit(portraitBuffer) : undefined;
+  } catch (error) {
+    console.error("プレビュー用画像の圧縮に失敗しました", error);
+    return NextResponse.json({ error: "画像の処理に失敗しました。" }, { status: 500 });
+  }
+
   return NextResponse.json({
     generation_id: generation.id,
-    image_base64: (cardImageBuffer ?? portraitBuffer).toString("base64"),
-    portrait_base64: cardImageBuffer ? portraitBuffer.toString("base64") : undefined,
+    image_base64: previewBuffer.toString("base64"),
+    portrait_base64: portraitTransitBuffer?.toString("base64"),
     provider_used: providerUsed,
     fallback_used: providerUsed !== settings.provider,
   });

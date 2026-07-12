@@ -146,7 +146,7 @@ export default function AiImageGeneratePanel({ entityType, entityId, target, aut
         <>
           {notice && <p className="text-xs text-amber-600 dark:text-amber-400">{notice}</p>}
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={`data:image/png;base64,${previewBase64}`} alt="生成プレビュー" className="max-h-64 w-full rounded-lg object-contain" />
+          <img src={`data:image/webp;base64,${previewBase64}`} alt="生成プレビュー" className="max-h-64 w-full rounded-lg object-contain" />
           <div className="flex items-center gap-2">
             <button
               type="button"
