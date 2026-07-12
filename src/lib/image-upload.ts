@@ -84,14 +84,27 @@ type SupabaseServerClient = ReturnType<typeof createSupabaseServerClient>;
 
 export class ImageUploadVerificationError extends Error {}
 
-const UPLOAD_VERIFY_MAX_ATTEMPTS = 2;
+const UPLOAD_VERIFY_MAX_ATTEMPTS = 3;
 
-// Supabase Storageへのアップロード直後にごく稀に、書き込んだバイト列と実際に取得できる
-// バイト列が一致しない(=保存された時点で既に壊れている)事象が実機で確認されている。
+// リトライ時に同じパスへ再アップロードすると、読み取り経路側に何らかのキャッシュ/整合性の
+// 問題がある場合(実機で、直後の再ダウンロードが全く別サイズの中身を返す事象が確認された)、
+// 同じキーに対して何度リトライしても同じ壊れた結果を引き続けてしまう。そのため試行ごとに
+// 別パス(拡張子の直前に -retry2 のようなサフィックスを挿入)を使い、毎回まっさらな
+// オブジェクトとして書き込み直す。
+function withRetrySuffix(path: string, attempt: number): string {
+  if (attempt <= 1) return path;
+  const lastDot = path.lastIndexOf(".");
+  const suffix = `-retry${attempt}`;
+  return lastDot === -1 ? `${path}${suffix}` : `${path.slice(0, lastDot)}${suffix}${path.slice(lastDot)}`;
+}
+
+// Supabase Storageへのアップロード直後、再ダウンロードした内容が書き込んだバイト列と
+// (サイズからして別物と分かるレベルで)一致しない事象が実機で確認されている。CDN層の
+// Rangeキャッシュ不具合とは別に、書き込み〜配信経路の整合性そのものに問題があるとみられる。
 // アップロードして終わりにせず、その場で再ダウンロードしてバイト列の完全一致を検証し、
-// 一致しなければ同じパスに再アップロードして再検証する。これにより「保存自体は200 OKで
-// 成功したが、後から見ると画像が壊れている」というサイレントな破損を、アップロード操作
-// そのものの失敗としてユーザーに伝えられるようにする。
+// 一致しなければ「別の新しいパス」に再アップロードして再検証する。これにより「保存自体は
+// 200 OKで成功したが、後から見ると画像が壊れている」というサイレントな破損を、アップロード
+// 操作そのものの失敗としてユーザーに伝えられるようにする。
 export async function uploadImageAndVerify(
   supabase: SupabaseServerClient,
   bucket: string,
@@ -102,15 +115,16 @@ export async function uploadImageAndVerify(
   let lastErrorMessage = "不明なエラー";
 
   for (let attempt = 1; attempt <= UPLOAD_VERIFY_MAX_ATTEMPTS; attempt++) {
+    const attemptPath = withRetrySuffix(path, attempt);
     const { error: uploadError } = await supabase.storage
       .from(bucket)
-      .upload(path, buffer, { contentType, upsert: true, cacheControl: "60" });
+      .upload(attemptPath, buffer, { contentType, upsert: true, cacheControl: "60" });
     if (uploadError) {
       lastErrorMessage = uploadError.message;
       continue;
     }
 
-    const { data: verifyData, error: verifyError } = await supabase.storage.from(bucket).download(path);
+    const { data: verifyData, error: verifyError } = await supabase.storage.from(bucket).download(attemptPath);
     if (verifyError || !verifyData) {
       lastErrorMessage = verifyError?.message ?? "アップロード後の検証用ダウンロードに失敗しました";
       continue;
@@ -124,7 +138,7 @@ export async function uploadImageAndVerify(
 
     const {
       data: { publicUrl },
-    } = supabase.storage.from(bucket).getPublicUrl(path);
+    } = supabase.storage.from(bucket).getPublicUrl(attemptPath);
     return { publicUrl };
   }
 
