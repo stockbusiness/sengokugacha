@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { toDisplayUrl } from "@/lib/image-url";
 
 type HistoryRow = {
   id: string;
@@ -89,7 +90,7 @@ export default function AiImageHistoryPage() {
             <div key={row.id} className="flex items-start gap-3 p-3">
               {row.adopted && row.image_url ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={row.image_url} alt="" className="h-16 w-16 flex-shrink-0 rounded-lg border border-zinc-200 object-cover dark:border-zinc-700" />
+                <img src={toDisplayUrl(row.image_url) ?? undefined} alt="" className="h-16 w-16 flex-shrink-0 rounded-lg border border-zinc-200 object-cover dark:border-zinc-700" />
               ) : (
                 <div className="flex h-16 w-16 flex-shrink-0 items-center justify-center rounded-lg bg-zinc-100 text-[10px] text-zinc-400 dark:bg-zinc-900">
                   未採用

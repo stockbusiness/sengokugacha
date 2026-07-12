@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { gsap } from "gsap";
+import { toDisplayUrl } from "@/lib/image-url";
 
 type SlotType = "common" | "mid" | "rare";
 
@@ -261,7 +262,7 @@ export function GachaReveal({ warlord, provinceName, onFinish }: GachaRevealProp
                 style={{ opacity: 0 }}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={warlord.imageUrl} alt={warlord.name} className="block h-auto w-full" />
+                <img src={toDisplayUrl(warlord.imageUrl) ?? undefined} alt={warlord.name} className="block h-auto w-full" />
               </div>
             ) : (
               <div

@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import AiImageGeneratePanel from "@/components/admin/AiImageGeneratePanel";
+import { toDisplayUrl } from "@/lib/image-url";
 
 type Area = { id: string; name: string };
 type BuildingType = { id: string; name: string };
@@ -355,7 +356,7 @@ export default function EditMetaversePropertyPage() {
           {property.images.map((img) => (
             <div key={img.id} className="relative">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={img.image_url} alt="" className="h-24 w-24 rounded-lg border border-zinc-200 object-cover dark:border-zinc-700" />
+              <img src={toDisplayUrl(img.image_url) ?? undefined} alt="" className="h-24 w-24 rounded-lg border border-zinc-200 object-cover dark:border-zinc-700" />
               {property.main_image_url === img.image_url && (
                 <span className="absolute left-1 top-1 rounded bg-red-700 px-1.5 py-0.5 text-[10px] font-semibold text-white">
                   メイン
@@ -575,7 +576,7 @@ function SceneRow({
         <div className="mt-3 space-y-3 border-t border-zinc-100 pt-3 dark:border-zinc-800">
           {scene.image_url ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={scene.image_url} alt="" className="h-32 w-full rounded-lg object-cover" />
+            <img src={toDisplayUrl(scene.image_url) ?? undefined} alt="" className="h-32 w-full rounded-lg object-cover" />
           ) : (
             <p className="text-xs text-zinc-400">まだ画像が設定されていません。</p>
           )}

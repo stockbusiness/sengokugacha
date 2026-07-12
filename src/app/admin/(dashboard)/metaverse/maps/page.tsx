@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { PolygonCanvas } from "@/components/admin/PolygonCanvas";
 import AiImageGeneratePanel from "@/components/admin/AiImageGeneratePanel";
+import { toDisplayUrl } from "@/lib/image-url";
 
 type MapRow = {
   id: string;
@@ -314,7 +315,7 @@ function MapEditor({ map, areas, onReload }: { map: MapRow; areas: Area[]; onRel
               <div className="relative inline-block max-w-full">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
-                  src={map.image_url}
+                  src={toDisplayUrl(map.image_url) ?? undefined}
                   alt={map.name}
                   onClick={handleImageClick}
                   className="max-h-[480px] max-w-full cursor-crosshair rounded-lg border border-zinc-200 dark:border-zinc-700"

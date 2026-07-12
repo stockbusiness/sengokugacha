@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { toDisplayUrl } from "@/lib/image-url";
 
 export type PolygonItem = {
   id: string;
@@ -54,7 +55,7 @@ export function PolygonCanvas({
     >
       {!imgError && (
         <image
-          href={imageUrl}
+          href={toDisplayUrl(imageUrl) ?? undefined}
           x={viewBox.x}
           y={viewBox.y}
           width={viewBox.width}

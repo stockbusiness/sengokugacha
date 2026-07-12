@@ -7,6 +7,7 @@ import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button, LinkButton, TextLink } from "@/components/ui/Button";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
+import { toDisplayUrl } from "@/lib/image-url";
 
 type PropertyDetail = {
   id: string;
@@ -123,7 +124,7 @@ export default function MetaverseTourPropertyDetailPage() {
 
           {property.mainImageUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={property.mainImageUrl} alt="" className="w-full rounded-xl object-cover" />
+            <img src={toDisplayUrl(property.mainImageUrl) ?? undefined} alt="" className="w-full rounded-xl object-cover" />
           ) : (
             <div className="flex h-40 w-full items-center justify-center rounded-xl bg-ink-raised text-3xl">🏠</div>
           )}

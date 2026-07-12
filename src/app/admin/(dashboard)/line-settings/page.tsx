@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ChangeEvent } from "react";
+import { toDisplayUrl } from "@/lib/image-url";
 
 type LineSettings = {
   id: string | null;
@@ -231,7 +232,7 @@ export default function LineSettingsPage() {
             <div key={panel.slotIndex} className="space-y-1.5 text-center">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src={panel.imageUrl}
+                src={toDisplayUrl(panel.imageUrl) ?? undefined}
                 alt={panel.label}
                 className="aspect-square w-full rounded-lg border border-zinc-200 object-cover dark:border-zinc-800"
               />
@@ -264,7 +265,7 @@ export default function LineSettingsPage() {
       <div className="space-y-3 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
         <p className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">リッチメニューのデプロイ</p>
         <img
-          src={settings.rich_menu_image_url ?? "/rich-menu.jpg"}
+          src={toDisplayUrl(settings.rich_menu_image_url) ?? "/rich-menu.jpg"}
           alt="リッチメニュー プレビュー"
           className="w-full rounded-lg border border-zinc-200 dark:border-zinc-800"
         />

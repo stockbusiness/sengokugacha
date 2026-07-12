@@ -8,6 +8,7 @@ import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TextLink } from "@/components/ui/Button";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
+import { toDisplayUrl } from "@/lib/image-url";
 
 const STATUS_LABEL: Record<string, string> = {
   published: "内覧可能",
@@ -129,7 +130,7 @@ export default function MetaverseTourAreaDetailPage() {
                 <Card className="p-0 overflow-hidden transition hover:border-gold/50">
                   {p.mainImageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={p.mainImageUrl} alt="" className="h-24 w-full object-cover" />
+                    <img src={toDisplayUrl(p.mainImageUrl) ?? undefined} alt="" className="h-24 w-full object-cover" />
                   ) : (
                     <div className="flex h-24 w-full items-center justify-center bg-ink-raised text-2xl">🏠</div>
                   )}
