@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import AiImageGeneratePanel from "@/components/admin/AiImageGeneratePanel";
+import { toDisplayUrl } from "@/lib/image-url";
 
 type Warlord = {
   id: string;
@@ -237,7 +238,7 @@ export default function WarlordsPage() {
                   {w.image_url && (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
-                      src={w.image_url}
+                      src={toDisplayUrl(w.image_url) ?? undefined}
                       alt={w.name}
                       className="h-16 w-16 rounded-lg border border-zinc-200 object-cover dark:border-zinc-700"
                     />

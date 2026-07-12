@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
+import { toDisplayUrl } from "@/lib/image-url";
 
 export type AnimationFormValues = {
   animation_key: string;
@@ -308,7 +309,7 @@ export function AnimationForm({
             <p className="mb-1 text-xs text-zinc-400 dark:text-zinc-600">現在の動画</p>
             <video
               src={currentVideoUrl}
-              poster={currentPosterUrl ?? undefined}
+              poster={toDisplayUrl(currentPosterUrl) ?? undefined}
               controls
               muted
               className="aspect-[9/16] w-full rounded-lg border border-zinc-200 bg-black object-cover dark:border-zinc-800"
@@ -333,7 +334,7 @@ export function AnimationForm({
             <p className="mb-1 text-xs text-zinc-400 dark:text-zinc-600">現在のポスター</p>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={currentPosterUrl}
+              src={toDisplayUrl(currentPosterUrl) ?? undefined}
               alt=""
               className="aspect-[9/16] w-full rounded-lg border border-zinc-200 object-cover dark:border-zinc-800"
             />

@@ -8,6 +8,7 @@ import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TextLink } from "@/components/ui/Button";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
+import { toDisplayUrl } from "@/lib/image-url";
 
 type Area = {
   id: string;
@@ -97,7 +98,7 @@ export default function MetaverseTourAreasPage() {
           {map && (
             <div className="relative overflow-hidden rounded-2xl border border-gold/15 shadow-lg shadow-black/30">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={map.imageUrl} alt={map.name} className="w-full" />
+              <img src={toDisplayUrl(map.imageUrl) ?? undefined} alt={map.name} className="w-full" />
               {map.areaPolygons.length > 0 && (
                 <svg
                   viewBox={`0 0 ${map.viewBoxWidth} ${map.viewBoxHeight}`}
@@ -137,7 +138,7 @@ export default function MetaverseTourAreasPage() {
                 <div className="flex items-center gap-3">
                   {area.thumbnailUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={area.thumbnailUrl} alt="" className="h-16 w-16 rounded-lg object-cover" />
+                    <img src={toDisplayUrl(area.thumbnailUrl) ?? undefined} alt="" className="h-16 w-16 rounded-lg object-cover" />
                   ) : (
                     <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-ink-raised text-2xl">🏯</div>
                   )}

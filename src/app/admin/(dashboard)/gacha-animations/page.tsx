@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { toDisplayUrl } from "@/lib/image-url";
 
 type Animation = {
   id: string;
@@ -181,7 +182,7 @@ export default function GachaAnimationsPage() {
                   <td className="px-3 py-2">
                     {item.poster_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={item.poster_url} alt="" className="h-14 w-8 rounded object-cover" />
+                      <img src={toDisplayUrl(item.poster_url) ?? undefined} alt="" className="h-14 w-8 rounded object-cover" />
                     ) : (
                       <span className="block h-14 w-8 rounded bg-zinc-100 dark:bg-zinc-800" />
                     )}

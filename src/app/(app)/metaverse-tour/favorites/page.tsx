@@ -7,6 +7,7 @@ import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TextLink } from "@/components/ui/Button";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
+import { toDisplayUrl } from "@/lib/image-url";
 
 type PropertySummary = {
   id: string;
@@ -64,7 +65,7 @@ export default function MetaverseTourFavoritesPage() {
                 <div className="flex items-center gap-3">
                   {p.mainImageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={p.mainImageUrl} alt="" className="h-14 w-14 rounded-lg object-cover" />
+                    <img src={toDisplayUrl(p.mainImageUrl) ?? undefined} alt="" className="h-14 w-14 rounded-lg object-cover" />
                   ) : (
                     <div className="flex h-14 w-14 items-center justify-center rounded-lg bg-ink-raised text-xl">🏠</div>
                   )}

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import AiImageGeneratePanel from "@/components/admin/AiImageGeneratePanel";
+import { toDisplayUrl } from "@/lib/image-url";
 
 type Area = {
   id: string;
@@ -452,7 +453,7 @@ function ImageSlot({
       <span className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">{label}</span>
       {imageUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
-        <img src={imageUrl} alt="" className="mb-2 h-24 w-full rounded-md object-cover" />
+        <img src={toDisplayUrl(imageUrl) ?? undefined} alt="" className="mb-2 h-24 w-full rounded-md object-cover" />
       ) : (
         <div className="mb-2 flex h-24 w-full items-center justify-center rounded-md bg-zinc-100 text-xs text-zinc-400 dark:bg-zinc-900">
           未設定

@@ -6,6 +6,7 @@ import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { MissionPing } from "@/components/MissionPing";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
+import { toDisplayUrl } from "@/lib/image-url";
 
 type CollectionWarlord = {
   id: string;
@@ -210,7 +211,7 @@ function WarlordCard({ warlord }: { warlord: CollectionWarlord }) {
         {warlord.imageUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={warlord.imageUrl}
+            src={toDisplayUrl(warlord.imageUrl) ?? undefined}
             alt={warlord.name}
             className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
           />

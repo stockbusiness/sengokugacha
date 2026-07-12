@@ -2,6 +2,7 @@
 
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useSearchParams } from "next/navigation";
+import { toDisplayUrl } from "@/lib/image-url";
 
 type Hotspot = {
   id: string;
@@ -230,7 +231,7 @@ function ExternalTourInner() {
           <video
             key={currentScene.id}
             src={currentScene.videoUrl}
-            poster={currentScene.imageUrl}
+            poster={toDisplayUrl(currentScene.imageUrl) ?? undefined}
             controls
             playsInline
             className="max-h-screen w-full object-contain"
@@ -239,7 +240,7 @@ function ExternalTourInner() {
         ) : (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={currentScene.imageUrl}
+            src={toDisplayUrl(currentScene.imageUrl) ?? undefined}
             alt={currentScene.name}
             onDoubleClick={(e) => {
               e.stopPropagation();
@@ -312,7 +313,7 @@ function ExternalTourInner() {
                 className={`relative shrink-0 overflow-hidden rounded-lg border-2 ${i === sceneIndex ? "border-gold" : "border-transparent"}`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={s.thumbnailUrl ?? s.imageUrl} alt={s.name} className="h-14 w-20 object-cover" />
+                <img src={toDisplayUrl(s.thumbnailUrl ?? s.imageUrl) ?? undefined} alt={s.name} className="h-14 w-20 object-cover" />
                 {s.videoUrl && (
                   <span className="absolute inset-0 flex items-center justify-center bg-black/20 text-lg text-parchment">▶</span>
                 )}
