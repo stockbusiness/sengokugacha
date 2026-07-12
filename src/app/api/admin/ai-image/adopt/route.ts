@@ -3,7 +3,6 @@ import { logAdminAction } from "@/lib/admin-audit-log";
 import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
 import { resizeForLine } from "@/lib/image-upload";
 import { AI_IMAGE_TARGETS, isAiImageEntityType, type AiImageEntityType } from "@/lib/ai-image-targets";
-import { renderWarlordCard } from "@/lib/card-template";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export async function POST(request: NextRequest) {
@@ -16,7 +15,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid body" }, { status: 400 });
   }
 
-  const { generation_id, image_base64 } = body as { generation_id?: unknown; image_base64?: unknown };
+  const { generation_id, image_base64, portrait_base64 } = body as {
+    generation_id?: unknown;
+    image_base64?: unknown;
+    portrait_base64?: unknown;
+  };
   if (typeof generation_id !== "string" || !generation_id) {
     return NextResponse.json({ error: "generation_id を指定してください" }, { status: 400 });
   }
@@ -40,39 +43,14 @@ export async function POST(request: NextRequest) {
   const entityId = generation.entity_id as string;
   const targetDef = AI_IMAGE_TARGETS[entityType];
 
+  // 武将カードの場合、image_base64は既にgenerateの段階でカード合成済み(プレビューで
+  // 見えている見た目がそのまま保存される)。portrait_base64があれば、素のイラスト
+  // (枠・文字なし)を「現在の画像を参照する」用に別途保存する。
   let inputBuffer: Buffer;
   try {
     inputBuffer = Buffer.from(image_base64, "base64");
   } catch {
     return NextResponse.json({ error: "画像データの読み込みに失敗しました" }, { status: 400 });
-  }
-
-  // 武将カードのみ、AI生成イラストの上にレアリティ別の枠・武将名・スキル名・ステータス・
-  // フレーバーテキストを合成する(AIにテキストまで生成させるとDBの実データとズレるため)。
-  if (entityType === "warlord") {
-    const { data: warlord, error: warlordError } = await supabase
-      .from("warlords")
-      .select("name, rarity, skill_name, stats_json, lore, provinces(name)")
-      .eq("id", entityId)
-      .maybeSingle();
-    if (warlordError) return NextResponse.json({ error: warlordError.message }, { status: 500 });
-    if (warlord) {
-      const province = warlord.provinces as unknown as { name: string } | { name: string }[] | null;
-      const provinceName = Array.isArray(province) ? (province[0]?.name ?? "") : (province?.name ?? "");
-      try {
-        inputBuffer = await renderWarlordCard(inputBuffer, {
-          name: warlord.name,
-          rarity: warlord.rarity,
-          provinceName,
-          skillName: warlord.skill_name,
-          stats: warlord.stats_json as Record<string, unknown> | null,
-          lore: warlord.lore,
-        });
-      } catch (error) {
-        console.error("カードテンプレートの合成に失敗しました", error);
-        return NextResponse.json({ error: "カードの合成に失敗しました。" }, { status: 500 });
-      }
-    }
   }
 
   let resized;
@@ -94,9 +72,37 @@ export async function POST(request: NextRequest) {
   } = supabase.storage.from(targetDef.bucket).getPublicUrl(path);
 
   const column = targetDef.resolveColumn(generation.target as string | null);
+  const fields: Record<string, unknown> = { [column]: publicUrl };
+
+  // 素のイラスト(枠・文字なし)も保存し、次回「現在の画像を参照する」で使えるようにする。
+  if (entityType === "warlord" && typeof portrait_base64 === "string" && portrait_base64) {
+    try {
+      const portraitBuffer = Buffer.from(portrait_base64, "base64");
+      const resizedPortrait = await resizeForLine(portraitBuffer);
+      const portraitPath = `warlords/portraits/${entityId}-ai-${Date.now()}.${resizedPortrait.extension}`;
+      const { error: portraitUploadError } = await supabase.storage
+        .from(targetDef.bucket)
+        .upload(portraitPath, resizedPortrait.buffer, {
+          contentType: resizedPortrait.contentType,
+          upsert: true,
+          cacheControl: "60",
+        });
+      if (!portraitUploadError) {
+        const {
+          data: { publicUrl: portraitPublicUrl },
+        } = supabase.storage.from(targetDef.bucket).getPublicUrl(portraitPath);
+        fields.ai_portrait_url = portraitPublicUrl;
+      }
+    } catch (error) {
+      // 素のイラストの保存に失敗しても、カード画像自体の採用は継続する(次回の参照精度が
+      // 落ちるだけなので、ここで全体を失敗させるほどではない)。
+      console.error("素のイラストの保存に失敗しました", error);
+    }
+  }
+
   const { data: updatedEntity, error: updateError } = await supabase
     .from(targetDef.table)
-    .update({ [column]: publicUrl })
+    .update(fields)
     .eq("id", entityId)
     .select("*")
     .single();
