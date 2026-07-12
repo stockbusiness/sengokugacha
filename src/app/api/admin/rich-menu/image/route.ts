@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { logAdminAction } from "@/lib/admin-audit-log";
 import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
-import { resizeForRichMenu, uploadImageAndVerify, ImageUploadVerificationError } from "@/lib/image-upload";
+import { resizeForRichMenu } from "@/lib/image-upload";
+import { uploadToBlob } from "@/lib/blob-storage";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 const MAX_UPLOAD_BYTES = 15 * 1024 * 1024; // 15MB(リサイズ前の元画像用)
@@ -37,17 +38,9 @@ export async function POST(request: NextRequest) {
   }
 
   const supabase = createSupabaseServerClient();
-  const path = `rich-menu-${Date.now()}.${resized.extension}`;
+  const path = `rich-menu-images/rich-menu-${Date.now()}.${resized.extension}`;
 
-  let publicUrl: string;
-  try {
-    ({ publicUrl } = await uploadImageAndVerify(supabase, "rich-menu-images", path, resized.buffer, resized.contentType));
-  } catch (error) {
-    if (error instanceof ImageUploadVerificationError) {
-      return NextResponse.json({ error: error.message }, { status: 502 });
-    }
-    throw error;
-  }
+  const { publicUrl } = await uploadToBlob(path, resized.buffer, resized.contentType);
 
   const { data: existing, error: fetchError } = await supabase
     .from("line_settings")

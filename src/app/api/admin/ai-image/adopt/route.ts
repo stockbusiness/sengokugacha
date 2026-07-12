@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { logAdminAction } from "@/lib/admin-audit-log";
 import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
-import { resizeForLine, uploadImageAndVerify, ImageUploadVerificationError } from "@/lib/image-upload";
+import { resizeForLine } from "@/lib/image-upload";
+import { uploadToBlob } from "@/lib/blob-storage";
 import { AI_IMAGE_TARGETS, isAiImageEntityType, type AiImageEntityType } from "@/lib/ai-image-targets";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
@@ -61,16 +62,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "画像の処理に失敗しました。" }, { status: 400 });
   }
 
-  const path = `${targetDef.pathPrefix}/${entityId}-ai-${Date.now()}.${resized.extension}`;
-  let publicUrl: string;
-  try {
-    ({ publicUrl } = await uploadImageAndVerify(supabase, targetDef.bucket, path, resized.buffer, resized.contentType));
-  } catch (error) {
-    if (error instanceof ImageUploadVerificationError) {
-      return NextResponse.json({ error: error.message }, { status: 502 });
-    }
-    throw error;
-  }
+  const path = `${targetDef.bucket}/${targetDef.pathPrefix}/${entityId}-ai-${Date.now()}.${resized.extension}`;
+  const { publicUrl } = await uploadToBlob(path, resized.buffer, resized.contentType);
 
   const column = targetDef.resolveColumn(generation.target as string | null);
   const fields: Record<string, unknown> = { [column]: publicUrl };
@@ -80,10 +73,8 @@ export async function POST(request: NextRequest) {
     try {
       const portraitBuffer = Buffer.from(portrait_base64, "base64");
       const resizedPortrait = await resizeForLine(portraitBuffer);
-      const portraitPath = `warlords/portraits/${entityId}-ai-${Date.now()}.${resizedPortrait.extension}`;
-      const { publicUrl: portraitPublicUrl } = await uploadImageAndVerify(
-        supabase,
-        targetDef.bucket,
+      const portraitPath = `${targetDef.bucket}/warlords/portraits/${entityId}-ai-${Date.now()}.${resizedPortrait.extension}`;
+      const { publicUrl: portraitPublicUrl } = await uploadToBlob(
         portraitPath,
         resizedPortrait.buffer,
         resizedPortrait.contentType

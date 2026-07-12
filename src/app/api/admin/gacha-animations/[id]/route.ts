@@ -3,6 +3,7 @@ import { logAdminAction } from "@/lib/admin-audit-log";
 import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
 import { resizeForGachaPoster } from "@/lib/image-upload";
 import { probeMp4 } from "@/lib/mp4-probe";
+import { deleteFromBlob, uploadToBlob } from "@/lib/blob-storage";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 const MAX_VIDEO_BYTES = Number(process.env.GACHA_VIDEO_MAX_BYTES ?? 10 * 1024 * 1024);
@@ -108,15 +109,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
       }
     }
 
-    const videoPath = `gacha-animations/${existing.animation_key}-${Date.now()}.mp4`;
-    const { error: uploadError } = await supabase.storage
-      .from("gacha-animations")
-      .upload(videoPath, videoBuffer, { contentType: "video/mp4", upsert: true, cacheControl: "60" });
-    if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 500 });
-
-    const {
-      data: { publicUrl },
-    } = supabase.storage.from("gacha-animations").getPublicUrl(videoPath);
+    const videoPath = `gacha-animations/videos/${existing.animation_key}-${Date.now()}.mp4`;
+    const { publicUrl } = await uploadToBlob(videoPath, videoBuffer, "video/mp4");
 
     fields.video_url = publicUrl;
     fields.video_storage_key = videoPath;
@@ -142,19 +136,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
         { status: 400 }
       );
     }
-    const posterPath = `gacha-posters/${existing.animation_key}-${Date.now()}.${resizedPoster.extension}`;
-    const { error: uploadError } = await supabase.storage
-      .from("gacha-animations")
-      .upload(posterPath, resizedPoster.buffer, {
-        contentType: resizedPoster.contentType,
-        upsert: true,
-        cacheControl: "60",
-      });
-    if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 500 });
-
-    const {
-      data: { publicUrl },
-    } = supabase.storage.from("gacha-animations").getPublicUrl(posterPath);
+    const posterPath = `gacha-animations/posters/${existing.animation_key}-${Date.now()}.${resizedPoster.extension}`;
+    const { publicUrl } = await uploadToBlob(posterPath, resizedPoster.buffer, resizedPoster.contentType);
     fields.poster_url = publicUrl;
     fields.poster_storage_key = posterPath;
   }
@@ -218,7 +201,13 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
     (key): key is string => !!key
   );
   if (storageKeys.length > 0) {
-    await supabase.storage.from("gacha-animations").remove(storageKeys);
+    try {
+      await deleteFromBlob(storageKeys);
+    } catch (error) {
+      // 旧Supabase Storage時代のキーはVercel Blob側に存在せず削除が失敗しうるが、
+      // DBレコード自体の削除は続行する(孤立ファイルの掃除に留まるため)。
+      console.error("ストレージからの削除に失敗しました", error);
+    }
   }
 
   const { error } = await supabase.from("gacha_animation_assets").delete().eq("id", id);

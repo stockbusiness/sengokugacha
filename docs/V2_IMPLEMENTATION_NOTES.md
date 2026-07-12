@@ -448,3 +448,34 @@ Supabase Storageの公開URL(`/storage/v1/object/public/...`)は、CDN層でRang
 
 - 動画(内覧シーン動画・ガチャ演出動画)の同様の不具合対策は未実施。
 - 実際の本番環境で、既存の壊れていた画像が新しいプロキシURL経由で正しく表示されるようになったかはユーザー側での確認が必要。
+
+## Ver2.10追記7: 画像・動画の保存先をSupabase StorageからVercel Blobへ移行(真の根本原因の確定)
+
+追記6のプロキシ経由化を本番適用した後も、`/admin/ai-image-history`等で画像が表示されない不具合が解消しなかった。ユーザーによる実機検証で、プロキシ経由(Storage SDKの`download()`)で取得した画像も「画像として認識されるがデコードできない」状態であることが判明し、当初の「CDN層の読み取りキャッシュ不具合」という原因特定が不十分だったことが分かった。
+
+### 追加調査で判明したこと
+
+1. `src/lib/image-upload.ts`にアップロード直後の再ダウンロード検証(`uploadImageAndVerify()`、バイト列の完全一致チェック・不一致時は別パスへ最大3回リトライ・`cacheNonce`によるキャッシュ無効化)を実装し、全アップロード経路(11箇所)に適用した。
+2. 実機で検証エラーが発生し、その内容から「再ダウンロードした中身が、アップロードした中身と全く別サイズ(例: 178461バイト vs 期待値98144バイト、他のケースでも同程度の倍率)」であることを確認した。これは特定パスのキャッシュ問題ではなく(パスを毎回変えて試しても再発)、**Supabase Storageの書き込み〜配信経路そのものの整合性に問題がある**ことを示している。
+
+### 対応方針
+
+アプリ側のコードで対処しきれる範囲を超えていると判断し、**画像・動画の保存先をSupabase StorageからVercel Blobへ移行**した。Supabase Postgres(DB)は引き続き使用し、影響が確認された Storage 部分のみを切り替える(データベース全体の移行はコストとリスクに見合わないため対象外)。
+
+### 変更内容
+
+- `@vercel/blob`を追加。`src/lib/blob-storage.ts`(新規): `uploadToBlob(pathname, buffer, contentType)` / `deleteFromBlob(urls)`のラッパーを実装(`access: "public"`, `addRandomSuffix: false`)。
+- 全アップロード経路(武将画像・エリア/物件/シーン/マップ画像・内覧シーン動画・リッチメニュー画像/パネル・ガチャ演出動画/ポスター・AI画像adopt・AI参照画像、計14ファイル)を`uploadToBlob()`に切り替え。パスの先頭に旧バケット名相当のプレフィックス(`warlord-images/`, `metaverse-images/`, `metaverse-videos/`, `rich-menu-images/`, `gacha-animations/`)を付け、Vercel Blobの単一名前空間内で整理した。
+- `src/lib/image-upload.ts`から、Supabase Storage向けだった`uploadImageAndVerify()`(検証・リトライ機構)を削除。Vercel Blobは書き込み直後の読み取り不整合が起きない前提のため、複雑な検証ロジックは持たせていない。
+- `src/lib/image-url.ts`の`toDisplayUrl()`は変更不要: Vercel Blobの公開URL(`https://*.public.blob.vercel-storage.com/...`)はSupabase Storageの公開URLパターンにマッチしないため、そのまま(無変換で)返される。
+- `/api/storage-proxy`と`toDisplayUrl()`自体は削除せず維持: 既存にSupabase Storageへ保存されたデータ(URLがDBに残っている)を引き続き表示するため。
+
+### スコープ・移行方針
+
+- **既存の画像・動画データの自動移行(バックフィル)は行わない**。ユーザー判断により、必要な画像(武将カード等)は管理画面から再アップロード・再生成する運用とした。既に壊れているデータもどのみち復元できないため、これが合理的と判断した。
+- Vercel Blobの利用には、Vercelダッシュボードで Storage → Create Database → Blob を作成しプロジェクトに接続する必要がある(`BLOB_READ_WRITE_TOKEN`が自動で環境変数に追加される)。この手順はユーザー側での実施が必要。
+
+### 未実装事項
+
+- 既存データのバックフィル移行スクリプトは未実装(上記の通り意図的にスコープ外)。
+- 実際の本番環境でのVercel Blobアップロード・表示の動作確認はユーザー側で実施が必要(`BLOB_READ_WRITE_TOKEN`未設定のため、この開発環境では疎通確認ができていない)。

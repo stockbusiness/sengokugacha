@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { logAdminAction } from "@/lib/admin-audit-log";
 import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
 import { probeMp4 } from "@/lib/mp4-probe";
+import { uploadToBlob } from "@/lib/blob-storage";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 const MAX_VIDEO_BYTES = Number(process.env.METAVERSE_VIDEO_MAX_BYTES ?? 50 * 1024 * 1024);
@@ -48,18 +49,9 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   }
 
   const supabase = createSupabaseServerClient();
-  const path = `scenes/${id}-${Date.now()}.mp4`;
+  const path = `metaverse-videos/scenes/${id}-${Date.now()}.mp4`;
 
-  const { error: uploadError } = await supabase.storage
-    .from("metaverse-videos")
-    .upload(path, videoBuffer, { contentType: "video/mp4", upsert: true, cacheControl: "60" });
-  if (uploadError) {
-    return NextResponse.json({ error: uploadError.message }, { status: 500 });
-  }
-
-  const {
-    data: { publicUrl },
-  } = supabase.storage.from("metaverse-videos").getPublicUrl(path);
+  const { publicUrl } = await uploadToBlob(path, videoBuffer, "video/mp4");
 
   const { data, error } = await supabase
     .from("metaverse_tour_scenes")

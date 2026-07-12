@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { logAdminAction } from "@/lib/admin-audit-log";
 import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
-import { resizeForLine, uploadImageAndVerify, ImageUploadVerificationError } from "@/lib/image-upload";
+import { resizeForLine } from "@/lib/image-upload";
+import { uploadToBlob } from "@/lib/blob-storage";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 const MAX_UPLOAD_BYTES = 10 * 1024 * 1024;
@@ -42,17 +43,9 @@ export async function POST(request: NextRequest) {
   }
 
   const supabase = createSupabaseServerClient();
-  const path = `ai-reference/${target}-${Date.now()}.${resized.extension}`;
+  const path = `metaverse-images/ai-reference/${target}-${Date.now()}.${resized.extension}`;
 
-  let publicUrl: string;
-  try {
-    ({ publicUrl } = await uploadImageAndVerify(supabase, "metaverse-images", path, resized.buffer, resized.contentType));
-  } catch (error) {
-    if (error instanceof ImageUploadVerificationError) {
-      return NextResponse.json({ error: error.message }, { status: 502 });
-    }
-    throw error;
-  }
+  const { publicUrl } = await uploadToBlob(path, resized.buffer, resized.contentType);
 
   const column = TARGET_COLUMNS[target as keyof typeof TARGET_COLUMNS];
   const { data: existing, error: fetchError } = await supabase
