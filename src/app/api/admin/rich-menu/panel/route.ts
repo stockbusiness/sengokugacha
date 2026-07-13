@@ -3,6 +3,7 @@ import { logAdminAction } from "@/lib/admin-audit-log";
 import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
 import { RICH_MENU_BUTTONS } from "@/lib/rich-menu";
 import { composeFullRichMenuSheet, DEFAULT_PANEL_SLUGS } from "@/lib/rich-menu-compose";
+import { uploadToBlob } from "@/lib/blob-storage";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import sharp from "sharp";
 
@@ -55,16 +56,9 @@ export async function POST(request: NextRequest) {
   }
 
   const supabase = createSupabaseServerClient();
-  const panelPath = `rich-menu-panels/${slotIndex}-${Date.now()}.webp`;
+  const panelPath = `rich-menu-images/rich-menu-panels/${slotIndex}-${Date.now()}.webp`;
 
-  const { error: uploadError } = await supabase.storage
-    .from("rich-menu-images")
-    .upload(panelPath, normalizedBuffer, { contentType: "image/webp", upsert: true, cacheControl: "60" });
-  if (uploadError) return NextResponse.json({ error: uploadError.message }, { status: 500 });
-
-  const {
-    data: { publicUrl: panelUrl },
-  } = supabase.storage.from("rich-menu-images").getPublicUrl(panelPath);
+  const { publicUrl: panelUrl } = await uploadToBlob(panelPath, normalizedBuffer, "image/webp");
 
   const actorName = await getAdminActorName();
 
@@ -110,15 +104,8 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const sheetPath = `rich-menu-${Date.now()}.jpg`;
-  const { error: sheetUploadError } = await supabase.storage
-    .from("rich-menu-images")
-    .upload(sheetPath, sheetBuffer, { contentType: "image/jpeg", upsert: true, cacheControl: "60" });
-  if (sheetUploadError) return NextResponse.json({ error: sheetUploadError.message }, { status: 500 });
-
-  const {
-    data: { publicUrl: sheetUrl },
-  } = supabase.storage.from("rich-menu-images").getPublicUrl(sheetPath);
+  const sheetPath = `rich-menu-images/rich-menu-${Date.now()}.jpg`;
+  const { publicUrl: sheetUrl } = await uploadToBlob(sheetPath, sheetBuffer, "image/jpeg");
 
   const { data: existingSettings, error: settingsFetchError } = await supabase
     .from("line_settings")

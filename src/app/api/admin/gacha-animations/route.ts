@@ -3,6 +3,7 @@ import { logAdminAction } from "@/lib/admin-audit-log";
 import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
 import { resizeForGachaPoster } from "@/lib/image-upload";
 import { probeMp4 } from "@/lib/mp4-probe";
+import { uploadToBlob } from "@/lib/blob-storage";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 const MAX_VIDEO_BYTES = Number(process.env.GACHA_VIDEO_MAX_BYTES ?? 10 * 1024 * 1024);
@@ -114,17 +115,9 @@ export async function POST(request: NextRequest) {
 
   const supabase = createSupabaseServerClient();
   const timestamp = Date.now();
-  const videoPath = `gacha-animations/${animationKey}-${timestamp}.mp4`;
+  const videoPath = `gacha-animations/videos/${animationKey}-${timestamp}.mp4`;
 
-  const { error: videoUploadError } = await supabase.storage
-    .from("gacha-animations")
-    .upload(videoPath, videoBuffer, { contentType: "video/mp4", upsert: true, cacheControl: "60" });
-  if (videoUploadError) {
-    return NextResponse.json({ error: videoUploadError.message }, { status: 500 });
-  }
-  const {
-    data: { publicUrl: videoUrl },
-  } = supabase.storage.from("gacha-animations").getPublicUrl(videoPath);
+  const { publicUrl: videoUrl } = await uploadToBlob(videoPath, videoBuffer, "video/mp4");
 
   let posterUrl: string | null = null;
   let posterStorageKey: string | null = null;
@@ -143,20 +136,8 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-    const posterPath = `gacha-posters/${animationKey}-${timestamp}.${resizedPoster.extension}`;
-    const { error: posterUploadError } = await supabase.storage
-      .from("gacha-animations")
-      .upload(posterPath, resizedPoster.buffer, {
-        contentType: resizedPoster.contentType,
-        upsert: true,
-        cacheControl: "60",
-      });
-    if (posterUploadError) {
-      return NextResponse.json({ error: posterUploadError.message }, { status: 500 });
-    }
-    const {
-      data: { publicUrl },
-    } = supabase.storage.from("gacha-animations").getPublicUrl(posterPath);
+    const posterPath = `gacha-animations/posters/${animationKey}-${timestamp}.${resizedPoster.extension}`;
+    const { publicUrl } = await uploadToBlob(posterPath, resizedPoster.buffer, resizedPoster.contentType);
     posterUrl = publicUrl;
     posterStorageKey = posterPath;
   }
