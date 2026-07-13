@@ -1,11 +1,12 @@
 import Link from "next/link";
+import { getHqCastleLordSummary } from "@/lib/castle-kpi";
 import { getKpiSummary } from "@/lib/kpi";
 
 // KPIは常に最新のDB状態を反映する必要があるため静的生成しない。
 export const dynamic = "force-dynamic";
 
 export default async function AdminIndexPage() {
-  const kpi = await getKpiSummary();
+  const [kpi, castleLordSummary] = await Promise.all([getKpiSummary(), getHqCastleLordSummary()]);
 
   return (
     <div className="space-y-6">
@@ -19,6 +20,16 @@ export default async function AdminIndexPage() {
         <KpiTile label="本日のガチャ実行数" value={kpi.gachaDrawsToday.toLocaleString()} />
         <KpiTile label="本日の購入額" value={`¥${kpi.purchasesTodayYen.toLocaleString()}`} />
         <KpiTile label="今月の購入額" value={`¥${kpi.purchasesMonthYen.toLocaleString()}`} />
+      </div>
+
+      <div>
+        <h2 className="mb-2 text-sm font-semibold text-zinc-600 dark:text-zinc-400">城主プラン</h2>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <KpiTile label="登録城数" value={castleLordSummary.castleCount.toLocaleString()} />
+          <KpiTile label="有効な城主契約" value={castleLordSummary.activeContractCount.toLocaleString()} />
+          <KpiTile label="審査・手続き中の契約" value={castleLordSummary.pendingContractCount.toLocaleString()} />
+          <KpiTile label="土地販売総額" value={`¥${castleLordSummary.totalLandSalesYen.toLocaleString()}`} />
+        </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-3">
