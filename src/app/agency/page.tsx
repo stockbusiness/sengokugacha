@@ -62,6 +62,13 @@ export default async function AgencyPortalPage() {
         </div>
       </section>
 
+      <a
+        href="/agency/plots"
+        className="block rounded-xl border border-gold/20 bg-ink-raised p-4 text-center text-sm font-semibold text-gold-soft hover:bg-gold/10"
+      >
+        全国の販売可能区画を見る・紹介URLを発行する →
+      </a>
+
       {children && children.length > 0 && (
         <section className="rounded-xl border border-gold/20 bg-ink-raised p-4">
           <h2 className="text-sm font-semibold text-gold-soft">配下の代理店(参考表示)</h2>
