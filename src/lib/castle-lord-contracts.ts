@@ -1,4 +1,5 @@
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { grantInitialPlotAllocation } from "@/lib/castle-plots";
 
 // 要件書6.4の契約状態遷移マトリクスをそのままコードで表現する。
 export const CONTRACT_STATUSES = [
@@ -84,6 +85,10 @@ export async function transitionContract(
   const fields: Record<string, unknown> = { status: toStatus, updated_at: new Date().toISOString() };
   if (toStatus === "active") fields.activated_at = new Date().toISOString();
   if (toStatus === "terminated") fields.terminated_at = new Date().toISOString();
+  // 承認時点で担当城を確定する(6.1フロー「契約条件・担当城・契約期間確定」)。
+  if (toStatus === "approved" && !current.castle_id && current.desired_castle_id) {
+    fields.castle_id = current.desired_castle_id;
+  }
 
   const { data: updated, error: updateError } = await supabase
     .from("castle_lord_contracts")
@@ -102,6 +107,18 @@ export async function transitionContract(
     snapshot_before: current,
   });
   if (eventError) throw eventError;
+
+  // 要件書4.3「初期30区画の販売枠割り当て」。研修完了による初回の有効化(training→active)
+  // でのみ発生させ、停止・失効からの復帰(suspended/expired→active)では再付与しない
+  // (段階2/3への拡張ロジックと同様、Phase1では自動判定は行わない前提のため)。
+  if (fromStatus === "training" && toStatus === "active" && current.castle_id) {
+    await grantInitialPlotAllocation(
+      contractId,
+      current.castle_id as string,
+      (current.initial_plot_capacity as number) ?? 30,
+      actorName
+    );
+  }
 
   return { contract: updated };
 }
