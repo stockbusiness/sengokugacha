@@ -56,12 +56,33 @@ function truncate(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max)}…` : text;
 }
 
-const CORNER_POSITIONS: Array<Record<string, number>> = [
+type CornerAnchor = { top?: number; left?: number; right?: number; bottom?: number };
+
+const CORNER_ANCHORS: CornerAnchor[] = [
   { top: -6, left: -6 },
   { top: -6, right: -6 },
   { bottom: -6, left: -6 },
   { bottom: -6, right: -6 },
 ];
+
+// 参考にした市販ソシャゲ級カードとの見た目の差(高級感不足)を埋めるための装飾要素。
+// 単純な単色の枠・バッジだと安っぽく見えるため、二重枠・二重リング・グロー・
+// 二重ダイヤのコーナー装飾で「金属の厚み」を感じさせる。
+//
+// 注意: Satori(next/ogのレンダラ)は、position:absoluteな要素の中にさらに
+// position:absoluteな子要素をネストすると正しく配置できない(実機検証で確認済み)。
+// そのため、コーナー装飾は「ラッパーdiv+ネストした子要素」ではなく、カード本体の
+// 直接の子として絶対座標を計算したdivをフラットに並べる方式にしている。
+// また、inset(0や16などの一括指定)も一部のケースで無視されることが確認できたため、
+// top/left/right/bottomを個別に指定する。
+function cornerLayerStyle(anchor: CornerAnchor, outerSize: number, layerSize: number): Record<string, number> {
+  const delta = (outerSize - layerSize) / 2;
+  const style: Record<string, number> = { width: layerSize, height: layerSize };
+  for (const key of Object.keys(anchor) as (keyof CornerAnchor)[]) {
+    style[key] = (anchor[key] as number) + delta;
+  }
+  return style;
+}
 
 // AIが生成したイラスト(portraitBuffer)の上に、レアリティ別の枠・バッジ・武将名・スキル名・
 // ステータス・フレーバーテキストを合成した、最終的なカード画像を返す。
@@ -83,6 +104,7 @@ export async function renderWarlordCard(portraitBuffer: Buffer, data: WarlordCar
           borderRadius: 28,
           overflow: "hidden",
           border: `10px solid ${tier.borderColor}`,
+          boxShadow: `0 0 0 2px rgba(0,0,0,0.6), 0 0 40px 4px ${tier.borderColor}55`,
         }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -92,36 +114,82 @@ export async function renderWarlordCard(portraitBuffer: Buffer, data: WarlordCar
           style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
         />
 
+        {/* 写真の四隅を枠に馴染ませるビネット(単色縁取りだけだと写真と枠が浮いて見えるため)。 */}
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            display: "flex",
+            background:
+              "radial-gradient(ellipse 78% 70% at 50% 46%, rgba(0,0,0,0) 62%, rgba(11,11,14,0.55) 100%)",
+          }}
+        />
+
         <div
           style={{
             position: "absolute",
             left: 0,
             right: 0,
             bottom: 0,
-            height: "48%",
+            height: "50%",
             display: "flex",
             background:
-              "linear-gradient(to top, rgba(11,11,14,0.96) 0%, rgba(11,11,14,0.75) 55%, rgba(11,11,14,0) 100%)",
+              "linear-gradient(to top, rgba(11,11,14,0.97) 0%, rgba(11,11,14,0.8) 45%, rgba(11,11,14,0) 100%)",
           }}
         />
 
-        {CORNER_POSITIONS.map((pos, i) => (
+        {CORNER_ANCHORS.flatMap((anchor, i) => [
           <div
-            key={i}
+            key={`${i}-outer`}
             style={{
               position: "absolute",
               display: "flex",
-              width: tier.cornerSize,
-              height: tier.cornerSize,
               background: tier.borderColor,
               transform: "rotate(45deg)",
-              opacity: 0.85,
-              ...pos,
+              opacity: 0.9,
+              ...cornerLayerStyle(anchor, tier.cornerSize, tier.cornerSize),
             }}
-          />
-        ))}
+          />,
+          <div
+            key={`${i}-mid`}
+            style={{
+              position: "absolute",
+              display: "flex",
+              background: tier.accentColor,
+              transform: "rotate(45deg)",
+              ...cornerLayerStyle(anchor, tier.cornerSize, tier.cornerSize * 0.55),
+            }}
+          />,
+          <div
+            key={`${i}-dot`}
+            style={{
+              position: "absolute",
+              display: "flex",
+              background: tier.nameColor,
+              borderRadius: 999,
+              opacity: 0.9,
+              ...cornerLayerStyle(anchor, tier.cornerSize, tier.cornerSize * 0.22),
+            }}
+          />,
+        ])}
 
         <div style={{ position: "absolute", top: 28, left: 28, display: "flex" }}>
+          <div
+            style={{
+              position: "absolute",
+              top: -6,
+              left: -6,
+              right: -6,
+              bottom: -6,
+              display: "flex",
+              borderRadius: 38,
+              border: `1px solid ${tier.borderColor}`,
+              opacity: 0.55,
+            }}
+          />
           <div
             style={{
               display: "flex",
@@ -130,7 +198,7 @@ export async function renderWarlordCard(portraitBuffer: Buffer, data: WarlordCar
               width: 64,
               height: 64,
               borderRadius: 32,
-              background: "#0b0b0e",
+              background: "radial-gradient(circle at 35% 30%, #26221a 0%, #0b0b0e 75%)",
               border: `4px solid ${tier.borderColor}`,
               color: tier.borderColor,
               fontSize: tier.badge.length > 2 ? 20 : 30,
@@ -149,7 +217,7 @@ export async function renderWarlordCard(portraitBuffer: Buffer, data: WarlordCar
             alignItems: "center",
             padding: "8px 18px",
             borderRadius: 999,
-            background: "rgba(11,11,14,0.7)",
+            background: "linear-gradient(180deg, rgba(26,22,15,0.85) 0%, rgba(11,11,14,0.75) 100%)",
             border: `2px solid ${tier.accentColor}`,
             color: "#f5f5f5",
             fontSize: 22,
@@ -168,18 +236,45 @@ export async function renderWarlordCard(portraitBuffer: Buffer, data: WarlordCar
             flexDirection: "column",
           }}
         >
-          <div style={{ display: "flex", color: tier.nameColor, fontSize: 56, lineHeight: 1.1 }}>{data.name}</div>
+          <div
+            style={{
+              display: "flex",
+              color: tier.nameColor,
+              fontSize: 56,
+              lineHeight: 1.1,
+              textShadow: `0 2px 6px rgba(0,0,0,0.85), 0 0 22px ${tier.borderColor}66`,
+            }}
+          >
+            {data.name}
+          </div>
+
+          {/* 名前の下の飾り罫(中央にダイヤ)。市販カードによくある「名前とスキルの間の仕切り」を再現。 */}
+          <div style={{ display: "flex", alignItems: "center", marginTop: 10, width: 220 }}>
+            <div style={{ display: "flex", height: 1, flex: 1, background: tier.borderColor, opacity: 0.7 }} />
+            <div
+              style={{
+                display: "flex",
+                width: 7,
+                height: 7,
+                margin: "0 8px",
+                background: tier.borderColor,
+                transform: "rotate(45deg)",
+              }}
+            />
+            <div style={{ display: "flex", height: 1, flex: 1, background: tier.borderColor, opacity: 0.7 }} />
+          </div>
 
           {data.skillName ? (
             <div
               style={{
                 display: "flex",
                 alignItems: "center",
-                marginTop: 14,
+                marginTop: 16,
                 padding: "10px 18px",
                 borderRadius: 10,
-                background: "rgba(11,11,14,0.55)",
+                background: "linear-gradient(180deg, rgba(35,29,18,0.7) 0%, rgba(11,11,14,0.6) 100%)",
                 border: `2px solid ${tier.accentColor}`,
+                boxShadow: `inset 0 0 0 1px ${tier.borderColor}33`,
                 alignSelf: "flex-start",
               }}
             >
@@ -199,8 +294,9 @@ export async function renderWarlordCard(portraitBuffer: Buffer, data: WarlordCar
                     alignItems: "center",
                     padding: "10px 20px",
                     borderRadius: 10,
-                    background: "rgba(11,11,14,0.55)",
+                    background: "linear-gradient(180deg, rgba(35,29,18,0.7) 0%, rgba(11,11,14,0.6) 100%)",
                     border: `2px solid ${tier.accentColor}`,
+                    boxShadow: `inset 0 0 0 1px ${tier.borderColor}33`,
                   }}
                 >
                   <div style={{ display: "flex", color: "#8f8f8f", fontSize: 20 }}>{label}</div>
