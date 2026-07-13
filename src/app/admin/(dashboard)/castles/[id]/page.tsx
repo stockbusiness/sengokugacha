@@ -313,6 +313,95 @@ function CastlePlotsSection({ castleId }: { castleId: string }) {
           )}
         </div>
       )}
+
+      <PlotAllocationsSection castleId={castleId} />
+    </div>
+  );
+}
+
+type PlotAllocation = {
+  id: string;
+  granted_capacity: number;
+  status: "active" | "revoked";
+  granted_at: string;
+  granted_by: string | null;
+  revoked_at: string | null;
+};
+
+function PlotAllocationsSection({ castleId }: { castleId: string }) {
+  const [allocations, setAllocations] = useState<PlotAllocation[]>([]);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+  const [revokingId, setRevokingId] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  function fetchAllocations() {
+    fetch(`/api/admin/castles/${castleId}/plot-allocations`)
+      .then((res) => res.json())
+      .then((data) => {
+        setAllocations(data);
+        setStatus("ready");
+      })
+      .catch(() => setStatus("error"));
+  }
+
+  useEffect(() => {
+    fetchAllocations();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [castleId]);
+
+  async function handleRevoke(id: string) {
+    const reason = window.prompt("回収理由(任意)を入力してください") ?? "";
+    setRevokingId(id);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/admin/plot-allocations/${id}/revoke`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "回収に失敗しました。");
+      setStatus("loading");
+      fetchAllocations();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "回収に失敗しました。");
+    } finally {
+      setRevokingId(null);
+    }
+  }
+
+  if (status !== "ready" || allocations.length === 0) return null;
+
+  return (
+    <div className="space-y-2 border-t border-zinc-200 pt-6 dark:border-zinc-800">
+      <h2 className="text-sm font-semibold text-zinc-900 dark:text-zinc-50">販売枠の付与履歴</h2>
+      {message && <p className="text-xs text-red-700 dark:text-red-400">{message}</p>}
+      <div className="space-y-1">
+        {allocations.map((a) => (
+          <div
+            key={a.id}
+            className="flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-950"
+          >
+            <span>
+              {a.granted_capacity}区画付与
+              <span className="ml-2 text-xs text-zinc-500 dark:text-zinc-400">
+                {new Date(a.granted_at).toLocaleDateString("ja-JP")} / {a.granted_by ?? "不明"}
+              </span>
+            </span>
+            {a.status === "active" ? (
+              <button
+                onClick={() => handleRevoke(a.id)}
+                disabled={revokingId === a.id}
+                className="rounded-lg border border-zinc-300 px-2 py-1 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+              >
+                {revokingId === a.id ? "処理中..." : "回収する"}
+              </button>
+            ) : (
+              <span className="text-xs text-zinc-500 dark:text-zinc-400">回収済み</span>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

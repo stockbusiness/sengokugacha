@@ -158,3 +158,53 @@ export async function grantInitialPlotAllocation(
 
   return { allocationId: allocation.id as string, promotedCount: plotIds.length };
 }
+
+export type PlotAllocation = {
+  id: string;
+  contract_id: string;
+  castle_id: string;
+  stage: number;
+  granted_capacity: number;
+  status: "active" | "revoked";
+  granted_by: string | null;
+  granted_at: string;
+  revoked_by: string | null;
+  revoked_at: string | null;
+  revoke_reason: string | null;
+};
+
+export async function getPlotAllocationsForCastle(castleId: string): Promise<PlotAllocation[]> {
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("plot_allocations")
+    .select("*")
+    .eq("castle_id", castleId)
+    .order("granted_at", { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
+// 要件書21.1「販売枠の付与・回収履歴が残る」。まだ販売開始していない(available)区画は
+// 下書きへ戻し、既に予約・販売済みの区画はそのまま(進行中の取引を壊さない)。
+export async function revokePlotAllocation(
+  allocationId: string,
+  actorName: string | null,
+  reason: string | null
+): Promise<void> {
+  const supabase = createSupabaseServerClient();
+  const nowIso = new Date().toISOString();
+
+  const { error: allocationError } = await supabase
+    .from("plot_allocations")
+    .update({ status: "revoked", revoked_by: actorName, revoked_at: nowIso, revoke_reason: reason })
+    .eq("id", allocationId)
+    .eq("status", "active");
+  if (allocationError) throw allocationError;
+
+  const { error: plotsError } = await supabase
+    .from("castle_plots")
+    .update({ status: "draft", allocation_id: null, updated_at: nowIso })
+    .eq("allocation_id", allocationId)
+    .eq("status", "available");
+  if (plotsError) throw plotsError;
+}
