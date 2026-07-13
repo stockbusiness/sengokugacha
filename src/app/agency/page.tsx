@@ -1,5 +1,6 @@
 import { redirect } from "next/navigation";
 import { getAgentSession } from "@/lib/agent-session";
+import { getAgencyLandCommissionSummary } from "@/lib/castle-kpi";
 import { getLineSettings } from "@/lib/line-settings";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
@@ -11,11 +12,12 @@ export default async function AgencyPortalPage() {
 
   const supabase = createSupabaseServerClient();
 
-  const [{ data: agent }, { data: sales }, { data: children }, lineSettings] = await Promise.all([
+  const [{ data: agent }, { data: sales }, { data: children }, lineSettings, landCommissions] = await Promise.all([
     supabase.from("agents").select("*").eq("id", session.agentId).maybeSingle(),
     supabase.from("agent_sales").select("amount, payout_status, created_at").eq("agent_id", session.agentId),
     supabase.from("agents").select("id, name, rank, status").eq("parent_agent_id", session.agentId).order("name"),
     getLineSettings(),
+    getAgencyLandCommissionSummary(session.agentId),
   ]);
 
   if (!agent) redirect("/agency/login?error=agency_not_linked");
@@ -68,6 +70,24 @@ export default async function AgencyPortalPage() {
       >
         全国の販売可能区画を見る・紹介URLを発行する →
       </a>
+
+      <section className="rounded-xl border border-gold/20 bg-ink-raised p-4">
+        <h2 className="text-sm font-semibold text-gold-soft">土地販売報酬(区画{landCommissions.soldPlotCount}件分)</h2>
+        <div className="mt-2 space-y-1 text-xs">
+          <div className="flex justify-between">
+            <span className="text-parchment-dim">保留(猶予期間中)</span>
+            <span className="text-parchment">¥{landCommissions.heldYen.toLocaleString()}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-parchment-dim">確定済み</span>
+            <span className="text-parchment">¥{landCommissions.confirmedYen.toLocaleString()}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-parchment-dim">支払済み</span>
+            <span className="text-parchment">¥{landCommissions.paidYen.toLocaleString()}</span>
+          </div>
+        </div>
+      </section>
 
       {children && children.length > 0 && (
         <section className="rounded-xl border border-gold/20 bg-ink-raised p-4">
