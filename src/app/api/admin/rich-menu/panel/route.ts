@@ -58,7 +58,16 @@ export async function POST(request: NextRequest) {
   const supabase = createSupabaseServerClient();
   const panelPath = `rich-menu-images/rich-menu-panels/${slotIndex}-${Date.now()}.webp`;
 
-  const { publicUrl: panelUrl } = await uploadToBlob(panelPath, normalizedBuffer, "image/webp");
+  let panelUrl: string;
+  try {
+    ({ publicUrl: panelUrl } = await uploadToBlob(panelPath, normalizedBuffer, "image/webp"));
+  } catch (error) {
+    console.error("パネル画像のアップロードに失敗しました", error);
+    return NextResponse.json(
+      { error: `画像のアップロードに失敗しました。${error instanceof Error ? error.message : ""}` },
+      { status: 502 }
+    );
+  }
 
   const actorName = await getAdminActorName();
 
@@ -105,7 +114,16 @@ export async function POST(request: NextRequest) {
   }
 
   const sheetPath = `rich-menu-images/rich-menu-${Date.now()}.jpg`;
-  const { publicUrl: sheetUrl } = await uploadToBlob(sheetPath, sheetBuffer, "image/jpeg");
+  let sheetUrl: string;
+  try {
+    ({ publicUrl: sheetUrl } = await uploadToBlob(sheetPath, sheetBuffer, "image/jpeg"));
+  } catch (error) {
+    console.error("リッチメニュー画像のアップロードに失敗しました", error);
+    return NextResponse.json(
+      { error: `画像のアップロードに失敗しました。${error instanceof Error ? error.message : ""}` },
+      { status: 502 }
+    );
+  }
 
   const { data: existingSettings, error: settingsFetchError } = await supabase
     .from("line_settings")

@@ -117,7 +117,16 @@ export async function POST(request: NextRequest) {
   const timestamp = Date.now();
   const videoPath = `gacha-animations/videos/${animationKey}-${timestamp}.mp4`;
 
-  const { publicUrl: videoUrl } = await uploadToBlob(videoPath, videoBuffer, "video/mp4");
+  let videoUrl: string;
+  try {
+    ({ publicUrl: videoUrl } = await uploadToBlob(videoPath, videoBuffer, "video/mp4"));
+  } catch (error) {
+    console.error("動画のアップロードに失敗しました", error);
+    return NextResponse.json(
+      { error: `動画のアップロードに失敗しました。${error instanceof Error ? error.message : ""}` },
+      { status: 502 }
+    );
+  }
 
   let posterUrl: string | null = null;
   let posterStorageKey: string | null = null;
@@ -137,9 +146,17 @@ export async function POST(request: NextRequest) {
       );
     }
     const posterPath = `gacha-animations/posters/${animationKey}-${timestamp}.${resizedPoster.extension}`;
-    const { publicUrl } = await uploadToBlob(posterPath, resizedPoster.buffer, resizedPoster.contentType);
-    posterUrl = publicUrl;
-    posterStorageKey = posterPath;
+    try {
+      const { publicUrl } = await uploadToBlob(posterPath, resizedPoster.buffer, resizedPoster.contentType);
+      posterUrl = publicUrl;
+      posterStorageKey = posterPath;
+    } catch (error) {
+      console.error("ポスター画像のアップロードに失敗しました", error);
+      return NextResponse.json(
+        { error: `ポスター画像のアップロードに失敗しました。${error instanceof Error ? error.message : ""}` },
+        { status: 502 }
+      );
+    }
   }
 
   const actorName = await getAdminActorName();

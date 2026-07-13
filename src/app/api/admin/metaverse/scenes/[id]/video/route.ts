@@ -51,7 +51,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const supabase = createSupabaseServerClient();
   const path = `metaverse-videos/scenes/${id}-${Date.now()}.mp4`;
 
-  const { publicUrl } = await uploadToBlob(path, videoBuffer, "video/mp4");
+  let publicUrl: string;
+  try {
+    ({ publicUrl } = await uploadToBlob(path, videoBuffer, "video/mp4"));
+  } catch (error) {
+    console.error("動画のアップロードに失敗しました", error);
+    return NextResponse.json(
+      { error: `動画のアップロードに失敗しました。${error instanceof Error ? error.message : ""}` },
+      { status: 502 }
+    );
+  }
 
   const { data, error } = await supabase
     .from("metaverse_tour_scenes")

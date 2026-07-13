@@ -42,7 +42,16 @@ export async function POST(request: NextRequest, { params }: { params: Promise<{
   const supabase = createSupabaseServerClient();
   const path = `warlord-images/warlords/${id}-${Date.now()}.${resized.extension}`;
 
-  const { publicUrl } = await uploadToBlob(path, resized.buffer, resized.contentType);
+  let publicUrl: string;
+  try {
+    ({ publicUrl } = await uploadToBlob(path, resized.buffer, resized.contentType));
+  } catch (error) {
+    console.error("画像のアップロードに失敗しました", error);
+    return NextResponse.json(
+      { error: `画像のアップロードに失敗しました。${error instanceof Error ? error.message : ""}` },
+      { status: 502 }
+    );
+  }
 
   const { data, error: updateError } = await supabase
     .from("warlords")
