@@ -66,6 +66,15 @@ export default async function AdminDashboardLayout({ children }: { children: Rea
               <Link href="/admin/castle-commissions" className="hover:text-zinc-900 dark:hover:text-zinc-50">
                 土地報酬元帳
               </Link>
+              <Link href="/admin/castle-payouts" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+                土地報酬支払
+              </Link>
+              <Link
+                href="/admin/castle-lord-manual"
+                className="font-semibold text-red-700 hover:text-red-800 dark:text-red-400 dark:hover:text-red-300"
+              >
+                城主プランマニュアル
+              </Link>
               <Link href="/admin/links" className="hover:text-zinc-900 dark:hover:text-zinc-50">
                 送客導線
               </Link>
