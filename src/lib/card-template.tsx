@@ -19,6 +19,16 @@ function loadFont(): Promise<Buffer> {
   return fontDataPromise;
 }
 
+// 武将名はゴシック体だと安っぽく見えるという指摘を受け、明朝体(Shippori Mincho)を
+// 名前だけに使う。ステータス等の数値・ラベルは引き続き視認性優先でゴシック体のまま。
+let nameFontDataPromise: Promise<Buffer> | null = null;
+function loadNameFont(): Promise<Buffer> {
+  if (!nameFontDataPromise) {
+    nameFontDataPromise = readFile(join(process.cwd(), "assets/fonts/ShipporiMincho-Bold.woff"));
+  }
+  return nameFontDataPromise;
+}
+
 export type WarlordCardData = {
   name: string;
   rarity: string;
@@ -87,7 +97,7 @@ function cornerLayerStyle(anchor: CornerAnchor, outerSize: number, layerSize: nu
 // AIが生成したイラスト(portraitBuffer)の上に、レアリティ別の枠・バッジ・武将名・スキル名・
 // ステータス・フレーバーテキストを合成した、最終的なカード画像を返す。
 export async function renderWarlordCard(portraitBuffer: Buffer, data: WarlordCardData): Promise<Buffer> {
-  const font = await loadFont();
+  const [font, nameFont] = await Promise.all([loadFont(), loadNameFont()]);
   const tier = getRarityTier(data.rarity);
   const statsEntries = Object.entries(data.stats ?? {}).slice(0, 3);
   const portraitDataUri = `data:image/png;base64,${portraitBuffer.toString("base64")}`;
@@ -239,8 +249,9 @@ export async function renderWarlordCard(portraitBuffer: Buffer, data: WarlordCar
           <div
             style={{
               display: "flex",
+              fontFamily: "Shippori Mincho",
               color: tier.nameColor,
-              fontSize: 56,
+              fontSize: 58,
               lineHeight: 1.1,
               textShadow: `0 2px 6px rgba(0,0,0,0.85), 0 0 22px ${tier.borderColor}66`,
             }}
@@ -317,7 +328,10 @@ export async function renderWarlordCard(portraitBuffer: Buffer, data: WarlordCar
     {
       width: CARD_WIDTH,
       height: CARD_HEIGHT,
-      fonts: [{ name: "Noto Sans JP", data: font, style: "normal", weight: 700 }],
+      fonts: [
+        { name: "Noto Sans JP", data: font, style: "normal", weight: 700 },
+        { name: "Shippori Mincho", data: nameFont, style: "normal", weight: 700 },
+      ],
     }
   );
 
