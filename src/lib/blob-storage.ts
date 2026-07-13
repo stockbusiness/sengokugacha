@@ -5,7 +5,12 @@ import { del, put } from "@vercel/blob";
 // Vercel Blobに切り替える。既存データ(Supabase Storage上のURL)はそのまま
 // /api/storage-proxy 経由での表示を維持しつつ、新規アップロード分のみここを通す。
 export async function uploadToBlob(pathname: string, buffer: Buffer, contentType: string): Promise<{ publicUrl: string }> {
-  const result = await put(pathname, buffer, {
+  // Node.jsの小さいBufferはSlab(内部共有プール)から割り当てられることがあり、その場合
+  // buffer.bufferはプールを指す共有ArrayBufferになる。これをそのままfetch()のbodyに渡すと
+  // "TypeError: ArrayBuffer: SharedArrayBuffer is not allowed."で失敗する
+  // (put()の内部実装がfetch()を使っているため)。Blobでラップして渡すことで、共有プールの
+  // 参照を持たない独立したコピーとして送信されるようにする。
+  const result = await put(pathname, new Blob([new Uint8Array(buffer)], { type: contentType }), {
     access: "public",
     addRandomSuffix: false,
     contentType,
