@@ -1,0 +1,133 @@
+import { createSupabaseServerClient } from "@/lib/supabase-server";
+
+export type PlotStatus =
+  | "draft"
+  | "available"
+  | "reserved"
+  | "application_pending"
+  | "payment_pending"
+  | "sold"
+  | "cancelled"
+  | "suspended";
+
+export type CastlePlot = {
+  id: string;
+  castle_id: string;
+  allocation_id: string | null;
+  plot_code: string;
+  block_label: string | null;
+  name: string;
+  description: string | null;
+  main_image_url: string | null;
+  price_yen: number;
+  status: PlotStatus;
+  display_order: number;
+  created_at: string;
+  updated_at: string;
+};
+
+export async function getPlotsForCastle(castleId: string): Promise<CastlePlot[]> {
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("castle_plots")
+    .select("*")
+    .eq("castle_id", castleId)
+    .order("display_order", { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+// 販売可能な区画のみ(要件書11.1/12「全国代理店向け販売可能区画一覧」用)。
+export async function getAvailablePlots(): Promise<CastlePlot[]> {
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("castle_plots")
+    .select("*")
+    .eq("status", "available")
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return data ?? [];
+}
+
+// 管理画面から、城の物理区画をまとめて下書き登録する(実際の測量データを想定した事前登録)。
+// この時点では販売開始しない(status='draft')。城主契約がactiveになった際に
+// grantInitialPlotAllocation()で必要数だけ'available'へ昇格させる。
+export async function bulkCreateDraftPlots(
+  castleId: string,
+  count: number,
+  codePrefix: string,
+  priceYen: number
+): Promise<CastlePlot[]> {
+  const supabase = createSupabaseServerClient();
+
+  const { count: existingCount, error: countError } = await supabase
+    .from("castle_plots")
+    .select("id", { count: "exact", head: true })
+    .eq("castle_id", castleId);
+  if (countError) throw countError;
+
+  const startIndex = (existingCount ?? 0) + 1;
+  const rows = Array.from({ length: count }, (_, i) => {
+    const index = startIndex + i;
+    return {
+      castle_id: castleId,
+      plot_code: `${codePrefix}-${String(index).padStart(3, "0")}`,
+      name: `${codePrefix}区画${index}`,
+      price_yen: priceYen,
+      status: "draft" as const,
+      display_order: index,
+    };
+  });
+
+  const { data, error } = await supabase.from("castle_plots").insert(rows).select("*");
+  if (error) throw error;
+  return data ?? [];
+}
+
+// 要件書4.3「初期30区画の販売枠割り当て」。城主契約がactiveになった時点で、
+// plot_allocationsに販売枠capacity付与イベントを1件作成し、その城のまだ販売枠に
+// 紐づいていない下書き区画(status='draft', allocation_id is null)から、
+// 付与容量の分だけ'available'へ昇格させる。事前登録された下書き区画数が容量に
+// 満たない場合は、あるだけ昇格させる(不足分は管理画面から追加登録すれば後から補える)。
+export async function grantInitialPlotAllocation(
+  contractId: string,
+  castleId: string,
+  capacity: number,
+  actorName: string | null
+): Promise<{ allocationId: string; promotedCount: number }> {
+  const supabase = createSupabaseServerClient();
+
+  const { data: allocation, error: allocationError } = await supabase
+    .from("plot_allocations")
+    .insert({
+      contract_id: contractId,
+      castle_id: castleId,
+      stage: 1,
+      granted_capacity: capacity,
+      granted_by: actorName,
+    })
+    .select("id")
+    .single();
+  if (allocationError) throw allocationError;
+
+  const { data: candidates, error: candidatesError } = await supabase
+    .from("castle_plots")
+    .select("id")
+    .eq("castle_id", castleId)
+    .eq("status", "draft")
+    .is("allocation_id", null)
+    .order("display_order", { ascending: true })
+    .limit(capacity);
+  if (candidatesError) throw candidatesError;
+
+  const plotIds = (candidates ?? []).map((p) => p.id as string);
+  if (plotIds.length > 0) {
+    const { error: promoteError } = await supabase
+      .from("castle_plots")
+      .update({ allocation_id: allocation.id, status: "available", updated_at: new Date().toISOString() })
+      .in("id", plotIds);
+    if (promoteError) throw promoteError;
+  }
+
+  return { allocationId: allocation.id as string, promotedCount: plotIds.length };
+}
