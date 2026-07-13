@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { getAdminRole } from "@/lib/admin-session";
 import LogoutButton from "./logout-button";
 import { AdminThemeProvider } from "./theme-provider";
 import { ThemeToggleButton } from "./theme-toggle-button";
 
-export default function AdminDashboardLayout({ children }: { children: React.ReactNode }) {
+export default async function AdminDashboardLayout({ children }: { children: React.ReactNode }) {
+  const adminRole = await getAdminRole();
   return (
     <AdminThemeProvider>
       <div className="min-h-screen bg-zinc-50 font-sans text-zinc-900 dark:bg-black dark:text-zinc-50">
@@ -81,6 +83,17 @@ export default function AdminDashboardLayout({ children }: { children: React.Rea
               </Link>
             </nav>
             <div className="flex items-center gap-3">
+              {adminRole && (
+                <span
+                  className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                    adminRole === "manager"
+                      ? "bg-red-100 text-red-800 dark:bg-red-900/40 dark:text-red-300"
+                      : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+                  }`}
+                >
+                  {adminRole === "manager" ? "本部管理者" : "本部担当者"}
+                </span>
+              )}
               <ThemeToggleButton />
               <LogoutButton />
             </div>

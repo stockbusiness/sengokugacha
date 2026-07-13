@@ -4,6 +4,11 @@ import { cookies } from "next/headers";
 export const ADMIN_SESSION_COOKIE_NAME = "sengoku_admin_session";
 const ADMIN_SESSION_MAX_AGE_SECONDS = 60 * 60 * 12; // 12時間
 
+// 城主プランの財務影響操作(契約の入金確定以降の遷移・報酬ルール公開・報酬確定支払・
+// 土地関連の返金等)だけを「本部管理者」に限定するための軽量な2ロール制。個別アカウント
+// 基盤は作らず、既存の共有パスワード方式を踏襲して2つ目の共有パスワードでロールを判定する。
+export type AdminRole = "operator" | "manager";
+
 function getSecretKey() {
   const secret = process.env.SESSION_SECRET;
   if (!secret) {
@@ -12,8 +17,8 @@ function getSecretKey() {
   return new TextEncoder().encode(secret);
 }
 
-export async function setAdminSessionCookie(actorName?: string | null) {
-  const token = await new SignJWT({ role: "admin", actorName: actorName || null })
+export async function setAdminSessionCookie(actorName?: string | null, adminRole: AdminRole = "manager") {
+  const token = await new SignJWT({ role: "admin", actorName: actorName || null, adminRole })
     .setProtectedHeader({ alg: "HS256" })
     .setIssuedAt()
     .setExpirationTime(`${ADMIN_SESSION_MAX_AGE_SECONDS}s`)
@@ -60,4 +65,24 @@ export async function getAdminActorName(): Promise<string | null> {
 export async function clearAdminSessionCookie() {
   const cookieStore = await cookies();
   cookieStore.delete(ADMIN_SESSION_COOKIE_NAME);
+}
+
+// 旧セッション(2ロール導入前に発行されたCookie)にはadminRoleクレームが無いため、
+// その場合は互換のため「本部管理者」として扱う(以前は全員が同じ権限だったため)。
+export async function getAdminRole(): Promise<AdminRole | null> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get(ADMIN_SESSION_COOKIE_NAME)?.value;
+  if (!token) return null;
+
+  try {
+    const { payload } = await jwtVerify(token, getSecretKey());
+    if (payload.role !== "admin") return null;
+    return payload.adminRole === "operator" ? "operator" : "manager";
+  } catch {
+    return null;
+  }
+}
+
+export async function requireManagerRole(): Promise<boolean> {
+  return (await getAdminRole()) === "manager";
 }

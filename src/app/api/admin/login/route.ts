@@ -1,6 +1,6 @@
 import { timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { setAdminSessionCookie } from "@/lib/admin-session";
+import { AdminRole, setAdminSessionCookie } from "@/lib/admin-session";
 
 function safeCompare(a: string, b: string): boolean {
   const bufA = Buffer.from(a);
@@ -10,19 +10,28 @@ function safeCompare(a: string, b: string): boolean {
 }
 
 export async function POST(request: NextRequest) {
-  const adminPassword = process.env.ADMIN_PASSWORD;
-  if (!adminPassword) {
+  const managerPassword = process.env.ADMIN_PASSWORD;
+  if (!managerPassword) {
     return NextResponse.json({ error: "ADMIN_PASSWORD が未設定です" }, { status: 500 });
   }
+  // 本部担当者用パスワード。未設定でも既存の運用(本部管理者パスワードのみ)を壊さない。
+  const operatorPassword = process.env.ADMIN_PASSWORD_OPERATOR;
 
   const body = await request.json().catch(() => null);
   const password = body?.password;
   const actorName = typeof body?.actorName === "string" ? body.actorName.slice(0, 50) : null;
 
-  if (typeof password !== "string" || !safeCompare(password, adminPassword)) {
+  let adminRole: AdminRole | null = null;
+  if (typeof password === "string" && safeCompare(password, managerPassword)) {
+    adminRole = "manager";
+  } else if (typeof password === "string" && operatorPassword && safeCompare(password, operatorPassword)) {
+    adminRole = "operator";
+  }
+
+  if (!adminRole) {
     return NextResponse.json({ error: "パスワードが違います" }, { status: 401 });
   }
 
-  await setAdminSessionCookie(actorName);
-  return NextResponse.json({ ok: true });
+  await setAdminSessionCookie(actorName, adminRole);
+  return NextResponse.json({ ok: true, adminRole });
 }
