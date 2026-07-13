@@ -53,3 +53,16 @@ export async function notifyContractTransition(
     return;
   }
 }
+
+// 区画購入確定(Phase1スコープの4イベントのうち③)。
+export async function notifyPlotPurchase(buyerUserId: string, plotId: string | null): Promise<void> {
+  if (!plotId) return;
+  const lineUserId = await getLineUserIdByUserId(buyerUserId);
+  if (!lineUserId) return;
+
+  const supabase = createSupabaseServerClient();
+  const { data: plot } = await supabase.from("castle_plots").select("name").eq("id", plotId).maybeSingle();
+  const plotName = plot?.name ?? "区画";
+
+  await sendBestEffort(lineUserId, `【戦国パスポート】「${plotName}」のご購入が確定しました。マイページからご確認いただけます。`);
+}
