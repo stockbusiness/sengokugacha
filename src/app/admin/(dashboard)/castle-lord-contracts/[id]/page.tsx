@@ -38,6 +38,21 @@ const STATUS_LABEL: Record<string, string> = {
   terminated: "解除済み",
 };
 
+// src/lib/castle-lord-contracts.tsのCONTRACT_TRANSITIONSと同じ内容(サーバー専用の
+// Supabaseクライアントを読み込むlibファイルはクライアントコンポーネントから
+// importできないため、表示用にここへ複製している)。
+const NEXT_STATUS_OPTIONS: Record<string, string[]> = {
+  draft: ["screening", "terminated"],
+  screening: ["approved", "terminated"],
+  approved: ["payment_pending", "terminated"],
+  payment_pending: ["approved", "training", "terminated"],
+  training: ["active", "terminated"],
+  active: ["suspended", "expired", "terminated"],
+  suspended: ["active", "expired", "terminated"],
+  expired: ["active", "terminated"],
+  terminated: [],
+};
+
 export default function CastleLordContractDetailPage() {
   const { id } = useParams<{ id: string }>();
   const [contract, setContract] = useState<Contract | null>(null);
@@ -61,6 +76,30 @@ export default function CastleLordContractDetailPage() {
     fetchContract();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
+
+  const [transitioning, setTransitioning] = useState(false);
+  const [transitionMessage, setTransitionMessage] = useState<string | null>(null);
+
+  async function handleTransition(toStatus: string) {
+    if (!contract) return;
+    const reason = window.prompt("遷移理由(任意)を入力してください") ?? "";
+    setTransitioning(true);
+    setTransitionMessage(null);
+    try {
+      const res = await fetch(`/api/admin/castle-lord-contracts/${contract.id}/transition`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to_status: toStatus, reason }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "遷移に失敗しました。");
+      fetchContract();
+    } catch (error) {
+      setTransitionMessage(error instanceof Error ? error.message : "遷移に失敗しました。");
+    } finally {
+      setTransitioning(false);
+    }
+  }
 
   async function handleSave() {
     if (!contract) return;
@@ -106,8 +145,23 @@ export default function CastleLordContractDetailPage() {
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
           {contract.castles?.name ?? contract.desired_castle?.name ?? "城未確定"}
         </p>
+        <div className="mt-3 flex flex-wrap items-center gap-2">
+          {(NEXT_STATUS_OPTIONS[contract.status] ?? []).map((next) => (
+            <button
+              key={next}
+              onClick={() => handleTransition(next)}
+              disabled={transitioning}
+              className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+            >
+              {STATUS_LABEL[next] ?? next}へ遷移
+            </button>
+          ))}
+        </div>
+        {transitionMessage && (
+          <p className="mt-2 text-xs text-red-700 dark:text-red-400">{transitionMessage}</p>
+        )}
         <p className="mt-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/40 dark:text-amber-300">
-          状態遷移(審査承認・入金確定・有効化等)は今後の対応で追加予定です。現時点では基本情報の編集のみ行えます。
+          「入金待ち」以降の遷移は本部管理者のみ実行できます。本部担当者が実行するとエラーになります。
         </p>
       </div>
 
