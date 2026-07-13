@@ -66,3 +66,19 @@ export async function notifyPlotPurchase(buyerUserId: string, plotId: string | n
 
   await sendBestEffort(lineUserId, `【戦国パスポート】「${plotName}」のご購入が確定しました。マイページからご確認いただけます。`);
 }
+
+// 報酬確定(Phase1スコープの4イベントのうち④)。受取者がLINEユーザーとして
+// 特定できる場合(recipient_type='lord'等、recipient_user_idが設定されている行)のみ送信する。
+// 代理店(recipient_agent_id)宛はLINE通知の対象外(代理店ポータル側の表示のみ)。
+export async function notifyCommissionConfirmed(recipientUserId: string): Promise<void> {
+  const lineUserId = await getLineUserIdByUserId(recipientUserId);
+  if (!lineUserId) return;
+  await sendBestEffort(lineUserId, "【戦国パスポート】土地販売報酬が確定しました。ダッシュボードからご確認いただけます。");
+}
+
+// 報酬取消・反対仕訳(返金連動)。
+export async function notifyCommissionReversed(recipientUserId: string): Promise<void> {
+  const lineUserId = await getLineUserIdByUserId(recipientUserId);
+  if (!lineUserId) return;
+  await sendBestEffort(lineUserId, "【戦国パスポート】返金に伴い、一部の土地販売報酬が取り消されました。ダッシュボードからご確認いただけます。");
+}

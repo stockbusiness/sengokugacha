@@ -6,6 +6,7 @@ import {
   type RecipientType,
 } from "@/lib/castle-commission-engine";
 import { getCastleLordPlanSettings } from "@/lib/castle-lord-plan-settings";
+import { notifyCommissionConfirmed, notifyCommissionReversed } from "@/lib/castle-notifications";
 import { getCurrentPublishedRuleSet } from "@/lib/commission-rule-sets";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
@@ -116,7 +117,7 @@ export async function confirmMaturedCommissions(actorName: string | null): Promi
 
   const { data: heldLines, error } = await supabase
     .from("commission_ledger")
-    .select("id, created_at")
+    .select("id, created_at, recipient_user_id")
     .eq("status", "held")
     .lte("created_at", cutoff);
   if (error) throw error;
@@ -128,6 +129,13 @@ export async function confirmMaturedCommissions(actorName: string | null): Promi
     .update({ status: "confirmed", confirmed_at: new Date().toISOString() })
     .in("id", ids);
   if (updateError) throw updateError;
+
+  const recipientUserIds = new Set(
+    heldLines.map((l) => l.recipient_user_id as string | null).filter((id): id is string => !!id)
+  );
+  for (const recipientUserId of recipientUserIds) {
+    await notifyCommissionConfirmed(recipientUserId);
+  }
 
   void actorName; // 監査ログはAPIルート側でlogAdminActionにより記録する
   return { confirmedCount: ids.length };
@@ -197,6 +205,15 @@ export async function applyRefundAdjustments(
     });
     const { error: adjError } = await supabase.from("commission_adjustments").insert(adjustmentRows);
     if (adjError) throw adjError;
+
+    const cancelledRecipientUserIds = new Set(
+      cancelLineIds
+        .map((ledgerId) => existing.find((l) => l.id === ledgerId)?.recipient_user_id as string | null)
+        .filter((id): id is string => !!id)
+    );
+    for (const recipientUserId of cancelledRecipientUserIds) {
+      await notifyCommissionReversed(recipientUserId);
+    }
   }
 
   for (const reversal of reversalLines) {
@@ -234,5 +251,9 @@ export async function applyRefundAdjustments(
       created_by: actorName,
     });
     if (adjError) throw adjError;
+
+    if (original.recipient_user_id) {
+      await notifyCommissionReversed(original.recipient_user_id as string);
+    }
   }
 }

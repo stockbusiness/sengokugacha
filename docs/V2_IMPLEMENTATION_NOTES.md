@@ -479,3 +479,40 @@ Supabase Storageの公開URL(`/storage/v1/object/public/...`)は、CDN層でRang
 
 - 既存データのバックフィル移行スクリプトは未実装(上記の通り意図的にスコープ外)。
 - 実際の本番環境でのVercel Blobアップロード・表示の動作確認はユーザー側で実施が必要(`BLOB_READ_WRITE_TOKEN`未設定のため、この開発環境では疎通確認ができていない)。
+
+## Ver2.11: 城主プラン(全国お城プロジェクト)Phase 1実装
+
+「城主プラン実装要件定義書」に基づき、城主が城・地域を担当して土地区画を販売する新機能を、要件書23章が指定する「推奨する実装開始範囲」1〜9のみに絞って実装した(地域経済活動報酬・段階販売枠拡張・イベント/協賛/貸出/譲渡はPhase2以降)。要件書0.1により「土地が提供する具体的な利用権」の法務確定が唯一のブロッカーとされており、**今回はテーブル・API・ロジック・画面の実装のみを行い、実際の決済有効化・区画公開は法務確定後に管理画面から城・区画のステータスを公開状態へ変更する運用**とした(コードのマージ自体では課金は発生しない)。
+
+### 事前に確定した設計方針
+
+- **データモデル**: 既存の城下町デジタル内覧(`metaverse_areas`等)は流用せず、`castles`/`castle_lord_contracts`/`castle_plots`等の新規テーブル群を作成
+- **管理者ロール**: 既存の単一共有パスワード方式を軽量に拡張し、「本部担当者(operator)」「本部管理者(manager)」の2ロールを追加。2つ目の共有パスワード(`ADMIN_PASSWORD_OPERATOR`)でロールを判定し、既存`ADMIN_PASSWORD`は後方互換のためそのまま本部管理者にマッピングした
+- **LINE通知**: 個別ユーザーへのpushメッセージ送信(`src/lib/line-push.ts`、既存の一斉配信`line-broadcast.ts`と同パターン)を新規実装
+
+### 主な設計判断
+
+- **契約状態機械の統合**: 要件書6.4の9状態遷移マトリクス(draft〜terminated)を`castle_lord_contracts`単一テーブルで表現し、別テーブル(`castle_lord_applications`)は作らなかった。「申込」は単にdraft状態でのinsertとして扱う。遷移可否は`src/lib/castle-lord-contracts.ts`の純粋関数`isValidContractTransition()`でマトリクスをそのまま実装し、ユニットテストで全パターンを検証した
+- **区画マスタの新設**: 要件書15.1に明示的な区画マスタテーブルの定義が無かったが、7.2の区画販売状態(8状態)は個々の物理区画の状態管理を要求しているため、`castle_plots`(区画マスタ)を新設し、`plot_allocations`(城主契約への販売枠capacity付与)・`plot_reservations`(購入者ごとの予約)と役割分担した
+- **決済基盤は既存拡張のみ**: 新しい決済処理は作らず、既存の`purchases`テーブル・Stripe Checkout/Webhook連携をそのまま拡張(`item_type`に`land_plot`/`castle_lord_plan`を追加)。区画の所有権は専用テーブルを設けず`castle_plots`自体に記録する
+- **報酬エンジンを純粋関数として分離**: `src/lib/castle-commission-engine.ts`に`computeLandSaleCommissionLines()`/`computeRefundAdjustments()`をDB非依存の純粋関数として実装し、要件書8.7のテストケースTC1〜TC7を全てユニットテスト化した(完了条件として明記されていたため)。城主本人販売(8.3)と別代理店販売(8.4)は、lord行を常に契約の城主固定・agency/organization行を常に実売代理店基準にする設計に統一することで、呼び出し側の分岐なしに同一ロジックで表現できるようにした
+- **報酬確定はCronなしの手動確認方式**: バックグラウンドジョブ基盤が無いため、8.5の「取消・返金猶予期間経過」判定は自動化せず、本部管理者が確定操作(`/admin/castle-commissions`の「猶予期間経過分を確定する」ボタン)を行った時点でチェックする方式にした
+- **城主プラン契約金(100万円)自体はStripe対象外**: 高額なB2B一括契約のため、実務上は請求書・銀行振込での決済を想定し、既存の管理画面での契約状態遷移(`payment_pending`→`training`の手動確認)をそのまま入金確認の記録として使う設計にした。Stripe連携は土地区画(1区画30万円想定、小口・多数)のみに絞った
+
+### 新規テーブル(4本のマイグレーション)
+
+`castles`・`castle_lord_plan_settings`・`castle_lord_contracts`・`castle_lord_contract_events`・`castle_plots`・`plot_allocations`・`plot_reservations`・`commission_rule_sets`・`commission_ledger`・`commission_adjustments`・`payouts`・`regional_transactions`(要件書0.3によりテーブル定義のみ、書き込みロジックは未実装)。既存`agents`に`user_id`(城主本人の自己販売判定用)・`代理店候補`ランクを追加、既存`purchases`に`plot_id`/`contract_id`/`selling_agent_id`等を追加。
+
+### 実装済みの主な画面・API
+
+- 管理画面: 城マスタ・城主契約(申込登録・状態遷移・履歴)・区画一覧/一括登録・販売枠の付与履歴と回収・城主プラン設定・報酬ルール(作成/公開)・報酬元帳・簡易な支払処理
+- ユーザー向け(LIFF): 城一覧・城詳細・区画詳細・区画購入(予約→Stripe決済)・所有区画マイページ(`/my-land`)・城主ダッシュボード(`/castle-lord/dashboard`)
+- 代理店ポータル: 全国の販売可能区画一覧・区画ごとの紹介URL/QR発行(LIFFディープリンク)・土地販売報酬の内訳表示
+
+### 未実装事項(Phase1スコープ外・既知の制約)
+
+- 実際の決済有効化・区画公開は法務確定後にユーザー側で管理画面から実施する必要がある(Stripe本番キー設定、城・区画をdraftから公開状態へ変更)
+- 段階2/3(60→100区画)への自動拡張、活動基準・活動報告、イベント・企業協賛、貸出・二次譲渡はPhase2以降
+- 組織報酬の受取先は`agents.parent_agent_id`の直近1階層のみ(既存コードに複数階層按分ロジックが無いため)。複数階層按分が必要な場合は追加要件として本部と要すり合わせ
+- 報酬確定・支払のCron自動化は無く、管理者の手動操作が必要
+- 本番DBへのマイグレーション適用は引き続き手動(既知の未解決事項参照)
