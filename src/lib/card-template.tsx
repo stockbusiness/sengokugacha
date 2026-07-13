@@ -19,12 +19,16 @@ function loadFont(): Promise<Buffer> {
   return fontDataPromise;
 }
 
-// 武将名はゴシック体だと安っぽく見えるという指摘を受け、明朝体(Shippori Mincho)を
-// 名前だけに使う。ステータス等の数値・ラベルは引き続き視認性優先でゴシック体のまま。
+// 武将名はゴシック体だと安っぽく見える、明朝体よりも毛筆体の方が武将カードらしいという
+// 指摘を受け、名前だけ筆文字調のYuji Bokuを使う。ステータス等の数値・ラベルは
+// 引き続き視認性優先でゴシック体のまま。Yuji Bokuはweight 400のみ提供のフォントのため、
+// 本文用と違い実際のウェイトは400(Regular)であることに注意(fontsに登録する
+// weight値と実データのウェイトを一致させないと、ブラウザ同様Satori側で偽ボールド
+// 処理が入り字形が崩れる可能性があるため)。
 let nameFontDataPromise: Promise<Buffer> | null = null;
 function loadNameFont(): Promise<Buffer> {
   if (!nameFontDataPromise) {
-    nameFontDataPromise = readFile(join(process.cwd(), "assets/fonts/ShipporiMincho-Bold.woff"));
+    nameFontDataPromise = readFile(join(process.cwd(), "assets/fonts/YujiBoku-Regular.woff"));
   }
   return nameFontDataPromise;
 }
@@ -249,11 +253,11 @@ export async function renderWarlordCard(portraitBuffer: Buffer, data: WarlordCar
           <div
             style={{
               display: "flex",
-              fontFamily: "Shippori Mincho",
+              fontFamily: "Yuji Boku",
               color: tier.nameColor,
-              fontSize: 58,
+              fontSize: 76,
               lineHeight: 1.1,
-              textShadow: `0 2px 6px rgba(0,0,0,0.85), 0 0 22px ${tier.borderColor}66`,
+              textShadow: `0 2px 6px rgba(0,0,0,0.85), 0 0 24px ${tier.borderColor}77`,
             }}
           >
             {data.name}
@@ -330,7 +334,7 @@ export async function renderWarlordCard(portraitBuffer: Buffer, data: WarlordCar
       height: CARD_HEIGHT,
       fonts: [
         { name: "Noto Sans JP", data: font, style: "normal", weight: 700 },
-        { name: "Shippori Mincho", data: nameFont, style: "normal", weight: 700 },
+        { name: "Yuji Boku", data: nameFont, style: "normal", weight: 400 },
       ],
     }
   );
