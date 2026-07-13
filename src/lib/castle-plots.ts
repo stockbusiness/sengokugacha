@@ -49,6 +49,33 @@ export async function getAvailablePlots(): Promise<CastlePlot[]> {
   return data ?? [];
 }
 
+// 一般公開向け(要件書11.2「城詳細」)。下書き(draft)は販売枠にまだ紐づいていない
+// 内部管理用の区画のため、公開画面には出さない。
+export async function getPublicPlotsForCastle(castleId: string): Promise<CastlePlot[]> {
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("castle_plots")
+    .select("*")
+    .eq("castle_id", castleId)
+    .neq("status", "draft")
+    .order("display_order", { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+// 一般公開向け(要件書11.3「区画詳細」)。draft(未割当の内部管理用区画)は公開しない。
+export async function getPublicPlotById(plotId: string): Promise<CastlePlot | null> {
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("castle_plots")
+    .select("*")
+    .eq("id", plotId)
+    .neq("status", "draft")
+    .maybeSingle();
+  if (error) throw error;
+  return data ?? null;
+}
+
 // 管理画面から、城の物理区画をまとめて下書き登録する(実際の測量データを想定した事前登録)。
 // この時点では販売開始しない(status='draft')。城主契約がactiveになった際に
 // grantInitialPlotAllocation()で必要数だけ'available'へ昇格させる。
