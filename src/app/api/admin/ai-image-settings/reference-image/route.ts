@@ -45,7 +45,16 @@ export async function POST(request: NextRequest) {
   const supabase = createSupabaseServerClient();
   const path = `metaverse-images/ai-reference/${target}-${Date.now()}.${resized.extension}`;
 
-  const { publicUrl } = await uploadToBlob(path, resized.buffer, resized.contentType);
+  let publicUrl: string;
+  try {
+    ({ publicUrl } = await uploadToBlob(path, resized.buffer, resized.contentType));
+  } catch (error) {
+    console.error("画像のアップロードに失敗しました", error);
+    return NextResponse.json(
+      { error: `画像のアップロードに失敗しました。${error instanceof Error ? error.message : ""}` },
+      { status: 502 }
+    );
+  }
 
   const column = TARGET_COLUMNS[target as keyof typeof TARGET_COLUMNS];
   const { data: existing, error: fetchError } = await supabase

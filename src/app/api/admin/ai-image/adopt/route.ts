@@ -63,7 +63,16 @@ export async function POST(request: NextRequest) {
   }
 
   const path = `${targetDef.bucket}/${targetDef.pathPrefix}/${entityId}-ai-${Date.now()}.${resized.extension}`;
-  const { publicUrl } = await uploadToBlob(path, resized.buffer, resized.contentType);
+  let publicUrl: string;
+  try {
+    ({ publicUrl } = await uploadToBlob(path, resized.buffer, resized.contentType));
+  } catch (error) {
+    console.error("画像のアップロードに失敗しました", error);
+    return NextResponse.json(
+      { error: `画像のアップロードに失敗しました。${error instanceof Error ? error.message : ""}` },
+      { status: 502 }
+    );
+  }
 
   const column = targetDef.resolveColumn(generation.target as string | null);
   const fields: Record<string, unknown> = { [column]: publicUrl };
