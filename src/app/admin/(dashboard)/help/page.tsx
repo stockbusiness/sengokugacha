@@ -22,6 +22,13 @@ const SECTIONS: Section[] = [
           <strong>取り消せない操作(返金・LINE一斉配信など)には必ず確認メッセージが出ます</strong>ので、
           内容をよく読んでから実行してください。
         </p>
+        <p>
+          城主プラン(全国お城プロジェクト)関連の操作手順は、専用の
+          <Link href="/admin/castle-lord-manual" className="text-red-700 hover:underline dark:text-red-400">
+            城主プラン運用マニュアル
+          </Link>
+          にまとめています。
+        </p>
       </>
     ),
   },
