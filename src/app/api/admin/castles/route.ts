@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { logAdminAction } from "@/lib/admin-audit-log";
 import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
+import { getPrimaryProvinceIdsByCastle } from "@/lib/castles";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export async function GET() {
@@ -12,7 +13,14 @@ export async function GET() {
   const { data, error } = await supabase.from("castles").select("*").order("display_order", { ascending: true });
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json(data);
+
+  const primaryProvinceIds = await getPrimaryProvinceIdsByCastle((data ?? []).map((c) => c.id as string));
+  const result = (data ?? []).map((c) => ({
+    ...c,
+    primary_province_id: primaryProvinceIds.get(c.id as string) ?? null,
+  }));
+
+  return NextResponse.json(result);
 }
 
 export async function POST(request: NextRequest) {

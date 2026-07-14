@@ -18,6 +18,18 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if ("region" in body) fields.region = body.region || null;
   if ("description" in body) fields.description = body.description || null;
   if ("historical_lord_summary" in body) fields.historical_lord_summary = body.historical_lord_summary || null;
+  if (
+    typeof body.unlock_level === "string" &&
+    ["PUBLIC", "PROVINCE_CONQUEST_REQUIRED", "REGION_CONQUEST_REQUIRED", "UNPUBLISHED"].includes(body.unlock_level)
+  ) {
+    fields.unlock_level = body.unlock_level;
+  }
+  if (
+    typeof body.historical_review_status === "string" &&
+    ["unreviewed", "reviewed"].includes(body.historical_review_status)
+  ) {
+    fields.historical_review_status = body.historical_review_status;
+  }
   if ("main_image_url" in body) fields.main_image_url = body.main_image_url || null;
   if (Number.isFinite(body.display_order)) fields.display_order = body.display_order;
   if (typeof body.status === "string" && ["draft", "recruiting", "published", "hidden"].includes(body.status)) {

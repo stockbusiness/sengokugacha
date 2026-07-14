@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
 type CastleStatus = "draft" | "recruiting" | "published" | "hidden";
+type CastleUnlockLevel = "PUBLIC" | "PROVINCE_CONQUEST_REQUIRED" | "REGION_CONQUEST_REQUIRED" | "UNPUBLISHED";
+type CastleHistoricalReviewStatus = "unreviewed" | "reviewed";
 
 type Castle = {
   id: string;
@@ -15,7 +17,12 @@ type Castle = {
   main_image_url: string | null;
   display_order: number;
   historical_lord_summary: string | null;
+  unlock_level: CastleUnlockLevel;
+  historical_review_status: CastleHistoricalReviewStatus;
+  primary_province_id: string | null;
 };
+
+type Province = { id: string; name: string };
 
 const STATUS_OPTIONS: { value: CastleStatus; label: string }[] = [
   { value: "draft", label: "下書き(非公開)" },
@@ -24,19 +31,35 @@ const STATUS_OPTIONS: { value: CastleStatus; label: string }[] = [
   { value: "hidden", label: "非公開" },
 ];
 
+const UNLOCK_LEVEL_OPTIONS: { value: CastleUnlockLevel; label: string }[] = [
+  { value: "PUBLIC", label: "常に公開" },
+  { value: "PROVINCE_CONQUEST_REQUIRED", label: "主要国の制圧で解放" },
+  { value: "REGION_CONQUEST_REQUIRED", label: "主要国の地方コンプで解放" },
+  { value: "UNPUBLISHED", label: "非公開(未解放固定)" },
+];
+
+const REVIEW_STATUS_OPTIONS: { value: CastleHistoricalReviewStatus; label: string }[] = [
+  { value: "unreviewed", label: "未監修" },
+  { value: "reviewed", label: "監修済み" },
+];
+
 export default function CastleEditPage() {
   const { id } = useParams<{ id: string }>();
   const [castle, setCastle] = useState<Castle | null>(null);
+  const [provinces, setProvinces] = useState<Province[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/admin/castles")
-      .then((res) => res.json())
-      .then((data: Castle[]) => {
-        const found = data.find((c) => c.id === id) ?? null;
+    Promise.all([
+      fetch("/api/admin/castles").then((res) => res.json()),
+      fetch("/api/admin/provinces").then((res) => res.json()),
+    ])
+      .then(([castleData, provinceData]: [Castle[], Province[]]) => {
+        const found = castleData.find((c) => c.id === id) ?? null;
         setCastle(found);
+        setProvinces(provinceData);
         setStatus(found ? "ready" : "error");
       })
       .catch(() => setStatus("error"));
@@ -59,10 +82,21 @@ export default function CastleEditPage() {
           main_image_url: castle.main_image_url,
           display_order: castle.display_order,
           status: castle.status,
+          unlock_level: castle.unlock_level,
+          historical_review_status: castle.historical_review_status,
         }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "保存に失敗しました。");
+
+      const provinceRes = await fetch(`/api/admin/castles/${castle.id}/primary-province`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ provinceId: castle.primary_province_id }),
+      });
+      const provinceData = await provinceRes.json();
+      if (!provinceRes.ok) throw new Error(provinceData.error ?? "主要国の保存に失敗しました。");
+
       setMessage("保存しました");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "保存に失敗しました。");
@@ -117,6 +151,59 @@ export default function CastleEditPage() {
           className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
         >
           {STATUS_OPTIONS.map((opt) => (
+            <option key={opt.value} value={opt.value}>
+              {opt.label}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <div className="flex gap-3">
+        <label className="block flex-1">
+          <span className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+            主要国(国取りとの連携)
+          </span>
+          <select
+            value={castle.primary_province_id ?? ""}
+            onChange={(e) => setCastle({ ...castle, primary_province_id: e.target.value || null })}
+            className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+          >
+            <option value="">未設定</option>
+            {provinces.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="block flex-1">
+          <span className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">監修状態</span>
+          <select
+            value={castle.historical_review_status}
+            onChange={(e) =>
+              setCastle({ ...castle, historical_review_status: e.target.value as CastleHistoricalReviewStatus })
+            }
+            className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+          >
+            {REVIEW_STATUS_OPTIONS.map((opt) => (
+              <option key={opt.value} value={opt.value}>
+                {opt.label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      <label className="block">
+        <span className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+          解放条件(主要国が未設定の場合は常に公開扱いになります)
+        </span>
+        <select
+          value={castle.unlock_level}
+          onChange={(e) => setCastle({ ...castle, unlock_level: e.target.value as CastleUnlockLevel })}
+          className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+        >
+          {UNLOCK_LEVEL_OPTIONS.map((opt) => (
             <option key={opt.value} value={opt.value}>
               {opt.label}
             </option>
