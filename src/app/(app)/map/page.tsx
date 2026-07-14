@@ -115,10 +115,13 @@ export default function MapPage() {
           <JapanMap markers={markers} onSelectRegion={scrollToRegion} />
 
           {selectedProvince && (
-            <div className="rounded-xl border border-gold/40 bg-ink-raised/90 p-3 text-center text-sm text-parchment">
-              {selectedProvince.isConquered
-                ? `✓ ${selectedProvince.name}国は制圧済みです。`
-                : `${selectedProvince.name}国はまだ制圧されていません。ガチャで3体の武将を集めましょう。`}
+            <div className="rounded-xl border border-gold/40 bg-ink-raised/90 p-3 text-sm text-parchment">
+              <p className="text-center">
+                {selectedProvince.isConquered
+                  ? `✓ ${selectedProvince.name}国は制圧済みです。`
+                  : `${selectedProvince.name}国はまだ制圧されていません。`}
+              </p>
+              <ProvinceWarlordChecklist key={selectedProvince.id} provinceId={selectedProvince.id} />
             </div>
           )}
 
@@ -153,6 +156,56 @@ export default function MapPage() {
       <div className="mt-8 border-t border-gold/15 pt-6">
         <TextLink href="/regions">地方コンプ状況を見る</TextLink>
       </div>
+    </div>
+  );
+}
+
+type RequiredWarlord = {
+  id: string;
+  name: string;
+  slotType: string;
+  imageUrl: string | null;
+  owned: boolean;
+};
+
+// 実装指示書v1.0フェーズ1(1-1)対応: 必須武将・獲得済み・未獲得の一覧表示。
+function ProvinceWarlordChecklist({ provinceId }: { provinceId: string }) {
+  const [warlords, setWarlords] = useState<RequiredWarlord[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`/api/provinces/${provinceId}/required-warlords`)
+      .then((res) => res.json())
+      .then((data: RequiredWarlord[]) => {
+        if (!cancelled) setWarlords(data);
+      })
+      .catch(() => {
+        if (!cancelled) setWarlords([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [provinceId]);
+
+  if (!warlords) {
+    return <p className="mt-2 text-center text-xs text-parchment-dim">武将情報を読み込み中...</p>;
+  }
+  if (warlords.length === 0) return null;
+
+  const ownedCount = warlords.filter((w) => w.owned).length;
+
+  return (
+    <div className="mt-2 border-t border-gold/15 pt-2">
+      <p className="text-center text-xs text-parchment-dim">
+        必要な武将({ownedCount}/{warlords.length})
+      </p>
+      <ul className="mt-1 flex flex-wrap justify-center gap-x-3 gap-y-1">
+        {warlords.map((w) => (
+          <li key={w.id} className={`text-xs ${w.owned ? "text-gold-soft" : "text-parchment-dim/60"}`}>
+            {w.owned ? "✓" : "未"} {w.name}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
