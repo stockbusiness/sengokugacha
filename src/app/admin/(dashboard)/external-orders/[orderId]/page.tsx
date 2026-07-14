@@ -17,6 +17,8 @@ type Order = {
   castle_id: string | null;
   agent_name_snapshot: string | null;
   admin_memo: string | null;
+  evidence_file_path: string | null;
+  payment_evidence_file_path: string | null;
   castles: { name: string } | null;
 };
 
@@ -226,6 +228,8 @@ export default function ExternalOrderDetailPage() {
         <p>電話番号: {order.buyer_phone ?? "未登録"}</p>
         {order.admin_memo && <p className="mt-2 whitespace-pre-wrap">メモ: {order.admin_memo}</p>}
       </div>
+
+      <EvidenceSection order={order} onUploaded={fetchDetail} />
 
       <div>
         <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">LINE通知</h2>
@@ -466,6 +470,92 @@ function PlotAssignmentSection({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function EvidenceSection({ order, onUploaded }: { order: Order; onUploaded: () => void }) {
+  const [uploading, setUploading] = useState<"order" | "payment" | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function handleUpload(kind: "order" | "payment", file: File) {
+    setUploading(kind);
+    setMessage(null);
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("kind", kind);
+      const res = await fetch(`/api/admin/external-orders/${order.id}/evidence`, { method: "POST", body: formData });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "アップロードに失敗しました。");
+      onUploaded();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "アップロードに失敗しました。");
+    } finally {
+      setUploading(null);
+    }
+  }
+
+  return (
+    <div className="rounded-xl border border-zinc-200 bg-white p-4 text-xs text-zinc-600 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400">
+      <p className="font-semibold text-zinc-900 dark:text-zinc-50">証憑ファイル</p>
+      <p className="mt-1 text-[11px]">管理者のみ閲覧できます。画像(jpg/png/webp)またはPDF、10MBまで。</p>
+
+      <div className="mt-2 grid grid-cols-2 gap-3">
+        <div>
+          <p className="mb-1 text-zinc-500 dark:text-zinc-400">注文確認資料</p>
+          {order.evidence_file_path ? (
+            <a
+              href={`/api/admin/external-orders/${order.id}/evidence?kind=order`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-zinc-900 underline dark:text-zinc-50"
+            >
+              登録済みファイルを開く
+            </a>
+          ) : (
+            <span className="text-zinc-400">未登録</span>
+          )}
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp,application/pdf"
+            disabled={uploading === "order"}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleUpload("order", file);
+              e.target.value = "";
+            }}
+            className="mt-1 block w-full text-[11px]"
+          />
+        </div>
+        <div>
+          <p className="mb-1 text-zinc-500 dark:text-zinc-400">入金確認資料</p>
+          {order.payment_evidence_file_path ? (
+            <a
+              href={`/api/admin/external-orders/${order.id}/evidence?kind=payment`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-zinc-900 underline dark:text-zinc-50"
+            >
+              登録済みファイルを開く
+            </a>
+          ) : (
+            <span className="text-zinc-400">未登録</span>
+          )}
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp,application/pdf"
+            disabled={uploading === "payment"}
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) handleUpload("payment", file);
+              e.target.value = "";
+            }}
+            className="mt-1 block w-full text-[11px]"
+          />
+        </div>
+      </div>
+      {message && <p className="mt-2 text-red-700 dark:text-red-400">{message}</p>}
     </div>
   );
 }
