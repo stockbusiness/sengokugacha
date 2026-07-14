@@ -43,7 +43,10 @@ export default function CastleLordDashboardPage() {
       .then((session) => {
         if (cancelled || session.status === "redirecting") return;
         return fetch("/api/lord/dashboard")
-          .then((res) => res.json())
+          .then((res) => {
+            if (!res.ok) throw new Error("城主ダッシュボードの取得に失敗しました。");
+            return res.json();
+          })
           .then((data: LordDashboardSummary) => {
             if (cancelled) return;
             setSummary(data);

@@ -38,7 +38,10 @@ export default function CastlesPage() {
       .then((session) => {
         if (cancelled || session.status === "redirecting") return;
         return fetch("/api/castles")
-          .then((res) => res.json())
+          .then((res) => {
+            if (!res.ok) throw new Error("城一覧の取得に失敗しました。");
+            return res.json();
+          })
           .then((data: Castle[]) => {
             if (cancelled) return;
             setCastles(data);

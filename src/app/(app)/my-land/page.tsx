@@ -32,7 +32,10 @@ export default function MyLandPage() {
       .then((session) => {
         if (cancelled || session.status === "redirecting") return;
         return fetch("/api/me/plots")
-          .then((res) => res.json())
+          .then((res) => {
+            if (!res.ok) throw new Error("所有区画の取得に失敗しました。");
+            return res.json();
+          })
           .then((data: MyPlot[]) => {
             if (cancelled) return;
             setPlots(data);
