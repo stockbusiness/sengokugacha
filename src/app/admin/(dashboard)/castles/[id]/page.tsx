@@ -178,6 +178,16 @@ type CastlePlot = {
   status: PlotStatus;
 };
 
+// 区画の購入は外部ショップシステムで代理店がクロージングする運用のため、
+// このアプリからは直接購入させない。成約後は本部担当者がここで「販売済み」に反映する。
+const MARK_SOLD_ELIGIBLE_STATUSES: PlotStatus[] = [
+  "available",
+  "reserved",
+  "application_pending",
+  "payment_pending",
+  "suspended",
+];
+
 const PLOT_STATUS_LABEL: Record<PlotStatus, string> = {
   draft: "下書き(未割当)",
   available: "販売可能",
@@ -197,6 +207,7 @@ function CastlePlotsSection({ castleId }: { castleId: string }) {
   const [priceYen, setPriceYen] = useState(300_000);
   const [creating, setCreating] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
 
   function fetchPlots() {
     fetch(`/api/admin/castles/${castleId}/plots`)
@@ -206,6 +217,57 @@ function CastlePlotsSection({ castleId }: { castleId: string }) {
         setStatus("ready");
       })
       .catch(() => setStatus("error"));
+  }
+
+  async function handleMarkSold(plot: CastlePlot) {
+    const input = window.prompt(
+      "外部ショップシステムでの成約価格(円)を入力してください。",
+      String(plot.price_yen)
+    );
+    if (input === null) return;
+    const soldPriceYen = Number(input);
+    if (!Number.isFinite(soldPriceYen) || soldPriceYen < 0) {
+      window.alert("価格は0以上の数値で入力してください。");
+      return;
+    }
+
+    setUpdatingId(plot.id);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/admin/castle-plots/${plot.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "sold", sold_price_yen: soldPriceYen }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "更新に失敗しました。");
+      fetchPlots();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "更新に失敗しました。");
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  async function handleRevertToAvailable(plot: CastlePlot) {
+    if (!window.confirm(`「${plot.name}」を販売可能に戻しますか?(販売済み情報はクリアされます)`)) return;
+
+    setUpdatingId(plot.id);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/admin/castle-plots/${plot.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "available" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "更新に失敗しました。");
+      fetchPlots();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "更新に失敗しました。");
+    } finally {
+      setUpdatingId(null);
+    }
   }
 
   useEffect(() => {
@@ -244,6 +306,7 @@ function CastlePlotsSection({ castleId }: { castleId: string }) {
         </h2>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
           事前に区画を「下書き」として登録しておくと、城主契約が有効化された際に販売枠の分だけ自動的に「販売可能」へ昇格します。
+          区画の購入手続きはアプリ内では行わず、外部ショップシステムで代理店が成約します。成約したら「販売済みにする(外部成約)」で反映してください。
         </p>
       </div>
 
@@ -305,6 +368,24 @@ function CastlePlotsSection({ castleId }: { castleId: string }) {
                 <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-semibold text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
                   {PLOT_STATUS_LABEL[p.status]}
                 </span>
+                {MARK_SOLD_ELIGIBLE_STATUSES.includes(p.status) && (
+                  <button
+                    onClick={() => handleMarkSold(p)}
+                    disabled={updatingId === p.id}
+                    className="rounded-lg border border-zinc-300 px-2 py-1 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+                  >
+                    {updatingId === p.id ? "処理中..." : "販売済みにする(外部成約)"}
+                  </button>
+                )}
+                {p.status === "sold" && (
+                  <button
+                    onClick={() => handleRevertToAvailable(p)}
+                    disabled={updatingId === p.id}
+                    className="rounded-lg border border-zinc-300 px-2 py-1 text-xs font-semibold text-zinc-700 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-900"
+                  >
+                    {updatingId === p.id ? "処理中..." : "販売可能に戻す"}
+                  </button>
+                )}
               </span>
             </div>
           ))}
