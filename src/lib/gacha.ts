@@ -1,3 +1,4 @@
+import { getActiveConquestRule, isConquestSatisfied } from "@/lib/conquest-rules";
 import { selectAnimationForDraw, type SelectedAnimation } from "@/lib/gacha-animations";
 import { getGachaRateTiers, pickTierRates, type GachaRateTier } from "@/lib/gacha-rate-tiers";
 import { getLoginStreak, getStreakBonusDraws } from "@/lib/login-streak";
@@ -205,17 +206,26 @@ async function addWarlordToUser(userId: string, warlordId: string): Promise<bool
   return true;
 }
 
-// その国の3武将すべてを所持していれば制圧済みにする。戻り値: 今回の抽選で新たに制圧したかどうか。
+// 国制覇条件を満たしていれば制圧済みにする。戻り値: 今回の抽選で新たに制圧したかどうか。
+// conquest_rulesに有効な条件が設定されていればそれを使い、無ければ従来通り
+// 「その国の武将を全部所持」で判定する(既存60国の挙動を変えないフォールバック。
+// 実装計画3-4章参照)。
 async function maybeConquerProvince(userId: string, provinceId: string): Promise<boolean> {
   const supabase = createSupabaseServerClient();
 
-  const { data: provinceWarlords, error: warlordsError } = await supabase
-    .from("warlords")
-    .select("id")
-    .eq("province_id", provinceId);
+  const rule = await getActiveConquestRule(provinceId);
 
-  if (warlordsError) throw warlordsError;
-  const warlordIds = (provinceWarlords ?? []).map((w) => w.id);
+  let warlordIds: string[];
+  if (rule) {
+    warlordIds = rule.warlordIds;
+  } else {
+    const { data: provinceWarlords, error: warlordsError } = await supabase
+      .from("warlords")
+      .select("id")
+      .eq("province_id", provinceId);
+    if (warlordsError) throw warlordsError;
+    warlordIds = (provinceWarlords ?? []).map((w) => w.id);
+  }
   if (warlordIds.length === 0) return false;
 
   const { data: ownedRows, error: ownedError } = await supabase
@@ -225,7 +235,10 @@ async function maybeConquerProvince(userId: string, provinceId: string): Promise
     .in("warlord_id", warlordIds);
 
   if (ownedError) throw ownedError;
-  const alreadyConquered = (ownedRows ?? []).length === warlordIds.length;
+  const alreadyConquered = isConquestSatisfied(
+    warlordIds,
+    (ownedRows ?? []).map((r) => r.warlord_id as string)
+  );
   if (!alreadyConquered) return false;
 
   const { error: upsertError } = await supabase
