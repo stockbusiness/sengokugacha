@@ -34,6 +34,7 @@ type OrderItem = {
   product_name: string;
   quantity: number;
   unit_price_yen: number;
+  status: string;
   assignments: Assignment[];
 };
 
@@ -411,16 +412,39 @@ function PlotAssignmentSection({
               <div className="flex items-center justify-between">
                 <p className="text-sm text-zinc-900 dark:text-zinc-50">
                   {item.product_name}({activeAssignments.length}/{item.quantity}区画)
+                  {item.status === "cancelled" && (
+                    <span className="ml-2 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-semibold text-red-800 dark:bg-red-950/40 dark:text-red-300">
+                      取消済み
+                    </span>
+                  )}
                 </p>
-                {activeAssignments.length < item.quantity && (
-                  <button
-                    onClick={() => openPicker(item.id)}
-                    disabled={busy}
-                    className="rounded-lg border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-900"
-                  >
-                    区画を選ぶ
-                  </button>
-                )}
+                <div className="flex items-center gap-2">
+                  {item.status === "active" && activeAssignments.length < item.quantity && (
+                    <button
+                      onClick={() => openPicker(item.id)}
+                      disabled={busy}
+                      className="rounded-lg border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-900"
+                    >
+                      区画を選ぶ
+                    </button>
+                  )}
+                  {item.status === "active" && (
+                    <button
+                      onClick={() => {
+                        const reason = window.prompt("この明細のみを取消する理由を入力してください(9-4 一部取消)");
+                        if (!reason) return;
+                        const resolution = window.confirm("外部ショップで返金確認が取れていますか?(OK=返金済み/キャンセル=未返金の取消)")
+                          ? "refunded"
+                          : "cancelled";
+                        runAction(`/api/admin/external-order-items/${item.id}/cancel`, { resolution, reason });
+                      }}
+                      disabled={busy}
+                      className="rounded-lg border border-red-300 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/40"
+                    >
+                      この明細を取消(本部管理者限定)
+                    </button>
+                  )}
+                </div>
               </div>
 
               {activeAssignments.length > 0 && (

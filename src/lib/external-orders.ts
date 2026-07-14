@@ -264,10 +264,12 @@ export function computeOrderAssignmentStatus(
 
 async function getItemsWithAssignedCounts(orderId: string) {
   const supabase = createSupabaseServerClient();
+  // 一部取消(9-4)でcancelledになった明細は、割当状況の集計・権利付与の対象から除外する。
   const { data: items, error: itemsError } = await supabase
     .from("external_order_items")
     .select("id, quantity")
-    .eq("order_id", orderId);
+    .eq("order_id", orderId)
+    .eq("status", "active");
   if (itemsError) throw itemsError;
 
   const itemIds = (items ?? []).map((i) => i.id as string);
@@ -448,10 +450,12 @@ export async function grantExternalOrderRights(orderId: string, actorName: strin
   if (!order.payment_confirmed_at) throw new Error("入金確認が完了していません");
   if (!order.linked_user_id) throw new Error("購入者とLINEユーザーの紐付けが完了していません");
 
+  // 一部取消(9-4)でcancelledになった明細は対象外にする。
   const { data: items, error: itemsError } = await supabase
     .from("external_order_items")
     .select("id, quantity, unit_price_yen")
-    .eq("order_id", orderId);
+    .eq("order_id", orderId)
+    .eq("status", "active");
   if (itemsError) throw itemsError;
 
   const itemIds = (items ?? []).map((i) => i.id as string);
@@ -597,6 +601,88 @@ export async function cancelExternalOrder(
     const { data: user } = await supabase.from("users").select("line_user_id").eq("id", order.linked_user_id).maybeSingle();
     const lineUserId = (user?.line_user_id as string | undefined) ?? null;
     await notifyExternalOrderEvent(orderId, lineUserId, resolution === "refunded" ? "refund_applied" : "rights_revoked");
+  }
+}
+
+// 一部取消(9-4「複数区画注文の一部のみ取消できる設計とする」)。特定の注文明細
+// (=区画1件分)のみを取消し、他の明細・注文全体の状態には影響させない。
+// この明細に紐づく有効な区画割当・区画権利(割当のみ/権利付与済みどちらも)を
+// 取り消し、区画を再販売可能へ戻す。全明細が取消済みになった場合のみ、
+// 注文全体もcancelExternalOrder()と同じ経路でcancel_pending→resolutionへ進める。
+export async function cancelExternalOrderItem(
+  orderItemId: string,
+  resolution: CancelResolution,
+  reason: string,
+  actorName: string | null
+) {
+  const supabase = createSupabaseServerClient();
+
+  const { data: item, error: itemError } = await supabase
+    .from("external_order_items")
+    .select("id, order_id, status")
+    .eq("id", orderItemId)
+    .maybeSingle();
+  if (itemError) throw itemError;
+  if (!item) throw new Error("注文明細が見つかりません");
+  if (item.status === "cancelled") throw new Error("この注文明細はすでに取消済みです");
+
+  const { data: assignments, error: assignmentsError } = await supabase
+    .from("external_order_plot_assignments")
+    .select("id, plot_id")
+    .eq("order_item_id", orderItemId)
+    .eq("status", "assigned");
+  if (assignmentsError) throw assignmentsError;
+
+  const nowIso = new Date().toISOString();
+  for (const assignment of assignments ?? []) {
+    const { error: unassignError } = await supabase
+      .from("external_order_plot_assignments")
+      .update({ status: "cancelled", unassigned_at: nowIso })
+      .eq("id", assignment.id);
+    if (unassignError) throw unassignError;
+
+    const { error: plotError } = await supabase
+      .from("castle_plots")
+      .update({
+        status: "available",
+        owner_user_id: null,
+        sold_at: null,
+        sold_price_yen: null,
+        source_order_item_id: null,
+        updated_at: nowIso,
+      })
+      .eq("id", assignment.plot_id)
+      .in("status", ["reserved", "sold"]);
+    if (plotError) throw plotError;
+  }
+
+  const { error: itemUpdateError } = await supabase
+    .from("external_order_items")
+    .update({ status: "cancelled" })
+    .eq("id", orderItemId);
+  if (itemUpdateError) throw itemUpdateError;
+
+  await logAdminAction(actorName, "external_order_item_cancel", `order_item_id=${orderItemId} reason=${reason}`, {
+    targetType: "external_order_item",
+    targetId: orderItemId,
+    after: { reason },
+  });
+
+  // 全明細が取消済みになっていたら、注文全体もキャンセル/返金として確定する
+  // (この場合はcancelExternalOrder()側が全体向けの通知を送るため、ここでの
+  // plot_changed通知は重複を避けて送らない)。
+  const { data: remainingItems, error: remainingError } = await supabase
+    .from("external_order_items")
+    .select("id")
+    .eq("order_id", item.order_id)
+    .eq("status", "active");
+  if (remainingError) throw remainingError;
+
+  if ((remainingItems ?? []).length === 0) {
+    await cancelExternalOrder(item.order_id as string, resolution, reason, actorName);
+  } else {
+    const lineUserId = await getLineUserIdForOrder(item.order_id as string);
+    await notifyExternalOrderEvent(item.order_id as string, lineUserId, "plot_changed");
   }
 }
 
