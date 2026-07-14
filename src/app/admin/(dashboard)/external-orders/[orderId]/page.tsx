@@ -46,6 +46,29 @@ type HistoryEntry = {
 
 type AssignablePlot = { id: string; plot_code: string; name: string; price_yen: number };
 type UserSearchResult = { id: string; displayName: string | null; lineUserId: string };
+type NotificationEntry = {
+  id: string;
+  notification_type: string;
+  status: string;
+  error_message: string | null;
+  sent_at: string | null;
+  created_at: string;
+};
+
+const NOTIFICATION_TYPE_LABEL: Record<string, string> = {
+  user_link_requested: "紐付け完了通知",
+  plot_assigned: "区画割当完了通知",
+  rights_granted: "権利付与完了通知",
+  plot_changed: "区画変更通知",
+  rights_revoked: "権利取消通知",
+  refund_applied: "返金反映通知",
+};
+
+const NOTIFICATION_STATUS_LABEL: Record<string, string> = {
+  pending: "送信中",
+  sent: "送信済み",
+  failed: "送信失敗",
+};
 
 const STATUS_LABEL: Record<string, string> = {
   draft: "下書き",
@@ -67,6 +90,7 @@ export default function ExternalOrderDetailPage() {
   const [order, setOrder] = useState<Order | null>(null);
   const [items, setItems] = useState<OrderItem[]>([]);
   const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [notifications, setNotifications] = useState<NotificationEntry[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [actionMessage, setActionMessage] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -78,6 +102,7 @@ export default function ExternalOrderDetailPage() {
         setOrder(data.order);
         setItems(data.items ?? []);
         setHistory(data.history ?? []);
+        setNotifications(data.notifications ?? []);
         setStatus("ready");
       })
       .catch(() => setStatus("error"));
@@ -158,8 +183,37 @@ export default function ExternalOrderDetailPage() {
               区画権利を付与する(本部管理者限定)
             </button>
           )}
+          {!["cancelled", "refunded"].includes(order.status) && (
+            <>
+              <button
+                onClick={() => {
+                  const reason = window.prompt("取消理由を入力してください(外部ショップでの決済は行われず取消の場合)");
+                  if (!reason) return;
+                  runAction(`/api/admin/external-orders/${order.id}/cancel`, { resolution: "cancelled", reason });
+                }}
+                disabled={busy}
+                className="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/40"
+              >
+                取消にする(本部管理者限定)
+              </button>
+              <button
+                onClick={() => {
+                  const reason = window.prompt("返金理由を入力してください(外部ショップで返金確認が取れている場合)");
+                  if (!reason) return;
+                  runAction(`/api/admin/external-orders/${order.id}/cancel`, { resolution: "refunded", reason });
+                }}
+                disabled={busy}
+                className="rounded-lg border border-red-300 px-3 py-1.5 text-xs font-semibold text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/40"
+              >
+                返金済みにする(本部管理者限定)
+              </button>
+            </>
+          )}
         </div>
         {actionMessage && <p className="mt-2 text-xs text-red-700 dark:text-red-400">{actionMessage}</p>}
+        <p className="mt-2 text-[11px] text-zinc-500 dark:text-zinc-400">
+          取消・返金は、外部ショップ側で処理が完了した後に反映してください。戦国パスポートから外部ショップへの返金処理は行われません。
+        </p>
       </div>
 
       <UserLinkSection order={order} busy={busy} runAction={runAction} />
@@ -171,6 +225,52 @@ export default function ExternalOrderDetailPage() {
         <p className="mt-1">メール: {order.buyer_email ?? "未登録"}</p>
         <p>電話番号: {order.buyer_phone ?? "未登録"}</p>
         {order.admin_memo && <p className="mt-2 whitespace-pre-wrap">メモ: {order.admin_memo}</p>}
+      </div>
+
+      <div>
+        <h2 className="mb-2 text-sm font-semibold text-zinc-900 dark:text-zinc-50">LINE通知</h2>
+        {notifications.length === 0 ? (
+          <p className="text-xs text-zinc-500 dark:text-zinc-400">まだ通知はありません。</p>
+        ) : (
+          <ul className="space-y-2">
+            {notifications.map((n) => (
+              <li
+                key={n.id}
+                className="flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-3 py-2 text-xs dark:border-zinc-800 dark:bg-zinc-950"
+              >
+                <div>
+                  <span className="font-semibold text-zinc-900 dark:text-zinc-50">
+                    {NOTIFICATION_TYPE_LABEL[n.notification_type] ?? n.notification_type}
+                  </span>
+                  <span
+                    className={`ml-2 rounded-full px-2 py-0.5 text-[10px] font-semibold ${
+                      n.status === "sent"
+                        ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300"
+                        : n.status === "failed"
+                          ? "bg-red-100 text-red-800 dark:bg-red-950/40 dark:text-red-300"
+                          : "bg-zinc-100 text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300"
+                    }`}
+                  >
+                    {NOTIFICATION_STATUS_LABEL[n.status] ?? n.status}
+                  </span>
+                  <p className="mt-1 text-zinc-500 dark:text-zinc-400">
+                    {new Date(n.created_at).toLocaleString("ja-JP")}
+                    {n.error_message && <span className="ml-2 text-red-600 dark:text-red-400">{n.error_message}</span>}
+                  </p>
+                </div>
+                {n.status === "failed" && (
+                  <button
+                    onClick={() => runAction(`/api/admin/line-notifications/${n.id}/resend`)}
+                    disabled={busy}
+                    className="rounded-lg border border-zinc-300 px-2 py-1 text-xs text-zinc-600 hover:bg-zinc-100 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-400 dark:hover:bg-zinc-900"
+                  >
+                    再送
+                  </button>
+                )}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <div>

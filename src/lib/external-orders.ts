@@ -1,4 +1,5 @@
 import { logAdminAction } from "@/lib/admin-audit-log";
+import { notifyExternalOrderEvent } from "@/lib/external-order-notifications";
 import {
   canOperatorPerformOrderTransition,
   isValidExternalOrderTransition,
@@ -6,6 +7,14 @@ import {
   type ExternalOrderStatus,
 } from "@/lib/external-order-state";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+
+async function getLineUserIdForOrder(orderId: string): Promise<string | null> {
+  const supabase = createSupabaseServerClient();
+  const { data: order } = await supabase.from("external_orders").select("linked_user_id").eq("id", orderId).maybeSingle();
+  if (!order?.linked_user_id) return null;
+  const { data: user } = await supabase.from("users").select("line_user_id").eq("id", order.linked_user_id).maybeSingle();
+  return (user?.line_user_id as string | undefined) ?? null;
+}
 
 export type AdminRole = "operator" | "manager";
 
@@ -205,6 +214,9 @@ export async function linkUserToOrder(orderId: string, userId: string, actorName
     targetId: orderId,
     after: { linkedUserId: userId },
   });
+
+  const { data: user } = await supabase.from("users").select("line_user_id").eq("id", userId).maybeSingle();
+  await notifyExternalOrderEvent(orderId, (user?.line_user_id as string | undefined) ?? null, "user_link_requested");
 }
 
 // 6-4「権利付与前は担当者が解除可能」。遷移マトリクス側でrights_granted以降からの
@@ -291,6 +303,12 @@ async function recomputeAndTransition(orderId: string, actorName: string | null,
 
   if (order.status !== nextStatus) {
     await transitionExternalOrder(orderId, nextStatus as ExternalOrderStatus, actorName, role);
+    // 個々の区画割当ごとに通知すると煩雑なため、全区画の割当が揃った時点(ready_to_grant到達時)
+    // のみ「区画割当完了」を通知する。
+    if (nextStatus === "ready_to_grant") {
+      const lineUserId = await getLineUserIdForOrder(orderId);
+      await notifyExternalOrderEvent(orderId, lineUserId, "plot_assigned");
+    }
   }
 }
 
@@ -495,7 +513,91 @@ export async function grantExternalOrderRights(orderId: string, actorName: strin
     after: { linkedUserId: order.linked_user_id, grantedPlotIds },
   });
 
+  const lineUserId = await getLineUserIdForOrder(orderId);
+  await notifyExternalOrderEvent(orderId, lineUserId, "rights_granted");
+
   return { orderId, grantedPlotIds, linkedUserId: order.linked_user_id as string };
+}
+
+// ============================================================
+// キャンセル・返金・権利取消(9章)。
+// ============================================================
+
+export type CancelResolution = "cancelled" | "refunded";
+
+// 外部ショップで返金・取消が完了した後の手動反映(9-1)。戦国パスポートから外部ショップの
+// 返金処理自体は行わない。有効な区画割当・権利をすべて取り消し、区画を再販売可能へ戻す。
+export async function cancelExternalOrder(
+  orderId: string,
+  resolution: CancelResolution,
+  reason: string,
+  actorName: string | null
+) {
+  const supabase = createSupabaseServerClient();
+
+  const { data: order, error: orderError } = await supabase
+    .from("external_orders")
+    .select("id, status, linked_user_id")
+    .eq("id", orderId)
+    .maybeSingle();
+  if (orderError) throw orderError;
+  if (!order) throw new Error("注文が見つかりません");
+
+  if (order.status !== "cancel_pending") {
+    await transitionExternalOrder(orderId, "cancel_pending", actorName, "manager", reason);
+  }
+
+  const { data: items, error: itemsError } = await supabase.from("external_order_items").select("id").eq("order_id", orderId);
+  if (itemsError) throw itemsError;
+  const itemIds = (items ?? []).map((i) => i.id as string);
+
+  const { data: assignments, error: assignmentsError } = itemIds.length
+    ? await supabase
+        .from("external_order_plot_assignments")
+        .select("id, plot_id")
+        .in("order_item_id", itemIds)
+        .eq("status", "assigned")
+    : { data: [] as { id: string; plot_id: string }[], error: null };
+  if (assignmentsError) throw assignmentsError;
+
+  const nowIso = new Date().toISOString();
+  for (const assignment of assignments ?? []) {
+    const { error: unassignError } = await supabase
+      .from("external_order_plot_assignments")
+      .update({ status: "cancelled", unassigned_at: nowIso })
+      .eq("id", assignment.id);
+    if (unassignError) throw unassignError;
+
+    // 割当のみ(reserved)・権利付与済み(sold)のどちらであっても再販売可能へ戻し、
+    // 所有者情報をクリアする(9-2「区画を再販売可能へ変更」「/my-landの状態を更新」)。
+    const { error: plotError } = await supabase
+      .from("castle_plots")
+      .update({
+        status: "available",
+        owner_user_id: null,
+        sold_at: null,
+        sold_price_yen: null,
+        source_order_item_id: null,
+        updated_at: nowIso,
+      })
+      .eq("id", assignment.plot_id)
+      .in("status", ["reserved", "sold"]);
+    if (plotError) throw plotError;
+  }
+
+  await transitionExternalOrder(orderId, resolution, actorName, "manager", reason);
+
+  await logAdminAction(actorName, "external_order_cancel", `resolution=${resolution} reason=${reason}`, {
+    targetType: "external_order",
+    targetId: orderId,
+    after: { resolution, reason },
+  });
+
+  if (order.linked_user_id) {
+    const { data: user } = await supabase.from("users").select("line_user_id").eq("id", order.linked_user_id).maybeSingle();
+    const lineUserId = (user?.line_user_id as string | undefined) ?? null;
+    await notifyExternalOrderEvent(orderId, lineUserId, resolution === "refunded" ? "refund_applied" : "rights_revoked");
+  }
 }
 
 // ============================================================
@@ -532,19 +634,30 @@ export async function listExternalOrders(filters: ExternalOrderListFilters = {})
 export async function getExternalOrderDetail(orderId: string) {
   const supabase = createSupabaseServerClient();
 
-  const [{ data: order, error: orderError }, { data: items, error: itemsError }, { data: history, error: historyError }] =
-    await Promise.all([
-      supabase.from("external_orders").select("*, castles:castle_id(name)").eq("id", orderId).maybeSingle(),
-      supabase.from("external_order_items").select("*").eq("order_id", orderId).order("created_at", { ascending: true }),
-      supabase
-        .from("external_order_status_histories")
-        .select("*")
-        .eq("order_id", orderId)
-        .order("created_at", { ascending: false }),
-    ]);
+  const [
+    { data: order, error: orderError },
+    { data: items, error: itemsError },
+    { data: history, error: historyError },
+    { data: notifications, error: notificationsError },
+  ] = await Promise.all([
+    supabase.from("external_orders").select("*, castles:castle_id(name)").eq("id", orderId).maybeSingle(),
+    supabase.from("external_order_items").select("*").eq("order_id", orderId).order("created_at", { ascending: true }),
+    supabase
+      .from("external_order_status_histories")
+      .select("*")
+      .eq("order_id", orderId)
+      .order("created_at", { ascending: false }),
+    supabase
+      .from("line_notification_logs")
+      .select("*")
+      .eq("target_type", "external_order")
+      .eq("target_id", orderId)
+      .order("created_at", { ascending: false }),
+  ]);
   if (orderError) throw orderError;
   if (itemsError) throw itemsError;
   if (historyError) throw historyError;
+  if (notificationsError) throw notificationsError;
   if (!order) return null;
 
   const itemIds = (items ?? []).map((i) => i.id as string);
@@ -572,5 +685,6 @@ export async function getExternalOrderDetail(orderId: string) {
       assignments: assignmentsByItem.get(item.id as string) ?? [],
     })),
     history: history ?? [],
+    notifications: notifications ?? [],
   };
 }
