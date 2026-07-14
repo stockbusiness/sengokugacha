@@ -184,26 +184,14 @@ export async function createExternalOrder(input: CreateExternalOrderInput, actor
 }
 
 // ============================================================
-// 購入者とLINEユーザーの検索・紐付け(6章)。
+// 購入者とLINEユーザーの紐付け(6章)。
 // ============================================================
 
-// usersテーブルにはLINE表示名(display_name)とline_user_idのみ存在し、
-// メール・電話番号・会員番号は保持していない(現状監査9章参照)。そのため
-// 氏名・メールでの横断検索は現時点では実現できず、LINE表示名/LINEユーザーIDでの
-// 検索のみに限定する。
-export async function searchLinkCandidateUsers(query: string) {
-  const supabase = createSupabaseServerClient();
-  const sanitized = query.trim().replace(/[%_]/g, "");
-  if (!sanitized) return [];
-
-  const { data, error } = await supabase
-    .from("users")
-    .select("id, line_user_id, display_name, created_at")
-    .or(`display_name.ilike.%${sanitized}%,line_user_id.ilike.%${sanitized}%`)
-    .limit(20);
-  if (error) throw error;
-  return data ?? [];
-}
+// 検索は既存の/api/admin/users?q=をそのまま流用する(usersテーブルには
+// LINE表示名/line_user_idしか無く、この既存エンドポイントの検索条件と完全に
+// 一致するため、専用の検索処理は重複実装になる。現状監査9章の通り、
+// メール・電話番号・会員番号でのマッチングはusersテーブルにその列自体が
+// 存在せず実現できない)。
 
 export async function linkUserToOrder(orderId: string, userId: string, actorName: string | null) {
   const supabase = createSupabaseServerClient();
