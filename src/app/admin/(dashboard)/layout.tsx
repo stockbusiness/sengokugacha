@@ -42,6 +42,9 @@ export default async function AdminDashboardLayout({ children }: { children: Rea
               <Link href="/admin/warlords" className="hover:text-zinc-900 dark:hover:text-zinc-50">
                 武将マスタ
               </Link>
+              <Link href="/admin/conquest-rules" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+                国制覇条件
+              </Link>
               <Link href="/admin/metaverse" className="hover:text-zinc-900 dark:hover:text-zinc-50">
                 メタバース内覧
               </Link>
