@@ -63,7 +63,28 @@
 
 ---
 
-## 3. その他の関連機能(参考、既存)
+## 3. カード収集型「国取り」× 城主経済圏連携(指示書v1.0)
+
+| # | 機能 | ステータス | 補足 |
+|---|---|---|---|
+| 1 | 国制覇条件エンジン(`conquest_rules`)+管理画面(`/admin/conquest-rules`) | 実装済み・テスト中 | 国ごとに未設定なら従来のハードコード判定(3体全部所持)へフォールバック。既存60国の実績には影響なし |
+| 2 | 国取り進捗表示(必須武将・獲得済み・未獲得の一覧、`/map`) | 実装済み・テスト中 | `getProvinceRequiredWarlords()`が条件エンジンと同じロジックで判定 |
+| 3 | 史実城主/公式城主パートナーの分離表示(`/castles/[id]`) | 実装済み・テスト中 | `castles.historical_lord_summary`(史実)と`castle_lord_contracts`(公式)を別枠表示 |
+| 4 | OVE名称変更・注意書き(`OveWalletCard.tsx`) | 実装済み・テスト中 | 「OVE移行予定ポイント」に変更、送金・換金不可・換算率未確定の注意を追加。ラベルは1箇所の定数に集約(将来の名称変更に対応しやすくするため) |
+| 5 | 城×国マスタ連携(`castle_province_relations`) | 実装済み・テスト中 | 1城につき主要国は1件(部分ユニークインデックス)。境目の城が複数国と関連付く拡張性は残す |
+| 6 | 城の解放条件(`castles.unlock_level`)+管理画面 | 実装済み・テスト中 | 常に公開/主要国制圧で解放/主要国の地方コンプで解放/非公開の4値。既定値は常に公開で既存の見え方を変えない |
+| 7 | ユーザー向け城一覧・詳細への解放状態反映(`/castles`) | 実装済み・テスト中 | 未解放の城は🔒表示のみで歴史・城主情報・区画一覧は非公開(APIレベルでも二重ガード) |
+| 8 | 城の監修状態(`castles.historical_review_status`) | 実装済み・テスト中 | 管理画面から未監修/監修済みを設定可能(表示への反映は今後の対応) |
+| 9 | 城解放後の城図鑑・御城印・重複武将交換・報酬受取箱・OVE移行予定ポイント台帳・城主コンテンツ申請承認フロー | 未実装 | フェーズ2-B以降として別途計画が必要(現状監査参照) |
+
+### 既知の制約
+
+- **国制覇条件は「指定武将を全部所持」のみ対応**: 指示書6-3が挙げる他の条件種別(N種類以上・レアリティ閾値・図鑑登録率・AND/OR)は、スキーマの拡張余地は残しつつ今回は未実装。
+- **城の解放条件も4値のみ対応**: 指示書14章の`CARD_REQUIRED`/`EVENT_REQUIRED`/`OWNER_ONLY`は未実装(該当UIも用意していない)。
+
+---
+
+## 4. その他の関連機能(参考、既存)
 
 「戦国パスポート 実装済み機能一覧」アーティファクト(第1部/第2部)に、以下を
 含む全体機能の一覧がある。詳細はそちらを参照。
@@ -79,4 +100,6 @@
 *関連ドキュメント: `docs/external-purchase-current-state-audit.md`,
 `docs/external-purchase-implementation-plan.md`,
 `docs/external-purchase-operation-manual.md`,
-`docs/external-purchase-test-report.md`*
+`docs/external-purchase-test-report.md`,
+`docs/collection-conquest-current-state-audit.md`,
+`docs/collection-conquest-implementation-plan.md`*
