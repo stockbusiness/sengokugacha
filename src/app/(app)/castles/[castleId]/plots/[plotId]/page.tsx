@@ -1,11 +1,11 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
-import { useParams, useSearchParams } from "next/navigation";
+import { useParams } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { PageHeader } from "@/components/ui/PageHeader";
-import { Button, TextLink } from "@/components/ui/Button";
+import { LinkButton, TextLink } from "@/components/ui/Button";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
 import { toDisplayUrl } from "@/lib/image-url";
 
@@ -44,13 +44,9 @@ export default function PlotDetailPage() {
 
 function PlotDetailPageInner() {
   const { castleId, plotId } = useParams<{ castleId: string; plotId: string }>();
-  const searchParams = useSearchParams();
-  const referralCode = searchParams.get("ref");
   const [status, setStatus] = useState<Status>("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [plot, setPlot] = useState<PlotDetail | null>(null);
-  const [purchasing, setPurchasing] = useState(false);
-  const [purchaseError, setPurchaseError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -79,34 +75,6 @@ function PlotDetailPageInner() {
       cancelled = true;
     };
   }, [plotId]);
-
-  async function handlePurchase() {
-    if (!plot) return;
-    setPurchasing(true);
-    setPurchaseError(null);
-    try {
-      const reserveRes = await fetch(`/api/plots/${plot.id}/reserve`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ref: referralCode }),
-      });
-      const reserveData = await reserveRes.json();
-      if (!reserveRes.ok) throw new Error(reserveData.error ?? "予約に失敗しました。");
-
-      const checkoutRes = await fetch("/api/purchase/castle-plot-checkout", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reservationId: reserveData.reservationId, castleId: plot.castle_id }),
-      });
-      const checkoutData = await checkoutRes.json();
-      if (!checkoutRes.ok) throw new Error(checkoutData.error ?? "決済ページの作成に失敗しました。");
-
-      window.location.href = checkoutData.url;
-    } catch (error) {
-      setPurchaseError(error instanceof Error ? error.message : "予期しないエラーが発生しました。");
-      setPurchasing(false);
-    }
-  }
 
   return (
     <div className="mx-auto w-full max-w-md px-4 py-10">
@@ -150,15 +118,12 @@ function PlotDetailPageInner() {
           )}
 
           {plot.status === "available" ? (
-            <div className="space-y-2">
-              <Button onClick={handlePurchase} disabled={purchasing}>
-                {purchasing ? "手続き中..." : "購入手続きへ進む"}
-              </Button>
-              {purchaseError && <p className="text-center text-xs text-crimson">{purchaseError}</p>}
-              <p className="text-center text-[11px] text-parchment-dim">
-                お申込み後、一定時間内にお支払いが完了しない場合は自動的にキャンセルされます。
+            <Card className="space-y-3 text-center">
+              <p className="text-sm leading-relaxed text-parchment">
+                この区画のご購入・お申込みは、担当代理店を通じたお手続きとなります。
               </p>
-            </div>
+              <LinkButton href="/legal/support">お問い合わせはこちら</LinkButton>
+            </Card>
           ) : (
             <Card className="text-xs leading-relaxed text-parchment-dim">
               現在この区画は{PLOT_STATUS_LABEL[plot.status] ?? plot.status}のため、お申込みいただけません。
