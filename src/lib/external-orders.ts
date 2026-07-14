@@ -27,7 +27,7 @@ export class PlotNotAssignableError extends Error {
 // 注文状態遷移(castle-lord-contracts.tsのtransitionContract()と同じパターン)。
 // ============================================================
 
-async function transitionExternalOrder(
+export async function transitionExternalOrder(
   orderId: string,
   toStatus: ExternalOrderStatus,
   actorName: string | null,
@@ -75,6 +75,27 @@ async function transitionExternalOrder(
     before: { status: fromStatus },
     after: { status: toStatus },
   });
+}
+
+// draft状態の注文を、情報登録完了として入金待ちへ進める(operator可)。
+export async function submitExternalOrder(orderId: string, actorName: string | null) {
+  await transitionExternalOrder(orderId, "payment_pending", actorName, "operator");
+}
+
+// 入金確認確定(11章、manager限定)。payment_confirmed_atを記録した上で、
+// 紐付け待ちまで一気に進める(実装計画7章「紐付け未確定の間、自動でこの状態を経由」)。
+export async function confirmPayment(orderId: string, actorName: string | null) {
+  const supabase = createSupabaseServerClient();
+
+  await transitionExternalOrder(orderId, "payment_confirmed", actorName, "manager");
+
+  const { error } = await supabase
+    .from("external_orders")
+    .update({ payment_confirmed_at: new Date().toISOString() })
+    .eq("id", orderId);
+  if (error) throw error;
+
+  await transitionExternalOrder(orderId, "user_link_pending", actorName, "manager");
 }
 
 // ============================================================
@@ -487,4 +508,81 @@ export async function grantExternalOrderRights(orderId: string, actorName: strin
   });
 
   return { orderId, grantedPlotIds, linkedUserId: order.linked_user_id as string };
+}
+
+// ============================================================
+// 一覧・詳細(4章)。
+// ============================================================
+
+export type ExternalOrderListFilters = {
+  status?: ExternalOrderStatus[];
+  castleId?: string;
+  unresolvedOnly?: boolean; // ユーザー未紐付け or 権利未付与のもの(4-12「未処理案件」相当)
+  search?: string; // 外部注文ID・購入者氏名
+};
+
+export async function listExternalOrders(filters: ExternalOrderListFilters = {}) {
+  const supabase = createSupabaseServerClient();
+  let query = supabase
+    .from("external_orders")
+    .select("*, castles:castle_id(name)")
+    .order("created_at", { ascending: false });
+
+  if (filters.status && filters.status.length > 0) query = query.in("status", filters.status);
+  if (filters.castleId) query = query.eq("castle_id", filters.castleId);
+  if (filters.unresolvedOnly) query = query.not("status", "in", "(rights_granted,cancelled,refunded)");
+  if (filters.search) {
+    const sanitized = filters.search.trim().replace(/[%_]/g, "");
+    if (sanitized) query = query.or(`external_order_id.ilike.%${sanitized}%,buyer_name.ilike.%${sanitized}%`);
+  }
+
+  const { data, error } = await query;
+  if (error) throw error;
+  return data ?? [];
+}
+
+export async function getExternalOrderDetail(orderId: string) {
+  const supabase = createSupabaseServerClient();
+
+  const [{ data: order, error: orderError }, { data: items, error: itemsError }, { data: history, error: historyError }] =
+    await Promise.all([
+      supabase.from("external_orders").select("*, castles:castle_id(name)").eq("id", orderId).maybeSingle(),
+      supabase.from("external_order_items").select("*").eq("order_id", orderId).order("created_at", { ascending: true }),
+      supabase
+        .from("external_order_status_histories")
+        .select("*")
+        .eq("order_id", orderId)
+        .order("created_at", { ascending: false }),
+    ]);
+  if (orderError) throw orderError;
+  if (itemsError) throw itemsError;
+  if (historyError) throw historyError;
+  if (!order) return null;
+
+  const itemIds = (items ?? []).map((i) => i.id as string);
+  const { data: assignments, error: assignmentsError } = itemIds.length
+    ? await supabase
+        .from("external_order_plot_assignments")
+        .select("*, castle_plots:plot_id(plot_code, name, price_yen, status)")
+        .in("order_item_id", itemIds)
+        .neq("status", "cancelled")
+        .order("assigned_at", { ascending: true })
+    : { data: [], error: null };
+  if (assignmentsError) throw assignmentsError;
+
+  const assignmentsByItem = new Map<string, typeof assignments>();
+  for (const a of assignments ?? []) {
+    const list = assignmentsByItem.get(a.order_item_id as string) ?? [];
+    list.push(a);
+    assignmentsByItem.set(a.order_item_id as string, list);
+  }
+
+  return {
+    order,
+    items: (items ?? []).map((item) => ({
+      ...item,
+      assignments: assignmentsByItem.get(item.id as string) ?? [],
+    })),
+    history: history ?? [],
+  };
 }
