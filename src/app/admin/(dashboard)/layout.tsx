@@ -57,6 +57,9 @@ export default async function AdminDashboardLayout({ children }: { children: Rea
               <Link href="/admin/castle-lord-contracts" className="hover:text-zinc-900 dark:hover:text-zinc-50">
                 城主契約
               </Link>
+              <Link href="/admin/external-orders" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+                外部注文管理
+              </Link>
               <Link href="/admin/castle-lord-plan-settings" className="hover:text-zinc-900 dark:hover:text-zinc-50">
                 城主プラン設定
               </Link>
