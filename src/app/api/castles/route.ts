@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getPublishedCastles } from "@/lib/castles";
+import { getPublishedCastlesForUser } from "@/lib/castles";
 import { getSession } from "@/lib/session";
 
 export async function GET() {
@@ -8,6 +8,6 @@ export async function GET() {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
 
-  const castles = await getPublishedCastles();
+  const castles = await getPublishedCastlesForUser(session.userId);
   return NextResponse.json(castles);
 }
