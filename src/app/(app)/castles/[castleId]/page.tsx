@@ -10,6 +10,12 @@ import { TextLink } from "@/components/ui/Button";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
 import { toDisplayUrl } from "@/lib/image-url";
 
+type OfficialLordPartner = {
+  contactName: string | null;
+  companyName: string | null;
+  applicantType: "individual" | "corporate";
+};
+
 type CastleDetail = {
   id: string;
   name: string;
@@ -17,6 +23,8 @@ type CastleDetail = {
   region: string | null;
   description: string | null;
   main_image_url: string | null;
+  historical_lord_summary: string | null;
+  officialLordPartner: OfficialLordPartner | null;
 };
 
 type Plot = {
@@ -102,6 +110,28 @@ export default function CastleDetailPage() {
 
           {castle.description && (
             <Card className="text-sm leading-relaxed text-parchment-dim">{castle.description}</Card>
+          )}
+
+          {(castle.historical_lord_summary || castle.officialLordPartner) && (
+            <Card className="space-y-3 text-sm">
+              {castle.historical_lord_summary && (
+                <div>
+                  <h2 className="mb-1 text-xs font-semibold text-parchment-dim">史実城主</h2>
+                  <p className="text-parchment">{castle.historical_lord_summary}</p>
+                </div>
+              )}
+              {castle.officialLordPartner && (
+                <div>
+                  <h2 className="mb-1 text-xs font-semibold text-gold-soft">公式城主パートナー</h2>
+                  <p className="text-parchment">
+                    {castle.officialLordPartner.companyName ?? castle.officialLordPartner.contactName ?? "非公開"}
+                  </p>
+                  <p className="mt-0.5 text-xs text-parchment-dim">
+                    現在の運営参加パートナーです。史実上の城主とは異なります。
+                  </p>
+                </div>
+              )}
+            </Card>
           )}
 
           <div>
