@@ -17,6 +17,7 @@ type Castle = {
   status: "recruiting" | "published";
   description: string | null;
   main_image_url: string | null;
+  unlocked: boolean;
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -72,9 +73,9 @@ export default function CastlesPage() {
         <div className="space-y-3">
           {castles.map((castle) => (
             <Link key={castle.id} href={`/castles/${castle.id}`} className="block">
-              <Card className="transition hover:border-gold/50 hover:bg-ink-raised">
+              <Card className={`transition hover:border-gold/50 hover:bg-ink-raised ${castle.unlocked ? "" : "opacity-60"}`}>
                 <div className="flex items-center gap-3">
-                  {castle.main_image_url ? (
+                  {castle.unlocked && castle.main_image_url ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={toDisplayUrl(castle.main_image_url) ?? undefined}
@@ -82,14 +83,22 @@ export default function CastlesPage() {
                       className="h-16 w-16 rounded-lg object-cover"
                     />
                   ) : (
-                    <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-ink-raised text-2xl">🏯</div>
+                    <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-ink-raised text-2xl">
+                      {castle.unlocked ? "🏯" : "🔒"}
+                    </div>
                   )}
                   <div className="flex-1">
                     <div className="flex items-center gap-1.5">
                       <p className="text-sm font-semibold text-parchment">{castle.name}</p>
-                      <span className="rounded-full bg-crimson/70 px-1.5 py-0.5 text-[10px] font-bold text-parchment">
-                        {STATUS_LABEL[castle.status] ?? castle.status}
-                      </span>
+                      {castle.unlocked ? (
+                        <span className="rounded-full bg-crimson/70 px-1.5 py-0.5 text-[10px] font-bold text-parchment">
+                          {STATUS_LABEL[castle.status] ?? castle.status}
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-ink px-1.5 py-0.5 text-[10px] font-bold text-parchment-dim">
+                          未解放
+                        </span>
+                      )}
                     </div>
                     <p className="mt-0.5 text-xs text-parchment-dim">{castle.prefecture ?? castle.region ?? ""}</p>
                   </div>

@@ -1,5 +1,6 @@
 import { logAdminAction } from "@/lib/admin-audit-log";
-import type { CastleUnlockLevel } from "@/lib/castle-unlock";
+import { isCastleUnlocked, type CastleUnlockLevel } from "@/lib/castle-unlock";
+import { regionCompleteAchievementType } from "@/lib/regions";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export type CastleStatus = "draft" | "recruiting" | "published" | "hidden";
@@ -47,24 +48,76 @@ export async function getOfficialLordPartner(castleId: string): Promise<Official
   };
 }
 
-// 一般公開する城一覧(要件書11.1)。draft/hiddenは非公開のため除外する。
-export async function getPublishedCastles(): Promise<Castle[]> {
-  const supabase = createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from("castles")
-    .select("*")
-    .in("status", ["recruiting", "published"])
-    .order("display_order", { ascending: true });
-
-  if (error) throw error;
-  return data ?? [];
-}
-
 export async function getCastleById(castleId: string): Promise<Castle | null> {
   const supabase = createSupabaseServerClient();
   const { data, error } = await supabase.from("castles").select("*").eq("id", castleId).maybeSingle();
   if (error) throw error;
   return data ?? null;
+}
+
+export type CastleWithUnlockStatus = Castle & { unlocked: boolean };
+
+// 一般公開する城一覧+ユーザーごとの解放状態(実装指示書v1.0 6-6)。
+// N+1を避けるため、関連テーブルをまとめて取得してからJS側で突き合わせる。
+export async function getPublishedCastlesForUser(userId: string): Promise<CastleWithUnlockStatus[]> {
+  const supabase = createSupabaseServerClient();
+
+  const { data: castles, error: castlesError } = await supabase
+    .from("castles")
+    .select("*")
+    .in("status", ["recruiting", "published"])
+    .order("display_order", { ascending: true });
+  if (castlesError) throw castlesError;
+  if (!castles || castles.length === 0) return [];
+
+  const castleIds = castles.map((c) => c.id as string);
+  const provinceIdByCastleId = await getPrimaryProvinceIdsByCastle(castleIds);
+  const provinceIds = Array.from(new Set(provinceIdByCastleId.values()));
+
+  const [{ data: provinces, error: provincesError }, { data: conqueredRows, error: conqueredError }] = await Promise.all([
+    provinceIds.length > 0
+      ? supabase.from("provinces").select("id, region").in("id", provinceIds)
+      : Promise.resolve({ data: [] as { id: string; region: string }[], error: null }),
+    provinceIds.length > 0
+      ? supabase
+          .from("user_provinces")
+          .select("province_id")
+          .eq("user_id", userId)
+          .eq("is_conquered", true)
+          .in("province_id", provinceIds)
+      : Promise.resolve({ data: [] as { province_id: string }[], error: null }),
+  ]);
+  if (provincesError) throw provincesError;
+  if (conqueredError) throw conqueredError;
+
+  const regionByProvinceId = new Map((provinces ?? []).map((p) => [p.id as string, p.region as string]));
+  const conqueredProvinceIds = new Set((conqueredRows ?? []).map((r) => r.province_id as string));
+
+  const regions = Array.from(new Set(Array.from(regionByProvinceId.values())));
+  const { data: achievements, error: achievementsError } =
+    regions.length > 0
+      ? await supabase
+          .from("achievements")
+          .select("achievement_type")
+          .eq("user_id", userId)
+          .in(
+            "achievement_type",
+            regions.map((r) => regionCompleteAchievementType(r))
+          )
+      : { data: [] as { achievement_type: string }[], error: null };
+  if (achievementsError) throw achievementsError;
+  const conqueredRegionTypes = new Set((achievements ?? []).map((a) => a.achievement_type as string));
+
+  return castles.map((c) => {
+    const provinceId = provinceIdByCastleId.get(c.id as string) ?? null;
+    const region = provinceId ? regionByProvinceId.get(provinceId) : undefined;
+    const unlocked = isCastleUnlocked(c.unlock_level as CastleUnlockLevel, {
+      hasPrimaryProvince: !!provinceId,
+      provinceConquered: provinceId ? conqueredProvinceIds.has(provinceId) : false,
+      regionConquered: region ? conqueredRegionTypes.has(regionCompleteAchievementType(region)) : false,
+    });
+    return { ...c, unlocked };
+  });
 }
 
 // ============================================================

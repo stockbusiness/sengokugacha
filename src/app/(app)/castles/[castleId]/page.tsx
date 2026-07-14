@@ -21,10 +21,11 @@ type CastleDetail = {
   name: string;
   prefecture: string | null;
   region: string | null;
-  description: string | null;
-  main_image_url: string | null;
-  historical_lord_summary: string | null;
-  officialLordPartner: OfficialLordPartner | null;
+  description?: string | null;
+  main_image_url?: string | null;
+  historical_lord_summary?: string | null;
+  officialLordPartner?: OfficialLordPartner | null;
+  unlocked: boolean;
 };
 
 type Plot = {
@@ -99,7 +100,13 @@ export default function CastleDetailPage() {
         <div className="space-y-4">
           <PageHeader title={castle.name} subtitle={castle.prefecture ?? castle.region ?? undefined} />
 
-          {castle.main_image_url && (
+          {!castle.unlocked && (
+            <Card className="border-gold/40 bg-ink-raised/90 text-center text-sm text-parchment">
+              🔒 この城はまだ解放されていません。国取りを進めると詳細が解放されます。
+            </Card>
+          )}
+
+          {castle.unlocked && castle.main_image_url && (
             // eslint-disable-next-line @next/next/no-img-element
             <img
               src={toDisplayUrl(castle.main_image_url) ?? undefined}
@@ -108,11 +115,11 @@ export default function CastleDetailPage() {
             />
           )}
 
-          {castle.description && (
+          {castle.unlocked && castle.description && (
             <Card className="text-sm leading-relaxed text-parchment-dim">{castle.description}</Card>
           )}
 
-          {(castle.historical_lord_summary || castle.officialLordPartner) && (
+          {castle.unlocked && (castle.historical_lord_summary || castle.officialLordPartner) && (
             <Card className="space-y-3 text-sm">
               {castle.historical_lord_summary && (
                 <div>
@@ -134,32 +141,34 @@ export default function CastleDetailPage() {
             </Card>
           )}
 
-          <div>
-            <h2 className="mb-2 text-sm font-semibold text-gold-soft">区画一覧({plots.length}件)</h2>
-            <div className="space-y-2">
-              {plots.map((plot) => (
-                <Link key={plot.id} href={`/castles/${castle.id}/plots/${plot.id}`} className="block">
-                  <Card className="transition hover:border-gold/50 hover:bg-ink-raised">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-semibold text-parchment">{plot.name}</p>
-                        <p className="text-xs text-parchment-dim">{plot.plot_code}</p>
+          {castle.unlocked && (
+            <div>
+              <h2 className="mb-2 text-sm font-semibold text-gold-soft">区画一覧({plots.length}件)</h2>
+              <div className="space-y-2">
+                {plots.map((plot) => (
+                  <Link key={plot.id} href={`/castles/${castle.id}/plots/${plot.id}`} className="block">
+                    <Card className="transition hover:border-gold/50 hover:bg-ink-raised">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm font-semibold text-parchment">{plot.name}</p>
+                          <p className="text-xs text-parchment-dim">{plot.plot_code}</p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-bold text-gold-soft">{plot.price_yen.toLocaleString()}円</p>
+                          <span className="text-xs text-parchment-dim">
+                            {PLOT_STATUS_LABEL[plot.status] ?? plot.status}
+                          </span>
+                        </div>
                       </div>
-                      <div className="text-right">
-                        <p className="text-sm font-bold text-gold-soft">{plot.price_yen.toLocaleString()}円</p>
-                        <span className="text-xs text-parchment-dim">
-                          {PLOT_STATUS_LABEL[plot.status] ?? plot.status}
-                        </span>
-                      </div>
-                    </div>
-                  </Card>
-                </Link>
-              ))}
-              {plots.length === 0 && (
-                <p className="text-center text-sm text-parchment-dim">現在公開中の区画はありません。</p>
-              )}
+                    </Card>
+                  </Link>
+                ))}
+                {plots.length === 0 && (
+                  <p className="text-center text-sm text-parchment-dim">現在公開中の区画はありません。</p>
+                )}
+              </div>
             </div>
-          </div>
+          )}
 
           <div className="pt-4 text-center">
             <TextLink href="/castles">← 城一覧に戻る</TextLink>
