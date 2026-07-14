@@ -14,6 +14,7 @@ type Castle = {
   description: string | null;
   main_image_url: string | null;
   display_order: number;
+  historical_lord_summary: string | null;
 };
 
 const STATUS_OPTIONS: { value: CastleStatus; label: string }[] = [
@@ -54,6 +55,7 @@ export default function CastleEditPage() {
           prefecture: castle.prefecture,
           region: castle.region,
           description: castle.description,
+          historical_lord_summary: castle.historical_lord_summary,
           main_image_url: castle.main_image_url,
           display_order: castle.display_order,
           status: castle.status,
@@ -128,6 +130,19 @@ export default function CastleEditPage() {
           value={castle.description ?? ""}
           onChange={(e) => setCastle({ ...castle, description: e.target.value || null })}
           rows={4}
+          className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+        />
+      </label>
+
+      <label className="block">
+        <span className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+          史実城主(公式城主パートナーとは別枠で表示されます)
+        </span>
+        <textarea
+          value={castle.historical_lord_summary ?? ""}
+          onChange={(e) => setCastle({ ...castle, historical_lord_summary: e.target.value || null })}
+          rows={2}
+          placeholder="例: 織田信長、斎藤道三 等"
           className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
         />
       </label>

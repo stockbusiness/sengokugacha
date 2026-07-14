@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getCastleById } from "@/lib/castles";
+import { getCastleById, getOfficialLordPartner } from "@/lib/castles";
 import { getSession } from "@/lib/session";
 
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -14,5 +14,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
-  return NextResponse.json(castle);
+  const officialLordPartner = await getOfficialLordPartner(id);
+
+  return NextResponse.json({ ...castle, officialLordPartner });
 }
