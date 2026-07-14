@@ -26,6 +26,16 @@ describe("isValidExternalOrderTransition", () => {
     expect(isValidExternalOrderTransition("partially_assigned", "plot_assignment_pending")).toBe(true);
   });
 
+  it("allows unlinking a mistaken user link before rights are granted (6-4)", () => {
+    expect(isValidExternalOrderTransition("plot_assignment_pending", "user_link_pending")).toBe(true);
+    expect(isValidExternalOrderTransition("partially_assigned", "user_link_pending")).toBe(true);
+    expect(isValidExternalOrderTransition("ready_to_grant", "user_link_pending")).toBe(true);
+  });
+
+  it("does not allow unlinking directly from rights_granted (requires a dedicated transfer process)", () => {
+    expect(isValidExternalOrderTransition("rights_granted", "user_link_pending")).toBe(false);
+  });
+
   it("allows cancel_pending from every non-terminal status", () => {
     for (const status of EXTERNAL_ORDER_STATUSES) {
       if (["cancelled", "refunded", "on_hold", "cancel_pending"].includes(status)) continue;
@@ -90,6 +100,12 @@ describe("canOperatorPerformOrderTransition", () => {
     expect(canOperatorPerformOrderTransition("payment_confirmed", "user_link_pending")).toBe(false);
     expect(canOperatorPerformOrderTransition("user_link_pending", "plot_assignment_pending")).toBe(false);
     expect(canOperatorPerformOrderTransition("ready_to_grant", "rights_granted")).toBe(false);
+  });
+
+  it("allows operators to undo a mistaken user link before rights are granted (6-4)", () => {
+    expect(canOperatorPerformOrderTransition("plot_assignment_pending", "user_link_pending")).toBe(true);
+    expect(canOperatorPerformOrderTransition("partially_assigned", "user_link_pending")).toBe(true);
+    expect(canOperatorPerformOrderTransition("ready_to_grant", "user_link_pending")).toBe(true);
   });
 
   it("requires manager for every cancellation/refund transition", () => {

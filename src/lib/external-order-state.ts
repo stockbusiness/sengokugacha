@@ -23,9 +23,22 @@ const ORDER_TRANSITIONS: Record<ExternalOrderStatus, ExternalOrderStatus[]> = {
   payment_pending: ["payment_confirmed", "cancel_pending", "on_hold"],
   payment_confirmed: ["user_link_pending", "cancel_pending", "on_hold"],
   user_link_pending: ["plot_assignment_pending", "cancel_pending", "on_hold"],
-  plot_assignment_pending: ["partially_assigned", "ready_to_grant", "cancel_pending", "on_hold"],
-  partially_assigned: ["ready_to_grant", "plot_assignment_pending", "cancel_pending", "on_hold"],
-  ready_to_grant: ["rights_granted", "partially_assigned", "cancel_pending", "on_hold"], // partially_assignedへの逆行は権利付与前に割当を取り消した場合
+  // user_link_pendingへの逆行は誤紐付け解除(6-4)。権利付与前のみ許可する。
+  plot_assignment_pending: ["partially_assigned", "ready_to_grant", "user_link_pending", "cancel_pending", "on_hold"],
+  partially_assigned: [
+    "ready_to_grant",
+    "plot_assignment_pending",
+    "user_link_pending",
+    "cancel_pending",
+    "on_hold",
+  ],
+  ready_to_grant: [
+    "rights_granted",
+    "partially_assigned",
+    "user_link_pending",
+    "cancel_pending",
+    "on_hold",
+  ], // partially_assignedへの逆行は権利付与前に割当を取り消した場合
   rights_granted: ["cancel_pending", "on_hold"], // 権利付与後のキャンセル・返金にも対応(9-1)
   cancel_pending: ["cancelled", "refunded", "on_hold"],
   cancelled: [], // 終端状態
@@ -45,7 +58,8 @@ const ORDER_TRANSITIONS: Record<ExternalOrderStatus, ExternalOrderStatus[]> = {
 // 本部担当者(operator)が実行できる遷移。それ以外は本部管理者(manager)限定
 // (実装計画8章の権限表に対応: 入金確認確定・ユーザー紐付け確定・権利付与確定・
 // 権利取消/区画変更・強制登録/強制解除はmanager限定、それ以外の登録・区画割当案作成は
-// operatorも実行可能)。
+// operatorも実行可能)。誤紐付け解除(*:user_link_pending)は6-4「権利付与前は担当者が
+// 解除可能」に基づきoperatorへ開放する。
 const OPERATOR_ALLOWED_TRANSITIONS: Set<string> = new Set([
   "draft:payment_pending",
   "draft:on_hold",
@@ -54,11 +68,14 @@ const OPERATOR_ALLOWED_TRANSITIONS: Set<string> = new Set([
   "user_link_pending:on_hold",
   "plot_assignment_pending:partially_assigned",
   "plot_assignment_pending:ready_to_grant",
+  "plot_assignment_pending:user_link_pending",
   "plot_assignment_pending:on_hold",
   "partially_assigned:ready_to_grant",
   "partially_assigned:plot_assignment_pending",
+  "partially_assigned:user_link_pending",
   "partially_assigned:on_hold",
   "ready_to_grant:partially_assigned",
+  "ready_to_grant:user_link_pending",
   "ready_to_grant:on_hold",
 ]);
 
