@@ -58,7 +58,10 @@ export default function CastleDetailPage() {
             if (!res.ok) throw new Error("城情報の取得に失敗しました。");
             return res.json();
           }),
-          fetch(`/api/castles/${castleId}/plots`).then((res) => res.json()),
+          fetch(`/api/castles/${castleId}/plots`).then((res) => {
+            if (!res.ok) throw new Error("区画一覧の取得に失敗しました。");
+            return res.json();
+          }),
         ]).then(([castleData, plotsData]: [CastleDetail, Plot[]]) => {
           if (cancelled) return;
           setCastle(castleData);
