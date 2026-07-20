@@ -19,8 +19,26 @@ export async function ensureLiffSession(): Promise<EnsureSessionResult> {
   const refFromUrl = new URLSearchParams(window.location.search).get("ref");
   if (refFromUrl) {
     sessionStorage.setItem("sengoku_ref_code", refFromUrl);
+
+    // sengoku-ai.com側への流入記録(EXTERNAL_DEVELOPER_GUIDE 10.1章)。URLに
+    // ref付きで新規に到達した時点でのみ呼ぶ(ページ遷移のたびには呼ばない)。
+    // 失敗してもログイン処理自体は継続する。
+    try {
+      const captureRes = await fetch("/api/referrals/capture", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ referralToken: refFromUrl }),
+      });
+      const captureBody = await captureRes.json().catch(() => ({ sessionKey: null }));
+      if (captureBody.sessionKey) {
+        sessionStorage.setItem("sengoku_referral_session_key", captureBody.sessionKey);
+      }
+    } catch {
+      // 紹介流入記録の失敗はログイン処理を止めない。
+    }
   }
   const refCode = refFromUrl ?? sessionStorage.getItem("sengoku_ref_code");
+  const referralSessionKey = sessionStorage.getItem("sengoku_referral_session_key");
 
   const liff = (await import("@line/liff")).default;
   await liff.init({ liffId });
@@ -47,7 +65,7 @@ export async function ensureLiffSession(): Promise<EnsureSessionResult> {
   const loginRes = await fetch("/api/auth/line", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ idToken, refCode }),
+    body: JSON.stringify({ idToken, refCode, referralSessionKey }),
   });
 
   if (!loginRes.ok) {

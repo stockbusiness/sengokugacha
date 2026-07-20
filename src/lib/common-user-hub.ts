@@ -33,6 +33,8 @@ async function postToAgencySystem(
         "Idempotency-Key": randomUUID(),
       },
       body: JSON.stringify(body),
+      // ログイン・登録・購入の主処理を待たせすぎないよう上限を設ける。
+      signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) {
       console.warn(`[common-user-hub] ${path} が失敗しました(status=${res.status})`);
