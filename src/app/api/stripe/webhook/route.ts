@@ -6,6 +6,7 @@ import { postLandSaleCommission } from "@/lib/castle-commissions";
 import { notifyPlotPurchase } from "@/lib/castle-notifications";
 import { createStripeClient } from "@/lib/stripe";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { confirmReferral } from "@/lib/common-user-hub";
 
 async function grantPurchase(userId: string, itemType: string, grantAmount: number) {
   const supabase = createSupabaseServerClient();
@@ -52,6 +53,26 @@ async function recordAgentSaleIfReferred(userId: string, itemType: string, amoun
     source: itemType,
   });
   if (insertError) throw insertError;
+}
+
+// sengoku-ai.com EXTERNAL_DEVELOPER_GUIDE 10.2章。referral_session_keyが
+// 保存されているユーザー(=紹介URL経由で登録したユーザー)の購入完了を通知する。
+// ベストエフォート(confirmReferral自体がfail-open)なので、失敗しても購入処理は継続する。
+async function confirmReferralForPurchase(userId: string, purchaseId: string, itemType: string, amountYen: number) {
+  const supabase = createSupabaseServerClient();
+  const { data: user, error } = await supabase
+    .from("users")
+    .select("referral_session_key")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error || !user?.referral_session_key) return;
+
+  await confirmReferral({
+    referralSessionKey: user.referral_session_key,
+    externalUserId: userId,
+    referralSource: "purchase",
+    metadata: { purchase_id: purchaseId, item_type: itemType, amount: amountYen },
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -111,6 +132,8 @@ export async function POST(request: NextRequest) {
         await grantPurchase(purchase.user_id, purchase.item_type, purchase.grant_amount);
         await recordAgentSaleIfReferred(purchase.user_id, purchase.item_type, purchase.amount);
       }
+
+      await confirmReferralForPurchase(purchase.user_id, purchase.id, purchase.item_type, amountReceivedYen);
     }
   }
 
