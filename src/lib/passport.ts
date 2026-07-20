@@ -2,6 +2,7 @@ import { getDailyMissionStatus } from "@/lib/daily-missions";
 import { getLoginStreak } from "@/lib/login-streak";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { MANUAL_ACTIVITY_POINTS, recordContribution } from "@/lib/user-activity";
+import { confirmReferral, resolveCommonUserId } from "@/lib/common-user-hub";
 
 export type PassportData = {
   displayName: string | null;
@@ -49,14 +50,15 @@ async function resolveAgentIdByReferralCode(referralCode: string | null): Promis
 // パスポート上の表示名は最初の登録時点のものを保持する。仕様上の明記はないため、
 // この方針に強い理由があるわけではなく、要件があれば都度上書きに変更する)。
 //
-// referralCode は新規登録時のみ users.referring_agent_id に反映する。
-// 既存ユーザーには反映しない(3.3章: 「登録完了後は変更不可。アトリビューションは
-// ファーストタッチ確定方式」)。
+// referralCode / referralSessionKey は新規登録時のみ users.referring_agent_id /
+// referral_session_key に反映する。既存ユーザーには反映しない(3.3章: 「登録完了後は
+// 変更不可。アトリビューションはファーストタッチ確定方式」)。
 export async function findOrCreateUserByLineId(
   lineUserId: string,
   displayName: string | null,
-  referralCode: string | null
-) {
+  referralCode: string | null,
+  referralSessionKey: string | null = null
+): Promise<{ userId: string; isNewUser: boolean }> {
   const supabase = createSupabaseServerClient();
 
   const { data: existing, error: findError } = await supabase
@@ -66,18 +68,55 @@ export async function findOrCreateUserByLineId(
     .maybeSingle();
 
   if (findError) throw findError;
-  if (existing) return existing.id as string;
+  if (existing) return { userId: existing.id as string, isNewUser: false };
 
   const referringAgentId = await resolveAgentIdByReferralCode(referralCode);
 
   const { data: created, error: insertError } = await supabase
     .from("users")
-    .insert({ line_user_id: lineUserId, display_name: displayName, referring_agent_id: referringAgentId })
+    .insert({
+      line_user_id: lineUserId,
+      display_name: displayName,
+      referring_agent_id: referringAgentId,
+      referral_session_key: referralSessionKey,
+    })
     .select("id")
     .single();
 
   if (insertError) throw insertError;
-  return created.id as string;
+  return { userId: created.id as string, isNewUser: true };
+}
+
+// sengoku-ai.com 共通顧客HUBとの同期(EXTERNAL_DEVELOPER_GUIDE 9〜10章)。
+// 未解決の場合のみcommon_user_idを解決し、新規登録時のみ紹介確定(referrals/confirm)を
+// 行う。いずれもベストエフォートで、失敗してもログイン処理自体は継続させる
+// (呼び出し元でcatchすること)。
+export async function syncCommonUserHub(userId: string, displayName: string | null, isNewUser: boolean): Promise<void> {
+  const supabase = createSupabaseServerClient();
+  const { data: user, error } = await supabase
+    .from("users")
+    .select("common_user_id, referral_session_key")
+    .eq("id", userId)
+    .maybeSingle();
+  if (error || !user) return;
+
+  if (!user.common_user_id) {
+    const commonUserId = await resolveCommonUserId({ externalUserId: userId, displayName });
+    if (commonUserId) {
+      await supabase
+        .from("users")
+        .update({ common_user_id: commonUserId, common_user_synced_at: new Date().toISOString() })
+        .eq("id", userId);
+    }
+  }
+
+  if (isNewUser && user.referral_session_key) {
+    await confirmReferral({
+      referralSessionKey: user.referral_session_key,
+      externalUserId: userId,
+      referralSource: "registration",
+    });
+  }
 }
 
 export async function recordLoginToday(userId: string) {
