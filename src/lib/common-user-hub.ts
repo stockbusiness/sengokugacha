@@ -37,7 +37,10 @@ async function postToAgencySystem(
       signal: AbortSignal.timeout(5000),
     });
     if (!res.ok) {
-      console.warn(`[common-user-hub] ${path} が失敗しました(status=${res.status})`);
+      // エラー形式(新形式{ok,error:{code,message}} / 旧形式{success,message}等)を
+      // 実際の応答から判別できるよう、本文も記録する(過度に長いログを避けるため500文字まで)。
+      const bodyText = await res.text().catch(() => "");
+      console.warn(`[common-user-hub] ${path} が失敗しました(status=${res.status}) body=${bodyText.slice(0, 500)}`);
       return null;
     }
     return await res.json();
