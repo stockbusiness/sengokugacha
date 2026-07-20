@@ -11,6 +11,19 @@ function extractApiKey(request: NextRequest): string | null {
   return null;
 }
 
+// このエンドポイントが代理店upsertとして処理するイベント種別(ガイド11.1章の
+// 代理店ライフサイクルイベント)。event未指定の場合は既存動作通り常に代理店upsertとして扱う
+// (pushAgentToExternal()等、このアプリ自身が送るリクエストはeventを付けないため)。
+const AGENT_LIFECYCLE_EVENTS = new Set([
+  "admin_created",
+  "admin_updated",
+  "role_updated",
+  "approved",
+  "promoted",
+  "deactivated",
+  "deleted",
+]);
+
 export async function POST(request: NextRequest) {
   const apiKey = extractApiKey(request);
   if (!(await verifyInboundApiKey(apiKey))) {
@@ -25,6 +38,15 @@ export async function POST(request: NextRequest) {
   // 接続テスト(dry_run)は認証確認のみ行い、データは保存しない。
   if (body.event === "connection_test" || body.dry_run === true) {
     return NextResponse.json({ success: true, data: { external_id: body.external_id ?? null, synced: false } });
+  }
+
+  // 未対応のイベント種別(common_user.merged等の共通顧客HUBイベント、lead_created等)は、
+  // 対応実装が入るまで200で受理し処理対象外として無視する。相手側の失敗ログ・再送
+  // ループを防ぐための堅牢化(sengoku-ai.com側からの回答で推奨された方式)。
+  const event = typeof body.event === "string" ? body.event : null;
+  if (event && !AGENT_LIFECYCLE_EVENTS.has(event)) {
+    console.log(`[integrations/agencies] 未対応のイベントを受理・無視しました: event=${event}`);
+    return NextResponse.json({ success: true, data: { event, processed: false } });
   }
 
   const externalId = body.external_id;
