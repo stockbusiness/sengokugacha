@@ -33,6 +33,7 @@ async function handleCheckoutSessionCompleted(supabase: SupabaseServerClient, ch
     .from("purchases")
     .update({
       status: "processing",
+      grant_status: "processing",
       payment_intent_id: paymentIntentId,
       ...(amountReceivedYen !== undefined ? { amount_received_yen: amountReceivedYen } : {}),
     })
