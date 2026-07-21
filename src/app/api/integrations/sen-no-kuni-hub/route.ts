@@ -26,6 +26,11 @@ const EVENT_HANDLERS: Record<string, (body: Record<string, unknown>, eventId: st
   "payment.refunded": (body, eventId) => recordShoppingOrderEvent(eventId, "payment.refunded", body),
 };
 
+// 千ノ国パスポート次期改修指示書 P0-2(バグ#7)。現時点で本エンドポイントは実接続前のため
+// "1.0"のみをサポートする。送信元が新しいスキーマ版を使い始める場合は、このリストに
+// 追加してから互換性を確認する。
+const SUPPORTED_EVENT_VERSIONS = ["1.0"];
+
 export async function POST(request: NextRequest) {
   const rawBody = await request.text();
 
@@ -39,6 +44,23 @@ export async function POST(request: NextRequest) {
     throw error;
   }
 
+  // P0-2(バグ#7)。event_versionはHMAC署名の対象外(タイムスタンプ+本文のみが署名対象)
+  // のため機密性は無いが、送信元が認識しているスキーマ版を明示させることで、未対応の
+  // 破壊的変更を暗黙のうちに処理してしまうことを防ぐ。
+  const eventVersion = request.headers.get("X-Event-Version");
+  if (!eventVersion) {
+    return NextResponse.json(
+      { ok: false, error: { code: "validation_error", message: "X-Event-Versionヘッダーが必要です" } },
+      { status: 422 }
+    );
+  }
+  if (!SUPPORTED_EVENT_VERSIONS.includes(eventVersion)) {
+    return NextResponse.json(
+      { ok: false, error: { code: "unsupported_event_version", message: `サポートされていないevent_versionです: ${eventVersion}` } },
+      { status: 422 }
+    );
+  }
+
   let body: Record<string, unknown>;
   try {
     body = rawBody ? JSON.parse(rawBody) : {};
@@ -46,11 +68,32 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: { code: "invalid_json", message: "invalid JSON body" } }, { status: 422 });
   }
 
-  const eventId = request.headers.get("Idempotency-Key") ?? (typeof body.event_id === "string" ? body.event_id : null);
+  // P0-2(バグ#7)。Idempotency-Keyヘッダーとbody.event_idが両方存在する場合、送信元の
+  // 実装不備(片方だけ更新し忘れた等)を早期検知するため一致を要求する。
+  const idempotencyKeyHeader = request.headers.get("Idempotency-Key");
+  const bodyEventId = typeof body.event_id === "string" ? body.event_id : null;
+  if (idempotencyKeyHeader && bodyEventId && idempotencyKeyHeader !== bodyEventId) {
+    return NextResponse.json(
+      { ok: false, error: { code: "event_id_mismatch", message: "Idempotency-Keyヘッダーとbody.event_idが一致しません" } },
+      { status: 422 }
+    );
+  }
+
+  const eventId = idempotencyKeyHeader ?? bodyEventId;
   const eventType = typeof body.event_type === "string" ? body.event_type : null;
   if (!eventId || !eventType) {
     return NextResponse.json(
       { ok: false, error: { code: "validation_error", message: "event_id(Idempotency-Key)/event_typeが必要です" } },
+      { status: 422 }
+    );
+  }
+
+  // body.source_system_keyを送信元が含めている場合、HMAC認証済みのidentity.systemKeyと
+  // 一致しないなら送信元の設定不備の可能性が高いため早期に拒否する(§6.2の延長)。
+  const bodySourceSystemKey = typeof body.source_system_key === "string" ? body.source_system_key : null;
+  if (bodySourceSystemKey && bodySourceSystemKey !== identity.systemKey) {
+    return NextResponse.json(
+      { ok: false, error: { code: "source_system_mismatch", message: "body.source_system_keyが認証情報と一致しません" } },
       { status: 422 }
     );
   }
@@ -62,6 +105,7 @@ export async function POST(request: NextRequest) {
     eventType,
     payload: body,
     payloadHash,
+    eventVersion,
   });
 
   // 契約書6.4: 同一event_id+異なるpayload_hashは409、同一event_id+同一payload_hashは

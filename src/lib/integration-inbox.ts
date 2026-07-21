@@ -28,6 +28,7 @@ export async function claimInboxEvent(input: {
   eventType: string;
   payload: Record<string, unknown>;
   payloadHash: string;
+  eventVersion: string;
 }): Promise<InboxClaimResult> {
   const supabase = createSupabaseServerClient();
 
@@ -38,6 +39,7 @@ export async function claimInboxEvent(input: {
       p_event_type: input.eventType,
       p_payload: input.payload,
       p_payload_hash: input.payloadHash,
+      p_event_version: input.eventVersion,
     })
     .single();
   if (error) throw error;
