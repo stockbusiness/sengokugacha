@@ -75,6 +75,21 @@ export async function POST(request: NextRequest) {
   if (claim.outcome === "duplicate") {
     return NextResponse.json({ ok: true, event_id: eventId, status: "succeeded" });
   }
+  // P0-2(§4.5): 同一event_idを別リクエストが現在処理中(claim_integration_inbox_eventが
+  // 原子的に検知)。並行実行によるハンドラの二重実行を避けるため、今回は処理せず送信元の
+  // 再送に委ねる。
+  if (claim.outcome === "in_progress") {
+    return NextResponse.json(
+      { ok: false, error: { code: "event_in_progress", message: "同一イベントを処理中です。しばらくしてから再送してください" } },
+      { status: 409 }
+    );
+  }
+  if (claim.outcome === "dead") {
+    return NextResponse.json(
+      { ok: false, error: { code: "event_dead", message: "このイベントは再試行の上限に達しています。管理画面で確認してください" } },
+      { status: 409 }
+    );
+  }
 
   const handler = EVENT_HANDLERS[eventType];
   if (!handler) {
