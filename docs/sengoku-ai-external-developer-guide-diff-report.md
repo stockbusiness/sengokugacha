@@ -1,6 +1,12 @@
 # 「千ノ国 代理店システム 外部開発者向け連携ガイド v3.6.78-draft」現行実装差分報告
 
-本ドキュメントは、`sengoku-ai.com`代理店システムが提示する外部開発者向け連携ガイド(以下「ガイド」)と、現行実装(本リポジトリ=戦国パスポート)との技術的な差分を調査した報告書である。`docs/sengoku-no-kuni-5-system-policy-diff-report.md`が扱った「共通顧客HUB」構想の**具体的なAPI仕様**に相当するため、両報告書は対で参照されたい。前回までと同様、**改修は行わず**調査結果の報告に留める。
+本ドキュメントは、`sengoku-ai.com`代理店システムが提示する外部開発者向け連携ガイド(以下「ガイド」)と、現行実装(本リポジトリ=戦国パスポート)との技術的な差分を調査した報告書である。`docs/sengoku-no-kuni-5-system-policy-diff-report.md`が扱った「共通顧客HUB」構想の**具体的なAPI仕様**に相当するため、両報告書は対で参照されたい。
+
+> **【2026-08-07 追記】** 本報告書の作成後、`common_user_id`・紹介連携・共通顧客HUBイベントの一部受信を実装した(下記参照)。以下の§0〜§6は**作成当時の内容をそのまま残してある**(調査記録としての正確性を優先)。実装済みとなった項目には章末に更新メモを付記する。最新の実装仕様は`docs/sengoku-passport-external-developer-guide.md`および`docs/sen-no-kuni-integration-completion-report.md`を参照。
+>
+> - `POST /api/common-users/resolve` / `POST /api/referrals/capture` / `POST /api/referrals/confirm` は実装済み(PR#92〜94、`src/lib/common-user-hub.ts`)。§2-1・§2-2は解消。
+> - `/api/integrations/agencies`の`common_user.merged`・`common_user.assigned_agent.updated`は実装済み(PR#101、`src/lib/agency-events.ts`)。`lead_created`は引き続き未対応(200受理・無視)。§2-3は部分的に解消。
+> - 新規エンドポイント`POST /api/integrations/sen-no-kuni-hub`(PR#103・#104)では、`{ "ok": false, "error": { "code", "message" } }`形式・`Idempotency-Key`ヘッダーの双方に対応済み(§2-4・§2-5)。ただし**既存の`/api/integrations/agencies`(sengoku-ai.com向け)自体の形式は変更していない**。sengoku-ai.com側がこの新形式・新エンドポイントを採用する予定があるかは別途確認が必要。
 
 ---
 
