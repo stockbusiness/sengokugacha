@@ -85,7 +85,7 @@ async function clearUnresolvedAgentAssignment(supabase: SupabaseServerClient, co
 // フィールドが本文に存在し、かつ値がnullの場合のみ「明示的な担当解除」とみなす。
 // フィールド自体が存在しない場合は「今回のイベントでは担当代理店に触れていない」可能性が
 // あるため、担当解除とは扱わずagent_code_undeterminedとして保留する。
-function isExplicitUnassignment(body: Record<string, unknown>, commonUser: Record<string, unknown> | undefined): boolean {
+export function isExplicitUnassignment(body: Record<string, unknown>, commonUser: Record<string, unknown> | undefined): boolean {
   const candidates: Array<[Record<string, unknown> | undefined, string]> = [
     [body, "agent_code"],
     [body, "assigned_agent_code"],
