@@ -9,11 +9,14 @@ type Purchase = {
   amount: number;
   grantAmount: number;
   status: string;
+  grantStatus: string;
+  grantLastError: string | null;
   createdAt: string;
 };
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "未完了",
+  processing: "処理中",
   completed: "完了",
   failed: "失敗",
   refunded: "返金済み",
@@ -23,6 +26,7 @@ export default function PurchasesPage() {
   const [purchases, setPurchases] = useState<Purchase[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [refundingId, setRefundingId] = useState<string | null>(null);
+  const [retryingId, setRetryingId] = useState<string | null>(null);
   const [messageById, setMessageById] = useState<Record<string, string>>({});
 
   function load() {
@@ -63,6 +67,28 @@ export default function PurchasesPage() {
       }));
     } finally {
       setRefundingId(null);
+    }
+  }
+
+  // 千ノ国パスポート 全体統合対応 実装計画(PR3)。決済は完了しているが権利付与に
+  // 失敗した購入(grant_status='failed')を、権利付与ブロック(src/lib/purchase-grants.ts)
+  // の再実行で復旧する。
+  async function handleRetryGrant(purchase: Purchase) {
+    setRetryingId(purchase.id);
+    setMessageById((prev) => ({ ...prev, [purchase.id]: "" }));
+
+    try {
+      const res = await fetch(`/api/admin/purchases/${purchase.id}/retry-grant`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "再実行に失敗しました。");
+      await load();
+    } catch (error) {
+      setMessageById((prev) => ({
+        ...prev,
+        [purchase.id]: error instanceof Error ? error.message : "再実行に失敗しました。",
+      }));
+    } finally {
+      setRetryingId(null);
     }
   }
 
@@ -107,10 +133,13 @@ export default function PurchasesPage() {
                         ? "text-emerald-700 dark:text-emerald-400"
                         : p.status === "refunded"
                           ? "text-amber-700 dark:text-amber-400"
-                          : "text-zinc-500 dark:text-zinc-400"
+                          : p.grantStatus === "failed"
+                            ? "text-red-700 dark:text-red-400"
+                            : "text-zinc-500 dark:text-zinc-400"
                     }
                   >
                     {STATUS_LABELS[p.status] ?? p.status}
+                    {p.grantStatus === "failed" && "(権利付与失敗)"}
                   </span>
                 </td>
                 <td className="px-3 py-2">
@@ -122,6 +151,18 @@ export default function PurchasesPage() {
                     >
                       {refundingId === p.id ? "処理中..." : "返金"}
                     </button>
+                  )}
+                  {p.status === "processing" && p.grantStatus === "failed" && (
+                    <button
+                      onClick={() => handleRetryGrant(p)}
+                      disabled={retryingId === p.id}
+                      className="rounded-lg border border-amber-300 px-3 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-50 disabled:opacity-50 dark:border-amber-800 dark:text-amber-400 dark:hover:bg-amber-950"
+                    >
+                      {retryingId === p.id ? "再実行中..." : "権利付与を再実行"}
+                    </button>
+                  )}
+                  {p.grantLastError && (
+                    <p className="mt-1 text-xs text-zinc-400 dark:text-zinc-600">前回のエラー: {p.grantLastError}</p>
                   )}
                   {messageById[p.id] && (
                     <p className="mt-1 text-xs text-red-700 dark:text-red-400">{messageById[p.id]}</p>
