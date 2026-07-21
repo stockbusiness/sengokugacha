@@ -10,7 +10,9 @@ export async function GET() {
   const supabase = createSupabaseServerClient();
   const { data, error } = await supabase
     .from("purchases")
-    .select("id, item_type, amount, grant_amount, status, stripe_session_id, created_at, users(display_name)")
+    .select(
+      "id, item_type, amount, grant_amount, status, grant_status, grant_last_error, stripe_session_id, created_at, users(display_name)"
+    )
     .order("created_at", { ascending: false })
     .limit(200);
 
@@ -23,6 +25,8 @@ export async function GET() {
     amount: r.amount,
     grantAmount: r.grant_amount,
     status: r.status,
+    grantStatus: r.grant_status,
+    grantLastError: r.grant_last_error,
     createdAt: r.created_at,
   }));
 
