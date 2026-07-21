@@ -3,16 +3,25 @@ import { SenNoKuniHubAuthError, verifySenNoKuniHubRequest } from "@/lib/sen-no-k
 import { claimInboxEvent, computePayloadHash, markInboxEventFailed, markInboxEventSucceeded } from "@/lib/integration-inbox";
 import { handleEntitlementGranted, handleEntitlementRevoked, handleEntitlementUpdated } from "@/lib/entitlements";
 import { handleAssignedAgentUpdated } from "@/lib/agency-events";
+import { recordShoppingOrderEvent } from "@/lib/shopping-order-events";
 
-// 千ノ国パスポート 全体統合対応 実装計画(PR6)。00_COMMON_INTEGRATION_CONTRACT.md
+// 千ノ国パスポート 全体統合対応 実装計画(PR6/PR7)。00_COMMON_INTEGRATION_CONTRACT.md
 // 6章に準拠した新規HMAC連携の受信エンドポイント。既存の/api/integrations/agencies
 // (APIキー認証、sengoku-ai.com専用)とは別パスであり、認証方式・処理内容ともに独立している。
-const EVENT_HANDLERS: Record<string, (body: Record<string, unknown>) => Promise<void>> = {
-  "entitlement.granted": handleEntitlementGranted,
-  "entitlement.updated": handleEntitlementUpdated,
-  "entitlement.revoked": handleEntitlementRevoked,
+const EVENT_HANDLERS: Record<string, (body: Record<string, unknown>, eventId: string) => Promise<void>> = {
+  "entitlement.granted": (body) => handleEntitlementGranted(body),
+  "entitlement.updated": (body) => handleEntitlementUpdated(body),
+  "entitlement.revoked": (body) => handleEntitlementRevoked(body),
   // common_user.assigned_agent.updated(旧チャネル、PR4)と同じ内部関数を共有する。
-  "customer.assignment.changed": handleAssignedAgentUpdated,
+  "customer.assignment.changed": (body) => handleAssignedAgentUpdated(body),
+  // 購入・決済・返金イベント(PR7)。商品カタログ・注文ID体系が未確定のため、
+  // 当面は監査目的の記録のみ(shopping_order_events)。
+  "order.created": (body, eventId) => recordShoppingOrderEvent(eventId, "order.created", body),
+  "order.paid": (body, eventId) => recordShoppingOrderEvent(eventId, "order.paid", body),
+  "order.cancelled": (body, eventId) => recordShoppingOrderEvent(eventId, "order.cancelled", body),
+  "payment.succeeded": (body, eventId) => recordShoppingOrderEvent(eventId, "payment.succeeded", body),
+  "payment.failed": (body, eventId) => recordShoppingOrderEvent(eventId, "payment.failed", body),
+  "payment.refunded": (body, eventId) => recordShoppingOrderEvent(eventId, "payment.refunded", body),
 };
 
 export async function POST(request: NextRequest) {
@@ -74,7 +83,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await handler(body);
+    await handler(body, eventId);
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";
     await markInboxEventFailed(claim.inboxEventId, message);
