@@ -1,3 +1,4 @@
+import { adjustUserBalance } from "@/lib/atomic-balance";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 export type ActivityType = "gacha_draw" | "academy_view" | "market_view" | "event_view" | "login";
@@ -30,18 +31,8 @@ export async function recordContribution(userId: string, activityType: ActivityT
     .insert({ user_id: userId, activity_type: activityType, point });
   if (activityError) throw activityError;
 
-  const { data: user, error: userError } = await supabase
-    .from("users")
-    .select("contribution_points")
-    .eq("id", userId)
-    .single();
-  if (userError) throw userError;
-
-  const { error: updateError } = await supabase
-    .from("users")
-    .update({ contribution_points: user.contribution_points + point })
-    .eq("id", userId);
-  if (updateError) throw updateError;
+  // 原子的なDB関数で加算する(read-modify-write競合の解消。全体統合対応 実装計画PR2)。
+  await adjustUserBalance(userId, "contribution_points", point);
 }
 
 export type ContributionSummary = { total: number; thisMonth: number; today: number };

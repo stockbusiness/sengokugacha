@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { logAdminAction } from "@/lib/admin-audit-log";
 import { getAdminActorName, getAdminSession, requireManagerRole } from "@/lib/admin-session";
+import { adjustUserBalance } from "@/lib/atomic-balance";
 import { applyRefundAdjustments } from "@/lib/castle-commissions";
 import { getPaymentSettings } from "@/lib/payment-settings";
 import { createStripeClient } from "@/lib/stripe";
@@ -82,23 +83,15 @@ export async function POST(_request: NextRequest, { params }: { params: Promise<
     return NextResponse.json(updated);
   }
 
-  // 付与済みアイテムを取り消す(既に使用済みで残高が足りない場合は0までしか引かない)。
+  // 付与済みアイテムを原子的に取り消す(既に使用済みで残高が足りない場合は0までしか引かない。
+  // 全体統合対応 実装計画PR2でread-modify-write競合を解消)。
   const column = purchase.item_type === "kokudaka" ? "kokudaka" : "gacha_tickets";
-  const { data: user, error: userError } = await supabase
-    .from("users")
-    .select(column)
-    .eq("id", purchase.user_id)
-    .single();
-  if (userError) return NextResponse.json({ error: userError.message }, { status: 500 });
-
-  const currentValue = (user as unknown as Record<string, number>)[column];
-  const newValue = Math.max(0, currentValue - purchase.grant_amount);
-
-  const { error: updateUserError } = await supabase
-    .from("users")
-    .update({ [column]: newValue })
-    .eq("id", purchase.user_id);
-  if (updateUserError) return NextResponse.json({ error: updateUserError.message }, { status: 500 });
+  try {
+    await adjustUserBalance(purchase.user_id, column, -purchase.grant_amount);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "残高の取消に失敗しました";
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 
   const { data: updated, error: updateError } = await supabase
     .from("purchases")

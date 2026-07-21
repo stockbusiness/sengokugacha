@@ -1,3 +1,4 @@
+import { consumeGachaTicket } from "@/lib/atomic-balance";
 import { getActiveConquestRule, isConquestSatisfied } from "@/lib/conquest-rules";
 import { selectAnimationForDraw, type SelectedAnimation } from "@/lib/gacha-animations";
 import { getGachaRateTiers, pickTierRates, type GachaRateTier } from "@/lib/gacha-rate-tiers";
@@ -454,35 +455,33 @@ export async function drawFreeGacha(userId: string): Promise<GachaDrawResult> {
 
 // 有料ガチャ: ガチャ券を1枚消費する。排出率・国盗り判定ロジックは無料と共通。
 export async function drawPaidGacha(userId: string): Promise<PaidGachaDrawResult> {
-  const supabase = createSupabaseServerClient();
-
-  const [paidLimit, todaysCount, conqueredCount, user] = await Promise.all([
+  const [paidLimit, todaysCount, conqueredCount] = await Promise.all([
     getEffectivePaidLimit(),
     getTodaysDrawCount(userId, true),
     getConqueredProvinceCount(userId),
-    supabase.from("users").select("gacha_tickets").eq("id", userId).single(),
   ]);
-
-  if (user.error) throw user.error;
 
   if (todaysCount >= paidLimit) {
     throw new GachaLimitExceededError("本日の有料ガチャ回数の上限に達しています");
   }
-  if (user.data.gacha_tickets < 1) {
-    throw new InsufficientTicketsError("ガチャ券が不足しています");
-  }
 
-  const { error: decrementError } = await supabase
-    .from("users")
-    .update({ gacha_tickets: user.data.gacha_tickets - 1 })
-    .eq("id", userId);
-  if (decrementError) throw decrementError;
+  // ガチャ券消費は原子的なDB関数で行う(read-modify-write競合の解消。
+  // 全体統合対応 実装計画PR2)。残高不足時はDB側がinsufficient_gacha_ticketsを送出する。
+  let remainingGachaTickets: number;
+  try {
+    remainingGachaTickets = await consumeGachaTicket(userId);
+  } catch (error) {
+    if (error instanceof Error && error.message.includes("insufficient_gacha_tickets")) {
+      throw new InsufficientTicketsError("ガチャ券が不足しています");
+    }
+    throw error;
+  }
 
   const core = await performDraw(userId, true, conqueredCount);
 
   return {
     ...core,
     remainingPaidDrawsToday: Math.max(paidLimit - (todaysCount + 1), 0),
-    remainingGachaTickets: user.data.gacha_tickets - 1,
+    remainingGachaTickets,
   };
 }
