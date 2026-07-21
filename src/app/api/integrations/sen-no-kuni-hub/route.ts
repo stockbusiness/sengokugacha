@@ -8,7 +8,10 @@ import { recordShoppingOrderEvent } from "@/lib/shopping-order-events";
 // 千ノ国パスポート 全体統合対応 実装計画(PR6/PR7)。00_COMMON_INTEGRATION_CONTRACT.md
 // 6章に準拠した新規HMAC連携の受信エンドポイント。既存の/api/integrations/agencies
 // (APIキー認証、sengoku-ai.com専用)とは別パスであり、認証方式・処理内容ともに独立している。
-const EVENT_HANDLERS: Record<string, (body: Record<string, unknown>, eventId: string, systemKey: string) => Promise<void>> = {
+const EVENT_HANDLERS: Record<
+  string,
+  (body: Record<string, unknown>, eventId: string, systemKey: string, eventVersion: string) => Promise<void>
+> = {
   // P0-2(§6.2): entitlementsのentitlement_idはsource_system_key単位で一意なため、
   // 未検証のbody.source_system_keyではなくHMAC認証済みのidentity.systemKeyを渡す(バグ#6)。
   "entitlement.granted": (body, _eventId, systemKey) => handleEntitlementGranted(body, systemKey),
@@ -17,13 +20,20 @@ const EVENT_HANDLERS: Record<string, (body: Record<string, unknown>, eventId: st
   // common_user.assigned_agent.updated(旧チャネル、PR4)と同じ内部関数を共有する。
   "customer.assignment.changed": (body) => handleAssignedAgentUpdated(body),
   // 購入・決済・返金イベント(PR7)。商品カタログ・注文ID体系が未確定のため、
-  // 当面は監査目的の記録のみ(shopping_order_events)。
-  "order.created": (body, eventId) => recordShoppingOrderEvent(eventId, "order.created", body),
-  "order.paid": (body, eventId) => recordShoppingOrderEvent(eventId, "order.paid", body),
-  "order.cancelled": (body, eventId) => recordShoppingOrderEvent(eventId, "order.cancelled", body),
-  "payment.succeeded": (body, eventId) => recordShoppingOrderEvent(eventId, "payment.succeeded", body),
-  "payment.failed": (body, eventId) => recordShoppingOrderEvent(eventId, "payment.failed", body),
-  "payment.refunded": (body, eventId) => recordShoppingOrderEvent(eventId, "payment.refunded", body),
+  // 当面は監査目的の記録のみ(shopping_order_events)。P0-2(§6.1)でsource_system_key/
+  // event_versionも記録するよう変更。
+  "order.created": (body, eventId, systemKey, eventVersion) =>
+    recordShoppingOrderEvent(eventId, "order.created", body, systemKey, eventVersion),
+  "order.paid": (body, eventId, systemKey, eventVersion) =>
+    recordShoppingOrderEvent(eventId, "order.paid", body, systemKey, eventVersion),
+  "order.cancelled": (body, eventId, systemKey, eventVersion) =>
+    recordShoppingOrderEvent(eventId, "order.cancelled", body, systemKey, eventVersion),
+  "payment.succeeded": (body, eventId, systemKey, eventVersion) =>
+    recordShoppingOrderEvent(eventId, "payment.succeeded", body, systemKey, eventVersion),
+  "payment.failed": (body, eventId, systemKey, eventVersion) =>
+    recordShoppingOrderEvent(eventId, "payment.failed", body, systemKey, eventVersion),
+  "payment.refunded": (body, eventId, systemKey, eventVersion) =>
+    recordShoppingOrderEvent(eventId, "payment.refunded", body, systemKey, eventVersion),
 };
 
 // 千ノ国パスポート次期改修指示書 P0-2(バグ#7)。現時点で本エンドポイントは実接続前のため
@@ -144,7 +154,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await handler(body, eventId, identity.systemKey);
+    await handler(body, eventId, identity.systemKey, eventVersion);
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";
     await markInboxEventFailed(claim.inboxEventId, message);
