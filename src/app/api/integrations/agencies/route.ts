@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { upsertAgentFromSync, verifyInboundApiKey } from "@/lib/agents";
+import { handleAssignedAgentUpdated, handleCommonUserMerged } from "@/lib/agency-events";
 
 // sengoku-ai.com代理店連携API仕様書 5〜11章に準拠。
 // 認証は x-api-key または Authorization: Bearer のどちらでも受け付ける。
@@ -24,6 +25,14 @@ const AGENT_LIFECYCLE_EVENTS = new Set([
   "deleted",
 ]);
 
+// 全体統合対応 実装計画(PR4)。共通顧客HUBイベントのうち、パスポート側で実際に
+// 処理するもの(common_user_id・代理店情報の実装対象)。認証方式・エンドポイントは
+// 変更せず、このMapに登録したイベントだけ本文の内容に応じた処理を行う。
+const COMMON_USER_HUB_EVENT_HANDLERS: Record<string, (body: Record<string, unknown>) => Promise<void>> = {
+  "common_user.merged": handleCommonUserMerged,
+  "common_user.assigned_agent.updated": handleAssignedAgentUpdated,
+};
+
 export async function POST(request: NextRequest) {
   const apiKey = extractApiKey(request);
   if (!(await verifyInboundApiKey(apiKey))) {
@@ -40,10 +49,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ success: true, data: { external_id: body.external_id ?? null, synced: false } });
   }
 
-  // 未対応のイベント種別(common_user.merged等の共通顧客HUBイベント、lead_created等)は、
-  // 対応実装が入るまで200で受理し処理対象外として無視する。相手側の失敗ログ・再送
-  // ループを防ぐための堅牢化(sengoku-ai.com側からの回答で推奨された方式)。
   const event = typeof body.event === "string" ? body.event : null;
+
+  // common_user.merged / common_user.assigned_agent.updated は実処理する(PR4)。
+  if (event && COMMON_USER_HUB_EVENT_HANDLERS[event]) {
+    try {
+      await COMMON_USER_HUB_EVENT_HANDLERS[event](body);
+    } catch (error) {
+      console.error(`[integrations/agencies] ${event}の処理に失敗しました`, error);
+      return NextResponse.json({ success: false, message: "Internal server error" }, { status: 500 });
+    }
+    return NextResponse.json({ success: true, data: { event, processed: true } });
+  }
+
+  // それ以外の未対応イベント種別(lead_created等)は、対応実装が入るまで200で受理し
+  // 処理対象外として無視する。相手側の失敗ログ・再送ループを防ぐための堅牢化
+  // (sengoku-ai.com側からの回答で推奨された方式)。
   if (event && !AGENT_LIFECYCLE_EVENTS.has(event)) {
     console.log(`[integrations/agencies] 未対応のイベントを受理・無視しました: event=${event}`);
     return NextResponse.json({ success: true, data: { event, processed: false } });

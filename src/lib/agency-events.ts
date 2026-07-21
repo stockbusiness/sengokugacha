@@ -1,0 +1,102 @@
+import { createSupabaseServerClient } from "@/lib/supabase-server";
+
+// 千ノ国パスポート 全体統合対応 実装計画(PR4)。
+// これまで/api/integrations/agenciesが200受理・無視していた共通顧客HUBイベントのうち、
+// 「common_user_id」「代理店情報」の実装対象に該当する2つを実処理する。
+
+// EXTERNAL_DEVELOPER_GUIDE 11.2章のペイロード例に基づく。
+// {"event":"common_user.merged","details":{"source_common_user_id":"cu_source","target_common_user_id":"cu_target",...},...}
+export async function handleCommonUserMerged(body: Record<string, unknown>): Promise<void> {
+  const details = body.details as Record<string, unknown> | undefined;
+  const sourceCommonUserId = typeof details?.source_common_user_id === "string" ? details.source_common_user_id : null;
+  const targetCommonUserId = typeof details?.target_common_user_id === "string" ? details.target_common_user_id : null;
+  if (!sourceCommonUserId || !targetCommonUserId) {
+    console.warn("[agency-events] common_user.merged: source/target common_user_idが不足しています", body);
+    return;
+  }
+
+  const supabase = createSupabaseServerClient();
+
+  const { data: sourceUser, error: sourceError } = await supabase
+    .from("users")
+    .select("id")
+    .eq("common_user_id", sourceCommonUserId)
+    .maybeSingle();
+  if (sourceError) throw sourceError;
+  if (!sourceUser) return; // このアプリ側に該当ユーザーが無い(無関係なmergeイベント)。
+
+  const { data: targetUser, error: targetError } = await supabase
+    .from("users")
+    .select("id")
+    .eq("common_user_id", targetCommonUserId)
+    .maybeSingle();
+  if (targetError) throw targetError;
+  if (targetUser) {
+    // 統合先IDが既に別のローカルユーザーへ割り当て済み。未検証情報での自動人物統合は
+    // 禁止する方針のため、ローカルアカウント同士の統合(user行のマージ)は行わない。
+    // 競合として記録するのみで、解消は運用側の手動対応に委ねる。
+    console.warn(
+      `[agency-events] common_user.merged: 競合のため自動付け替えをスキップしました(source_user_id=${sourceUser.id}, target_user_id=${targetUser.id})`
+    );
+    return;
+  }
+
+  const { error: updateError } = await supabase
+    .from("users")
+    .update({ common_user_id: targetCommonUserId, common_user_synced_at: new Date().toISOString() })
+    .eq("id", sourceUser.id);
+  if (updateError) throw updateError;
+}
+
+// common_user.assigned_agent.updated: 共通顧客の担当代理店が変更されたイベント。
+// 具体的なペイロード形式(担当代理店コードのフィールド名)はガイドに明示例が無いため、
+// 想定されるいくつかの位置を許容し、いずれにも該当しない場合は処理をスキップしてログのみ残す
+// (仕様が判明した時点で対応するフォールバック設計)。
+export async function handleAssignedAgentUpdated(body: Record<string, unknown>): Promise<void> {
+  const commonUser = body.common_user as Record<string, unknown> | undefined;
+  const commonUserId =
+    (typeof body.common_user_id === "string" && body.common_user_id) ||
+    (typeof commonUser?.common_user_id === "string" && commonUser.common_user_id) ||
+    null;
+  if (!commonUserId) {
+    console.warn("[agency-events] common_user.assigned_agent.updated: common_user_idが取得できません", body);
+    return;
+  }
+
+  const agentCode =
+    (typeof body.agent_code === "string" && body.agent_code) ||
+    (typeof body.assigned_agent_code === "string" && body.assigned_agent_code) ||
+    (typeof commonUser?.assigned_agent_code === "string" && commonUser.assigned_agent_code) ||
+    null;
+
+  const supabase = createSupabaseServerClient();
+
+  const { data: user, error: userError } = await supabase
+    .from("users")
+    .select("id")
+    .eq("common_user_id", commonUserId)
+    .maybeSingle();
+  if (userError) throw userError;
+  if (!user) return; // このアプリ側に該当ユーザーが無い。
+
+  if (!agentCode) {
+    console.warn(
+      `[agency-events] common_user.assigned_agent.updated: agent_codeを特定できず更新をスキップしました(user_id=${user.id})`
+    );
+    return;
+  }
+
+  const { data: agent, error: agentError } = await supabase
+    .from("agents")
+    .select("id")
+    .eq("external_id", agentCode)
+    .maybeSingle();
+  if (agentError) throw agentError;
+  if (!agent) {
+    console.warn(`[agency-events] common_user.assigned_agent.updated: 該当代理店が見つかりません(agent_code=${agentCode})`);
+    return;
+  }
+
+  const { error: updateError } = await supabase.from("users").update({ assigned_agent_id: agent.id }).eq("id", user.id);
+  if (updateError) throw updateError;
+}
