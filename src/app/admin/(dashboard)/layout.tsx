@@ -111,6 +111,9 @@ export default async function AdminDashboardLayout({ children }: { children: Rea
               <Link href="/admin/audit-logs" className="hover:text-zinc-900 dark:hover:text-zinc-50">
                 操作ログ
               </Link>
+              <Link href="/admin/integration-recovery" className="hover:text-zinc-900 dark:hover:text-zinc-50">
+                連携復旧管理
+              </Link>
             </nav>
             <div className="flex items-center gap-3">
               {adminRole && (
