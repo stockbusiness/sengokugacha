@@ -1,29 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { calcContributionPoints, didJustUnlockMino, isEventWindowActive, pickSlot, type ProvinceRow } from "./gacha";
-import type { GachaRateTier } from "./gacha-rate-tiers";
-
-const TIERS: GachaRateTier[] = [{ id: "1", tier_order: 1, max_conquered_count: null, rare_rate: 0.1, mid_rate: 0.3 }];
-
-describe("pickSlot", () => {
-  afterEach(() => {
-    vi.restoreAllMocks();
-  });
-
-  it("returns rare when the roll falls under the rare threshold", () => {
-    vi.spyOn(Math, "random").mockReturnValue(0.05);
-    expect(pickSlot(0, TIERS)).toBe("rare");
-  });
-
-  it("returns mid when the roll falls between rare and rare+mid", () => {
-    vi.spyOn(Math, "random").mockReturnValue(0.2);
-    expect(pickSlot(0, TIERS)).toBe("mid");
-  });
-
-  it("returns common when the roll is above rare+mid", () => {
-    vi.spyOn(Math, "random").mockReturnValue(0.9);
-    expect(pickSlot(0, TIERS)).toBe("common");
-  });
-});
+import { didJustUnlockMino, isEventWindowActive, type ProvinceRow } from "./draw-limit";
 
 describe("isEventWindowActive", () => {
   afterEach(() => {
@@ -74,23 +50,5 @@ describe("didJustUnlockMino", () => {
   it("returns false when no final province is configured", () => {
     const provincesWithoutMino: ProvinceRow[] = [{ id: "other", region: "中部", is_final_province: false, unlock_condition_count: null }];
     expect(didJustUnlockMino(54, 55, provincesWithoutMino)).toBe(false);
-  });
-});
-
-describe("calcContributionPoints", () => {
-  it("returns the base points for the slot type", () => {
-    expect(calcContributionPoints("common", false)).toBe(5);
-    expect(calcContributionPoints("mid", false)).toBe(15);
-    expect(calcContributionPoints("rare", false)).toBe(40);
-  });
-
-  it("adds the new-card bonus when applicable", () => {
-    expect(calcContributionPoints("common", true)).toBe(15);
-    expect(calcContributionPoints("rare", true)).toBe(50);
-  });
-
-  it("returns just the new-card bonus for an unknown slot type", () => {
-    expect(calcContributionPoints("unknown", true)).toBe(10);
-    expect(calcContributionPoints("unknown", false)).toBe(0);
   });
 });
