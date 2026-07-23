@@ -55,3 +55,23 @@ alter table purchase_grant_steps
 ### 影響範囲
 
 本PRは`purchase_grant_steps`テーブルの列追加・関数追加のみで、既存の`purchases`テーブル・`users`テーブル等の既存カラムには影響しない。ロールバックしても既存の購入データ・残高データは変更されない。
+
+**注意**: PR2(`apply_purchase_balance_grant`/`record_purchase_agent_sale`)はPR1の`claim_purchase_grant_step()`に依存しているため、PR1をロールバックする場合は先にPR2をロールバックすること。
+
+## PR2: fix: make balance grants transactional and idempotent
+
+### ロールバック手順
+
+1. 該当コミットを`git revert`する。
+2. `apply_purchase_balance_grant()`/`record_purchase_agent_sale()`をDB側から削除する場合は以下を適用する:
+
+```sql
+drop function if exists record_purchase_agent_sale(uuid, uuid, text, int);
+drop function if exists apply_purchase_balance_grant(uuid, uuid, text, int);
+```
+
+3. ロールバック実行前に、`purchase_grant_steps`の`step_key in ('balance_granted', 'agent_sale_recorded')`かつ`status = 'processing'`の行が無いことを確認する。処理中に切り戻すと、旧コード(`grantPurchase()`/`recordAgentSaleIfReferred()`、PR1以前の`runStep()`パターン)には戻らないため、そのステップは永久に`processing`のまま残り得る。ロールバック後に必要であれば手動でステップ行を`pending`へ戻すか削除し、`runPurchaseGrant()`の再実行で処理させること。
+
+### 影響範囲
+
+本PRは新規Postgres関数の追加とTypeScript側の呼び出し方変更のみで、既存カラム・既存データには影響しない。`agent_sales.purchase_id`の部分unique indexは既存(PR1以前、P0-2時点)のまま変更していない。

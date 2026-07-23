@@ -3,7 +3,6 @@ import { completePlotPurchase } from "@/lib/plot-reservations";
 import { postLandSaleCommission } from "@/lib/castle-commissions";
 import { notifyPlotPurchase } from "@/lib/castle-notifications";
 import { confirmReferral } from "@/lib/common-user-hub";
-import { adjustUserBalance } from "@/lib/atomic-balance";
 
 type SupabaseServerClient = ReturnType<typeof createSupabaseServerClient>;
 
@@ -73,45 +72,74 @@ async function runStep(
   }
 }
 
-async function grantPurchase(userId: string, itemType: string, grantAmount: number) {
-  if (itemType === "kokudaka") {
-    await adjustUserBalance(userId, "kokudaka", grantAmount);
-  } else if (itemType === "gacha_ticket") {
-    await adjustUserBalance(userId, "gacha_tickets", grantAmount);
+type BalanceGrantOutcome = { claim_outcome: "claimed" | "already_completed" | "in_progress" | "dead"; new_balance: number | null };
+type AgentSaleOutcome = { claim_outcome: "claimed" | "already_completed" | "in_progress" | "dead" };
+
+// 千ノ国パスポート モジュール化後バグ修正・Phase B改修指示書 Phase A-1(§4.3.2)。
+// runStep()によるclaim/completed更新の分離では、副作用成功直後・completed更新前に
+// プロセスが落ちる残存リスクを解消できない。apply_purchase_balance_grant()
+// (Postgres関数、マイグレーション20260808000002)はclaim検証・残高加算・ステップ完了記録を
+// 単一トランザクションとして実行するため、途中でプロセスが落ちてもトランザクション全体が
+// ロールバックされ、二重付与も部分適用も起こらない(true all-or-nothing)。
+async function applyBalanceGrantStep(
+  supabase: SupabaseServerClient,
+  purchaseId: string,
+  userId: string,
+  itemType: string,
+  grantAmount: number
+): Promise<void> {
+  const column = itemType === "kokudaka" ? "kokudaka" : itemType === "gacha_ticket" ? "gacha_tickets" : null;
+  if (!column) return; // 対象外のitem_typeは残高操作なし(旧grantPurchase()と同じ挙動)。
+
+  const { data, error } = await supabase
+    .rpc("apply_purchase_balance_grant", {
+      p_purchase_id: purchaseId,
+      p_user_id: userId,
+      p_column: column,
+      p_delta: grantAmount,
+    })
+    .single();
+  if (error) throw error;
+  const result = data as BalanceGrantOutcome;
+
+  if (result.claim_outcome === "dead") {
+    throw new Error(`ステップbalance_grantedは再試行の上限に達しています(purchase_id=${purchaseId})`);
   }
+  if (result.claim_outcome === "in_progress") {
+    throw new Error(`ステップbalance_grantedは他のリクエストが処理中です(purchase_id=${purchaseId})`);
+  }
+  // "claimed"(今回付与した)・"already_completed"(既に付与済み)はどちらも成功として扱う。
 }
 
 // 04_mvp_spec 3.3: 紹介経由ユーザーの購入イベントを agent_sales に記録する(Phase1は記録のみ)。
 // agents テーブルにユーザーとの紐付け(user_id)が無いため、「代理店自身の自己購入」を
 // システム的に判別する手段が現状無い。そのためPhase1では紹介経由の購入を一律
 // type='referral' として記録する(自己購入分の仕分けはPhase2で人手/追加設計により対応)。
-// P0-2(§6.3): agent_sales.purchase_idを保存し、同一購入での二重記録を部分unique indexで防ぐ。
-async function recordAgentSaleIfReferred(
+// record_purchase_agent_sale()(Postgres関数、マイグレーション20260808000002)がclaim検証・
+// agent_sales記録・ステップ完了記録を単一トランザクションとして実行する(§4.3.2)。
+async function recordAgentSaleStep(
   supabase: SupabaseServerClient,
   purchaseId: string,
   userId: string,
   itemType: string,
   amountYen: number
-) {
-  const { data: user, error } = await supabase
-    .from("users")
-    .select("referring_agent_id")
-    .eq("id", userId)
+): Promise<void> {
+  const { data, error } = await supabase
+    .rpc("record_purchase_agent_sale", {
+      p_purchase_id: purchaseId,
+      p_user_id: userId,
+      p_item_type: itemType,
+      p_amount: amountYen,
+    })
     .single();
   if (error) throw error;
-  if (!user.referring_agent_id) return;
+  const result = data as AgentSaleOutcome;
 
-  const { error: insertError } = await supabase.from("agent_sales").insert({
-    agent_id: user.referring_agent_id,
-    buyer_user_id: userId,
-    amount: amountYen,
-    type: "referral",
-    source: itemType,
-    purchase_id: purchaseId,
-  });
-  if (insertError) {
-    if (insertError.code === "23505") return; // 同一購入分は記録済み(冪等)。
-    throw insertError;
+  if (result.claim_outcome === "dead") {
+    throw new Error(`ステップagent_sale_recordedは再試行の上限に達しています(purchase_id=${purchaseId})`);
+  }
+  if (result.claim_outcome === "in_progress") {
+    throw new Error(`ステップagent_sale_recordedは他のリクエストが処理中です(purchase_id=${purchaseId})`);
   }
 }
 
@@ -145,8 +173,10 @@ async function confirmReferralForPurchase(
 // Stripe Webhook(自動)と管理画面の手動再実行(PR3)の両方から共通で呼べるよう切り出したもの。
 // 呼び出し前提: purchase.statusが既に'processing'であること(pending→processingの
 // 原子的な遷移は呼び出し元の責務。二重実行防止のロックとして機能する)。
-// 各副作用はrunStep()でステップ単位に冪等化されているため、この関数自体が何度再実行されても
-// 既に成功したステップ(残高付与等)を再実行しない。
+// 各副作用はステップ単位に冪等化されているため、この関数自体が何度再実行されても既に
+// 成功したステップを再実行しない(balance_granted/agent_sale_recordedは§4.3.2により
+// claim・副作用・完了記録が単一トランザクションのPostgres関数、それ以外はrunStep()による
+// claim+アプリケーション側での完了記録)。
 // 成功時はstatus='completed'・grant_status='granted'まで進める。失敗時はgrant_status='failed'
 // を記録したうえで例外を投げ直す(呼び出し元が再送に頼るか・エラー表示するかを選べるようにする)。
 export async function runPurchaseGrant(purchaseId: string): Promise<void> {
@@ -162,18 +192,14 @@ export async function runPurchaseGrant(purchaseId: string): Promise<void> {
 
   try {
     if (purchase.item_type === "land_plot") {
-      // 土地区画の購入(城主プラン)。既存のkokudaka/gacha_ticket用grantPurchase()は変更しない。
+      // 土地区画の購入(城主プラン)。kokudaka/gacha_ticket用のapplyBalanceGrantStep()とは別経路。
       await runStep(supabase, purchase.id, "plot_completed", () => completePlotPurchase(purchase.id));
       await runStep(supabase, purchase.id, "commission_posted", () => postLandSaleCommission(purchase.id));
       await runStep(supabase, purchase.id, "notification_sent", () => notifyPlotPurchase(purchase.user_id, purchase.plot_id));
     } else if (purchase.grant_amount > 0) {
       // 付与量は購入時にpurchasesへ保存した値を正とする(後からパック設定が変わっても影響を受けない)。
-      await runStep(supabase, purchase.id, "balance_granted", () =>
-        grantPurchase(purchase.user_id, purchase.item_type, purchase.grant_amount)
-      );
-      await runStep(supabase, purchase.id, "agent_sale_recorded", () =>
-        recordAgentSaleIfReferred(supabase, purchase.id, purchase.user_id, purchase.item_type, purchase.amount)
-      );
+      await applyBalanceGrantStep(supabase, purchase.id, purchase.user_id, purchase.item_type, purchase.grant_amount);
+      await recordAgentSaleStep(supabase, purchase.id, purchase.user_id, purchase.item_type, purchase.amount);
     }
 
     await runStep(supabase, purchase.id, "referral_confirmed", () =>
