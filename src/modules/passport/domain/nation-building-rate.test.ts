@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { calcNationBuildingRate } from "./passport";
+import { calcNationBuildingRate } from "./nation-building-rate";
 
 describe("calcNationBuildingRate", () => {
   it("returns 0 when nothing has been achieved and all totals are 0", () => {
