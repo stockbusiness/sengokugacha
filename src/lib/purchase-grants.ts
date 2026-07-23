@@ -15,75 +15,62 @@ type GrantStepKey =
   | "referral_confirmed"
   | "notification_sent";
 
-// 千ノ国パスポート次期改修指示書 P0-2(§4.1・4.2)。
-// runPurchaseGrant()内の各副作用をステップ単位で冪等化する。既にcompletedのステップは
-// スキップし、pending/failedのまま残っているステップのみ再実行する。これにより、
-// 「残高付与は成功したが後続ステップで失敗した」購入を再試行しても、残高付与を
-// 二重実行しない(P0-2で指摘されたバグ#1の修正)。
+type ClaimPurchaseGrantStepResult = {
+  claim_outcome: "claimed" | "already_completed" | "in_progress" | "dead";
+  step_row_id: string;
+  claim_token: string | null;
+};
+
+// 千ノ国パスポート モジュール化後バグ修正・Phase B改修指示書 Phase A-1(§4.3.1)。
+// 旧実装は「pending更新→副作用実行→completed更新」の3手順が原子的でなく、副作用成功後
+// completed更新前にプロセスが落ちると次回再実行時に同じ副作用が再実行されてしまうバグが
+// あった。claim_purchase_grant_step()(Postgres関数、マイグレーション20260808000001)で
+// 原子的にclaimし、claim_token(fencing token)をmark_purchase_grant_step_completed()/
+// mark_purchase_grant_step_failed()へ渡すことで、lease切れ後に別のリクエストへ再claimされた
+// 古いworkerが誤って完了・失敗の更新を行えないようにする。
 async function runStep(
   supabase: SupabaseServerClient,
   purchaseId: string,
   stepKey: GrantStepKey,
   fn: () => Promise<void>
 ): Promise<void> {
-  const { data: existing, error: fetchError } = await supabase
-    .from("purchase_grant_steps")
-    .select("id, status, attempt_count")
-    .eq("purchase_id", purchaseId)
-    .eq("step_key", stepKey)
-    .maybeSingle();
-  if (fetchError) throw fetchError;
+  const { data: claimData, error: claimError } = await supabase
+    .rpc("claim_purchase_grant_step", { p_purchase_id: purchaseId, p_step_key: stepKey })
+    .single();
+  if (claimError) throw claimError;
+  const claim = claimData as ClaimPurchaseGrantStepResult;
 
-  if (existing?.status === "completed") return;
-
-  let stepRowId: string;
-  if (existing) {
-    stepRowId = existing.id as string;
-    const { error: updateError } = await supabase
-      .from("purchase_grant_steps")
-      .update({
-        status: "pending",
-        attempt_count: (existing.attempt_count ?? 0) + 1,
-        started_at: new Date().toISOString(),
-      })
-      .eq("id", stepRowId);
-    if (updateError) throw updateError;
-  } else {
-    const { data: inserted, error: insertError } = await supabase
-      .from("purchase_grant_steps")
-      .insert({ purchase_id: purchaseId, step_key: stepKey, status: "pending", attempt_count: 1, started_at: new Date().toISOString() })
-      .select("id")
-      .single();
-    if (insertError) {
-      if (insertError.code !== "23505") throw insertError;
-      // 並行実行との競合。相手が既にステップ行を作成済みのため取得し直す。
-      const { data: raced, error: racedError } = await supabase
-        .from("purchase_grant_steps")
-        .select("id, status")
-        .eq("purchase_id", purchaseId)
-        .eq("step_key", stepKey)
-        .single();
-      if (racedError) throw racedError;
-      if (raced.status === "completed") return;
-      stepRowId = raced.id as string;
-    } else {
-      stepRowId = inserted.id as string;
-    }
+  if (claim.claim_outcome === "already_completed") return;
+  if (claim.claim_outcome === "dead") {
+    throw new Error(`ステップ${stepKey}は再試行の上限に達しています(purchase_id=${purchaseId})`);
+  }
+  if (claim.claim_outcome === "in_progress") {
+    throw new Error(`ステップ${stepKey}は他のリクエストが処理中です(purchase_id=${purchaseId})`);
   }
 
   try {
     await fn();
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";
-    await supabase.from("purchase_grant_steps").update({ status: "failed", last_error: message }).eq("id", stepRowId);
+    await supabase.rpc("mark_purchase_grant_step_failed", {
+      p_step_row_id: claim.step_row_id,
+      p_claim_token: claim.claim_token,
+      p_error: message,
+    });
     throw error;
   }
 
-  const { error: completeError } = await supabase
-    .from("purchase_grant_steps")
-    .update({ status: "completed", completed_at: new Date().toISOString() })
-    .eq("id", stepRowId);
+  const { data: completed, error: completeError } = await supabase.rpc("mark_purchase_grant_step_completed", {
+    p_step_row_id: claim.step_row_id,
+    p_claim_token: claim.claim_token,
+  });
   if (completeError) throw completeError;
+  if (!completed) {
+    // claim_tokenが一致しなかった(=lease切れ後に別のリクエストへ再claimされていた)。
+    // 副作用自体は実行済みだが、このリクエストの完了記録は権威を持たないため、
+    // 呼び出し元には失敗として扱わせる(別workerの結果を信頼する)。
+    throw new Error(`ステップ${stepKey}のcompleted更新が別のリクエストに横取りされました(purchase_id=${purchaseId})`);
+  }
 }
 
 async function grantPurchase(userId: string, itemType: string, grantAmount: number) {
