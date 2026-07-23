@@ -29,3 +29,16 @@
 **実装内容の要約**: `purchase_grant_steps`にclaim_token・lease_expires_at列を追加し、Postgres関数`claim_purchase_grant_step()`でSELECT ... FOR UPDATEによる行ロック+状態遷移判定を原子的に行う。呼び出し元(`src/lib/purchase-grants.ts`の`runStep()`)は返り値のclaim_tokenを保持し、副作用完了後に`mark_purchase_grant_step_completed()`/`mark_purchase_grant_step_failed()`へ渡す。claim_tokenが一致しない更新は無視される(fencing)ため、lease切れ後に別のリクエストへ再claimされた古いworkerが誤って完了・失敗の更新を行うことはない。
 
 **未解決の既知の制約**: 副作用の実行(`fn()`)自体と、その後の`mark_purchase_grant_step_completed()`呼び出しは、依然として2つの別々のDB操作である。副作用が成功した直後、`mark_purchase_grant_step_completed()`が呼ばれる前にプロセスが落ちた場合、そのステップは`processing`のまま残り、lease_expires_at経過後に別のリクエストが再claimして`fn()`を再実行してしまう(=依然として二重実行の可能性が残る)。この残存リスクを解消するには、副作用自体をPostgres関数内に統合し、ステップ完了更新と同一トランザクションにする必要があり、これは§4.3.2としてPR2で対応する(`balance_granted`/`agent_sale_recorded`ステップが対象)。`plot_completed`/`commission_posted`/`notification_sent`/`referral_confirmed`ステップは、それぞれ`src/lib/plot-reservations.ts`/`castle-commissions.ts`/`castle-notifications.ts`/`common-user-hub.ts`のDB操作・外部API呼び出しを含み、PR2/PR3で個別に検討する。
+
+### PR2: fix: make balance grants transactional and idempotent
+
+| 項目 | 状況 |
+|---|---|
+| §4.3.2 DB内副作用の一体化(`balance_granted`/`agent_sale_recorded`) | 1. ソースコード上で実装済み |
+| 並行実行時の受入条件(§4.4) | 6. 未確認(コードレビューのみ、DB統合テスト未実施) |
+| §4.3.3 外部副作用のoutbox化(紹介confirm・通知) | 7. 未対応(PR3で対応予定) |
+| `plot_completed`/`commission_posted`/`notification_sent`ステップの同一トランザクション化 | 7. 未対応(区画・報酬元帳のDB書込を伴う大掛かりな変更のため、今回のPRスコープには含めない。残存リスクはPR1と同じ「processingのまま残る可能性」がある) |
+
+**実装内容の要約**: PR1で導入した`claim_purchase_grant_step()`をネスト呼び出しする新規Postgres関数`apply_purchase_balance_grant()`(石高・ガチャ券)・`record_purchase_agent_sale()`(agent_sales記録)を追加した。ネストされた関数呼び出しは呼び出し元と同一トランザクションで実行されるため、`claim_purchase_grant_step()`内のSELECT ... FOR UPDATEによる行ロックは関数全体の実行中(claim検証→残高加算/agent_sales記録→ステップ完了記録)保持され続ける。これにより、途中でプロセスが落ちた場合はトランザクション全体がロールバックされ(claimの`processing`遷移ごと巻き戻る)、副作用だけが反映されたまま次回へ持ち越されることが無くなる(true all-or-nothing)。PR1時点で残っていた「副作用成功後・completed更新前にプロセスが落ちる」ケースの二重実行リスクは、この2ステップについて解消された。
+
+`src/lib/purchase-grants.ts`の`grantPurchase()`/`recordAgentSaleIfReferred()`(旧実装、`runStep()`でラップされていた)は削除し、`applyBalanceGrantStep()`/`recordAgentSaleStep()`(新Postgres関数を直接呼び出す)へ置き換えた。
