@@ -6,7 +6,7 @@ import {
   type CommissionRateSet,
   type ExistingLedgerLine,
   type RecipientType,
-} from "./castle-commission-engine";
+} from "./commission-engine";
 
 // 要件書4.2の初期値案(城主20%/販売代理店15%/組織15%/地域活動5%/開発積立15%/本部30%)。
 // 8.2の表(土地1区画30万円を単純配分した表示例)と完全一致する値を使う。
