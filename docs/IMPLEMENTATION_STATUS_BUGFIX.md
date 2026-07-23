@@ -42,3 +42,24 @@
 **実装内容の要約**: PR1で導入した`claim_purchase_grant_step()`をネスト呼び出しする新規Postgres関数`apply_purchase_balance_grant()`(石高・ガチャ券)・`record_purchase_agent_sale()`(agent_sales記録)を追加した。ネストされた関数呼び出しは呼び出し元と同一トランザクションで実行されるため、`claim_purchase_grant_step()`内のSELECT ... FOR UPDATEによる行ロックは関数全体の実行中(claim検証→残高加算/agent_sales記録→ステップ完了記録)保持され続ける。これにより、途中でプロセスが落ちた場合はトランザクション全体がロールバックされ(claimの`processing`遷移ごと巻き戻る)、副作用だけが反映されたまま次回へ持ち越されることが無くなる(true all-or-nothing)。PR1時点で残っていた「副作用成功後・completed更新前にプロセスが落ちる」ケースの二重実行リスクは、この2ステップについて解消された。
 
 `src/lib/purchase-grants.ts`の`grantPurchase()`/`recordAgentSaleIfReferred()`(旧実装、`runStep()`でラップされていた)は削除し、`applyBalanceGrantStep()`/`recordAgentSaleStep()`(新Postgres関数を直接呼び出す)へ置き換えた。
+
+## Phase A-2: entitlement付与・取消の完全冪等化
+
+### PR3: fix: atomically apply and reverse entitlements
+
+| 項目 | 状況 |
+|---|---|
+| §5.3 原子的claim(`claim_entitlement_application`/`claim_entitlement_reversal`) | 1. ソースコード上で実装済み |
+| §5.4 残高反映とのトランザクション統合(`process_entitlement_grant`/`process_entitlement_revocation`) | 1. ソースコード上で実装済み |
+| §5.5 `user_id=null`の再解決(entitlement処理のたびに再試行) | 1. ソースコード上で実装済み(`process_entitlement_grant()`内で毎回再解決を試みる) |
+| §5.5 管理画面(未解決entitlement一覧・再解決ボタン・却下・監査ログ) | 7. 未対応(別PRで対応予定) |
+| §5.6 revoke先行時の挙動(`entitlement_pending_revocations`) | 実装済み(既存のP0-2実装を維持、本PRでの変更なし) |
+| 並行実行時の受入条件(§5.7) | 6. 未確認(コードレビューのみ、DB統合テスト未実施) |
+
+**実装内容の要約**: `entitlements`テーブルへ`application_claim_token`/`application_lease_expires_at`/`reversal_claim_token`/`reversal_lease_expires_at`列を追加し、PR1/PR2と同じ設計方針(`claim_*`関数でSELECT ... FOR UPDATE+fencing tokenによる原子的claim、`process_*`関数でclaim・副作用・状態更新を単一トランザクションに統合)を適用した。
+
+- `process_entitlement_grant(p_entitlement_row_id)`: 行ロックを取得した上で、`user_id`が未解決なら`common_user_id`から再解決を試み(§5.5)、解決できれば`entitlements.user_id`を更新してから`claim_entitlement_application()`をネスト呼び出しし、claim成功時のみ残高加算+`application_status='applied'`更新を行う。全体が単一トランザクションのため、途中でプロセスが落ちても二重付与は起こらない。
+- `process_entitlement_revocation(p_entitlement_row_id)`: 同様に`claim_entitlement_reversal()`をネスト呼び出しし、実際に残高が反映されていた場合(`application_status='applied'`)のみ残高減算+`reversal_status='reversed'`更新を行う。既存の「statusの更新順序に関わらず実際の反映状況で判定する」挙動は維持した。
+- `src/lib/entitlements.ts`の`handleEntitlementGranted()`/`handleEntitlementRevoked()`は、上記2つのPostgres関数を呼び出す形に簡略化した。`BALANCE_ENTITLEMENT_COLUMNS`・`adjustUserBalance`の直接呼び出しはSQL側へ移設したため削除した。
+
+**未対応の残存事項**: §5.5後半が求める管理画面(未解決entitlement一覧・common_user_id/entitlement_id/source_system_key/entitlement_type/受信日時の表示・再解決ボタン・却下/保留・監査ログ)は本PRのスコープに含めていない。`process_entitlement_grant()`はentitlement受信イベントの再送時にのみ`user_id`再解決を試みるため、送信元からの再送が来ない限り、未解決のまま放置されるentitlementが残り得る。管理画面からの手動再解決トリガーは別PRで対応する。
