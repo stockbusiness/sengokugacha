@@ -141,7 +141,7 @@ export async function recordLoginToday(userId: string) {
 
 // 国家建設率(Ver2.0初期の簡易計算)。国盗り進捗・図鑑進捗・ログイン継続・本日の任務達成の
 // 加重平均。将来、国家建設の実データが揃った時点で本格的な計算に差し替える前提のダミー寄りの値。
-function calcNationBuildingRate(params: {
+export function calcNationBuildingRate(params: {
   conqueredProvinceCount: number;
   totalProvinceCount: number;
   warlordCount: number;
