@@ -7,6 +7,9 @@ import {
   type ExternalOrderStatus,
 } from "@/lib/external-order-state";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { computeOrderAssignmentStatus, type AssignmentProgress } from "@/modules/commerce/domain/order-assignment";
+
+export { computeOrderAssignmentStatus, type AssignmentProgress };
 
 async function getLineUserIdForOrder(orderId: string): Promise<string | null> {
   const supabase = createSupabaseServerClient();
@@ -249,18 +252,6 @@ export async function unlinkUserFromOrder(
 // ============================================================
 // 区画割当(7章)。
 // ============================================================
-
-// 注文明細の必要数と割当済み数から、注文全体の割当状況を判定する純粋関数(単体テスト対象)。
-export type AssignmentProgress = { quantity: number; assignedCount: number };
-
-export function computeOrderAssignmentStatus(
-  items: AssignmentProgress[]
-): "plot_assignment_pending" | "partially_assigned" | "ready_to_grant" {
-  const totalAssigned = items.reduce((sum, item) => sum + item.assignedCount, 0);
-  if (totalAssigned === 0) return "plot_assignment_pending";
-  const fullyAssigned = items.every((item) => item.assignedCount >= item.quantity);
-  return fullyAssigned ? "ready_to_grant" : "partially_assigned";
-}
 
 async function getItemsWithAssignedCounts(orderId: string) {
   const supabase = createSupabaseServerClient();

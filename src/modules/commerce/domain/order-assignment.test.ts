@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { computeOrderAssignmentStatus } from "./external-orders";
+import { computeOrderAssignmentStatus } from "./order-assignment";
 
 describe("computeOrderAssignmentStatus", () => {
   it("returns plot_assignment_pending when nothing is assigned yet", () => {

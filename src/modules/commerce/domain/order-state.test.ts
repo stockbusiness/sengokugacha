@@ -4,7 +4,7 @@ import {
   EXTERNAL_ORDER_STATUSES,
   isValidExternalOrderTransition,
   type ExternalOrderStatus,
-} from "./external-order-state";
+} from "./order-state";
 
 describe("isValidExternalOrderTransition", () => {
   it("allows the documented happy path draft -> rights_granted", () => {
