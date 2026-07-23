@@ -1,5 +1,5 @@
-import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { signSessionJwt, verifySessionJwt } from "@/shared/auth";
 
 export const ADMIN_SESSION_COOKIE_NAME = "sengoku_admin_session";
 const ADMIN_SESSION_MAX_AGE_SECONDS = 60 * 60 * 12; // 12時間
@@ -9,20 +9,11 @@ const ADMIN_SESSION_MAX_AGE_SECONDS = 60 * 60 * 12; // 12時間
 // 基盤は作らず、既存の共有パスワード方式を踏襲して2つ目の共有パスワードでロールを判定する。
 export type AdminRole = "operator" | "manager";
 
-function getSecretKey() {
-  const secret = process.env.SESSION_SECRET;
-  if (!secret) {
-    throw new Error("SESSION_SECRET が未設定です");
-  }
-  return new TextEncoder().encode(secret);
-}
-
 export async function setAdminSessionCookie(actorName?: string | null, adminRole: AdminRole = "manager") {
-  const token = await new SignJWT({ role: "admin", actorName: actorName || null, adminRole })
-    .setProtectedHeader({ alg: "HS256" })
-    .setIssuedAt()
-    .setExpirationTime(`${ADMIN_SESSION_MAX_AGE_SECONDS}s`)
-    .sign(getSecretKey());
+  const token = await signSessionJwt(
+    { role: "admin", actorName: actorName || null, adminRole },
+    ADMIN_SESSION_MAX_AGE_SECONDS
+  );
 
   const cookieStore = await cookies();
   cookieStore.set(ADMIN_SESSION_COOKIE_NAME, token, {
@@ -39,12 +30,8 @@ export async function getAdminSession(): Promise<boolean> {
   const token = cookieStore.get(ADMIN_SESSION_COOKIE_NAME)?.value;
   if (!token) return false;
 
-  try {
-    const { payload } = await jwtVerify(token, getSecretKey());
-    return payload.role === "admin";
-  } catch {
-    return false;
-  }
+  const payload = await verifySessionJwt(token);
+  return payload?.role === "admin";
 }
 
 // 監査ログに記録する担当者名(ログイン時に任意入力)。共有パスワード運用のため、
@@ -54,12 +41,9 @@ export async function getAdminActorName(): Promise<string | null> {
   const token = cookieStore.get(ADMIN_SESSION_COOKIE_NAME)?.value;
   if (!token) return null;
 
-  try {
-    const { payload } = await jwtVerify(token, getSecretKey());
-    return typeof payload.actorName === "string" ? payload.actorName : null;
-  } catch {
-    return null;
-  }
+  const payload = await verifySessionJwt(token);
+  if (!payload) return null;
+  return typeof payload.actorName === "string" ? payload.actorName : null;
 }
 
 export async function clearAdminSessionCookie() {
@@ -74,13 +58,9 @@ export async function getAdminRole(): Promise<AdminRole | null> {
   const token = cookieStore.get(ADMIN_SESSION_COOKIE_NAME)?.value;
   if (!token) return null;
 
-  try {
-    const { payload } = await jwtVerify(token, getSecretKey());
-    if (payload.role !== "admin") return null;
-    return payload.adminRole === "operator" ? "operator" : "manager";
-  } catch {
-    return null;
-  }
+  const payload = await verifySessionJwt(token);
+  if (!payload || payload.role !== "admin") return null;
+  return payload.adminRole === "operator" ? "operator" : "manager";
 }
 
 export async function requireManagerRole(): Promise<boolean> {
