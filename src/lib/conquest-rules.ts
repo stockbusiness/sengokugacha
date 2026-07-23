@@ -1,5 +1,8 @@
 import { logAdminAction } from "@/lib/admin-audit-log";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { isConquestSatisfied } from "@/modules/conquest/domain/conquest-policy";
+
+export { isConquestSatisfied };
 
 export type ConquestRule = {
   id: string;
@@ -38,15 +41,6 @@ export async function getActiveConquestRule(provinceId: string): Promise<Conques
     isActive: rule.is_active as boolean,
     warlordIds: (ruleWarlords ?? []).map((w) => w.warlord_id as string),
   };
-}
-
-// 純粋関数: 必須武将を全部揃えているかの判定(rule_type='all_specified'のみ対応)。
-// requiredWarlordIdsが空の場合は「条件未設定」とみなし、常にfalseを返す
-// (国制覇条件0件で誤って即制覇扱いにしないためのガード)。
-export function isConquestSatisfied(requiredWarlordIds: string[], ownedWarlordIds: string[]): boolean {
-  if (requiredWarlordIds.length === 0) return false;
-  const owned = new Set(ownedWarlordIds);
-  return requiredWarlordIds.every((id) => owned.has(id));
 }
 
 // ============================================================
