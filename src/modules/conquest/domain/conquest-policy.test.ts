@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isConquestSatisfied } from "@/lib/conquest-rules";
+import { isConquestSatisfied } from "./conquest-policy";
 
 describe("isConquestSatisfied", () => {
   it("全ての必須武将を所持していればtrue", () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { getRegionKokudakaBonus, regionCompleteAchievementType } from "./regions";
+import { getRegionKokudakaBonus, regionCompleteAchievementType } from "./region-completion";
 
 describe("regionCompleteAchievementType", () => {
   it("maps known regions to their slug", () => {
