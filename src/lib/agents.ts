@@ -104,7 +104,7 @@ export type AgencySyncPayload = {
   lp_urls?: unknown;
 };
 
-function resolveRank(roleLevel: number | null | undefined, roleLabel: string | null | undefined): AgentRank {
+export function resolveRank(roleLevel: number | null | undefined, roleLabel: string | null | undefined): AgentRank {
   if (roleLabel && (RANKS as readonly string[]).includes(roleLabel)) return roleLabel as AgentRank;
   if (typeof roleLevel === "number" && ROLE_LEVEL_TO_RANK[roleLevel]) return ROLE_LEVEL_TO_RANK[roleLevel];
   return "アドバイザー";
@@ -254,7 +254,7 @@ export async function testOutboundConnection(): Promise<{ ok: boolean; status: n
   }
 }
 
-type HierarchyNode = {
+export type HierarchyNode = {
   external_id?: string;
   agent_code?: string;
   parent_external_id?: string;
@@ -269,7 +269,7 @@ type HierarchyNode = {
   children?: HierarchyNode[];
 };
 
-function flattenHierarchy(nodes: HierarchyNode[], parentExternalId: string | null = null): AgencySyncPayload[] {
+export function flattenHierarchy(nodes: HierarchyNode[], parentExternalId: string | null = null): AgencySyncPayload[] {
   const result: AgencySyncPayload[] = [];
   for (const node of nodes) {
     const externalId = node.external_id ?? node.agent_code;
