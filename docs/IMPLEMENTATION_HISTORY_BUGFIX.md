@@ -43,3 +43,25 @@
 - `apply_purchase_balance_grant()`は`p_column`を`'kokudaka'`/`'gacha_tickets'`のいずれかにcheckで制限し、動的SQL(`EXECUTE`)は使わない(既存の`adjust_user_balance()`と同じ設計方針)。
 
 **検証**: `rm -rf .next && npx tsc --noEmit` / `npm run lint` / `npx vitest run`(150/150、変更なし) / `npm run build` 全て通過。DB統合テストは未実施(前提を参照)。
+
+## PR3: fix: atomically apply and reverse entitlements
+
+**対象**: Phase A-2(§5)
+
+**変更ファイル**:
+- `supabase/migrations/20260808000003_entitlement_atomic_claim.sql`(新規)
+  - `entitlements`へ`application_claim_token`/`application_lease_expires_at`/`reversal_claim_token`/`reversal_lease_expires_at`列を追加。
+  - `application_status`のcheck制約に`applying`・`dead`、`reversal_status`のcheck制約に`reversing`・`dead`を追加。
+  - `claim_entitlement_application(p_entitlement_row_id, ...)`/`claim_entitlement_reversal(p_entitlement_row_id, ...)`: `claim_purchase_grant_step()`と同じ設計(SELECT ... FOR UPDATE、claim_tokenによるfencing)。
+  - `process_entitlement_grant(p_entitlement_row_id)`: 行ロックを取得し、`user_id`が未解決なら`common_user_id`から再解決を試み(解決できれば`entitlements.user_id`を更新)、`claim_entitlement_application()`をネスト呼び出しした上で残高加算+`application_status`更新を単一トランザクションで行う。
+  - `process_entitlement_revocation(p_entitlement_row_id)`: 同様に`claim_entitlement_reversal()`をネスト呼び出しし、`application_status='applied'`の場合のみ残高減算+`reversal_status`更新を行う。
+- `src/lib/entitlements.ts`(変更)
+  - `handleEntitlementGranted()`/`handleEntitlementRevoked()`の残高操作ロジックを、上記2つのPostgres関数を呼び出す形に簡略化。
+  - `BALANCE_ENTITLEMENT_COLUMNS`(TS側の残高カラムマッピング)・`adjustUserBalance`の直接呼び出しを削除(判定・操作ともSQL側へ移設)。
+  - `EntitlementRow`/`ENTITLEMENT_ROW_SELECT`を`id`のみに簡略化(呼び出し元でid以外のフィールドを使わなくなったため)。
+
+**設計判断**:
+- PR2と同じ「ネストされた関数呼び出しは同一トランザクション」の性質を利用し、「行ロック→user_id再解決→claim→残高操作→状態更新」を単一の原子的な単位として実現した。
+- `user_id`の再解決(§5.5)は、entitlement受信イベントが再送されるたびに(=`process_entitlement_grant()`が呼ばれるたびに)自動的に試行される。ただし、送信元からの自発的な再送が来ない限りは再解決の機会が発生しないため、管理画面からの手動トリガー(§5.5後半)は別途必要(未対応事項として記録)。
+
+**検証**: `rm -rf .next && npx tsc --noEmit` / `npm run lint` / `npx vitest run`(150/150、変更なし) / `npm run build` 全て通過。DB統合テストは未実施(前提を参照)。

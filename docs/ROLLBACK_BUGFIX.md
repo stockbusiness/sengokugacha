@@ -75,3 +75,37 @@ drop function if exists apply_purchase_balance_grant(uuid, uuid, text, int);
 ### 影響範囲
 
 本PRは新規Postgres関数の追加とTypeScript側の呼び出し方変更のみで、既存カラム・既存データには影響しない。`agent_sales.purchase_id`の部分unique indexは既存(PR1以前、P0-2時点)のまま変更していない。
+
+## PR3: fix: atomically apply and reverse entitlements
+
+### ロールバック手順
+
+1. 該当コミットを`git revert`する。
+2. `process_entitlement_grant()`/`process_entitlement_revocation()`/`claim_entitlement_application()`/`claim_entitlement_reversal()`をDB側から削除し、列・check制約を戻す場合は以下を適用する:
+
+```sql
+drop function if exists process_entitlement_revocation(uuid);
+drop function if exists process_entitlement_grant(uuid);
+drop function if exists claim_entitlement_reversal(uuid, int, int);
+drop function if exists claim_entitlement_application(uuid, int, int);
+
+alter table entitlements drop constraint entitlements_reversal_status_check;
+alter table entitlements add constraint entitlements_reversal_status_check
+  check (reversal_status in ('not_reversed', 'reversed', 'failed'));
+
+alter table entitlements drop constraint entitlements_application_status_check;
+alter table entitlements add constraint entitlements_application_status_check
+  check (application_status in ('not_applied', 'applied', 'failed'));
+
+alter table entitlements
+  drop column if exists application_claim_token,
+  drop column if exists application_lease_expires_at,
+  drop column if exists reversal_claim_token,
+  drop column if exists reversal_lease_expires_at;
+```
+
+3. ロールバック実行前に、`entitlements.application_status = 'applying'`または`entitlements.reversal_status = 'reversing'`の行が無いことを確認する。処理中に切り戻すと、旧コード(`handleEntitlementGranted()`/`handleEntitlementRevoked()`のPR3以前の実装)はこれらの中間状態を認識できないため、該当entitlementは`applying`/`reversing`のまま宙に浮き得る。ロールバック後に必要であれば手動で`application_status`/`reversal_status`を`not_applied`/`not_reversed`へ戻し、再送またはPR3以前の処理経路で再処理させること。
+
+### 影響範囲
+
+本PRは`entitlements`テーブルへの列追加・関数追加、および`src/lib/entitlements.ts`内の残高操作ロジックのSQL側への移設のみで、既存の`entitlements`テーブルの既存カラム・`entitlement_pending_revocations`テーブル・`users`テーブルの既存データには影響しない。ロールバックしても既存の権利台帳データ・残高データは変更されない。既存のP0-2実装(revoke先行時の保留取消の仕組み)はPR3で変更していないため、ロールバックの影響を受けない。

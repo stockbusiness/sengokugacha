@@ -1,28 +1,21 @@
 import { createSupabaseServerClient } from "@/lib/supabase-server";
-import { adjustUserBalance } from "@/lib/atomic-balance";
 
 type SupabaseServerClient = ReturnType<typeof createSupabaseServerClient>;
 
-// 千ノ国パスポート 全体統合対応 実装計画(PR6)。
-// entitlement_typeのうち、既存の残高カラムへ実効果を持たせられるもの(kokudaka/
-// gacha_ticket)。それ以外(パスポート会員権・城区画等)は商品カタログが未確定のため、
-// entitlementsへの台帳記録のみとし、残高・権利への反映は行わない(fallback-safe)。
-const BALANCE_ENTITLEMENT_COLUMNS: Record<string, "kokudaka" | "gacha_tickets"> = {
-  kokudaka: "kokudaka",
-  gacha_ticket: "gacha_tickets",
-};
-
 type EntitlementRow = {
   id: string;
-  status: string;
-  application_status: string;
-  application_attempt_count: number;
-  user_id: string | null;
-  entitlement_type: string;
-  quantity: number;
 };
 
-const ENTITLEMENT_ROW_SELECT = "id, status, application_status, application_attempt_count, user_id, entitlement_type, quantity";
+const ENTITLEMENT_ROW_SELECT = "id";
+
+type ProcessEntitlementGrantResult = {
+  claim_outcome: "claimed" | "already_applied" | "already_revoked" | "user_unresolved" | "in_progress" | "dead" | "not_found";
+  resolved_user_id: string | null;
+};
+
+type ProcessEntitlementRevocationResult = {
+  claim_outcome: "claimed" | "already_reversed" | "reversed_without_balance_change" | "in_progress" | "dead" | "not_found";
+};
 
 async function resolveLocalUserId(supabase: SupabaseServerClient, commonUserId: string): Promise<string | null> {
   const { data, error } = await supabase.from("users").select("id").eq("common_user_id", commonUserId).maybeSingle();
@@ -112,41 +105,26 @@ export async function handleEntitlementGranted(body: Record<string, unknown>, sy
     }
   }
 
-  // 既にrevoked化されている(=取消が先に処理済み)場合、残高への再付与は行わない。
-  // application_status未適用のまま取消された(残高未反映のまま台帳上だけ取消済み)ケースを
-  // 再送で誤って付与してしまうことを防ぐ。
-  if (row.application_status !== "applied" && row.status !== "revoked") {
-    const balanceColumn = BALANCE_ENTITLEMENT_COLUMNS[row.entitlement_type];
-    if (balanceColumn && row.user_id) {
-      try {
-        await adjustUserBalance(row.user_id, balanceColumn, row.quantity);
-      } catch (applyError) {
-        const message = applyError instanceof Error ? applyError.message : "unknown error";
-        await supabase
-          .from("entitlements")
-          .update({
-            application_status: "failed",
-            application_last_error: message,
-            application_attempt_count: (row.application_attempt_count ?? 0) + 1,
-          })
-          .eq("id", row.id);
-        throw applyError;
-      }
-      await supabase
-        .from("entitlements")
-        .update({ application_status: "applied", balance_applied_at: new Date().toISOString() })
-        .eq("id", row.id);
-    } else if (balanceColumn && !row.user_id) {
-      // common_user_idが未解決のユーザーには残高を反映できない。application_statusは
-      // not_appliedのまま保持し、後日common_user_id解決が進んだ時点で再送/手動反映する。
-      console.warn(`[entitlements] user_id未解決のため${row.entitlement_type}付与を保留しました(entitlement_id=${entitlementId})`);
-    } else {
-      // 残高への実効果を持たない種別(パスポート会員権・城区画等)。台帳記録のみで完了扱いとする。
-      await supabase
-        .from("entitlements")
-        .update({ application_status: "applied", balance_applied_at: new Date().toISOString() })
-        .eq("id", row.id);
-    }
+  // 千ノ国パスポート モジュール化後バグ修正・Phase B改修指示書 Phase A-2(§5.3〜5.5)。
+  // process_entitlement_grant()(Postgres関数、マイグレーション20260808000003)が
+  // claim検証・user_id再解決・残高加算・application_status更新を単一トランザクションで
+  // 実行するため、途中でプロセスが落ちても二重付与は起こらない。
+  const { data: grantResultData, error: grantError } = await supabase
+    .rpc("process_entitlement_grant", { p_entitlement_row_id: row.id })
+    .single();
+  if (grantError) throw grantError;
+  const grantResult = grantResultData as ProcessEntitlementGrantResult;
+
+  if (grantResult.claim_outcome === "dead") {
+    throw new Error(`entitlement付与は再試行の上限に達しています(entitlement_id=${entitlementId})`);
+  }
+  if (grantResult.claim_outcome === "in_progress") {
+    throw new Error(`entitlement付与は他のリクエストが処理中です(entitlement_id=${entitlementId})`);
+  }
+  if (grantResult.claim_outcome === "user_unresolved") {
+    // common_user_idが未解決のユーザーには残高を反映できない。application_statusは
+    // not_appliedのまま保持され、後日common_user_id解決が進んだ時点で再送/手動再解決する。
+    console.warn(`[entitlements] user_id未解決のため${entitlementType}付与を保留しました(entitlement_id=${entitlementId})`);
   }
 
   await applyPendingRevocationIfAny(supabase, systemKey, entitlementId);
@@ -181,7 +159,7 @@ export async function handleEntitlementRevoked(body: Record<string, unknown>, sy
   const supabase = createSupabaseServerClient();
   const { data: entitlement, error: fetchError } = await supabase
     .from("entitlements")
-    .select("id, status, application_status, reversal_status, reversal_attempt_count, user_id, entitlement_type, quantity")
+    .select("id")
     .eq("source_system_key", systemKey)
     .eq("entitlement_id", entitlementId)
     .maybeSingle();
@@ -198,37 +176,21 @@ export async function handleEntitlementRevoked(body: Record<string, unknown>, sy
     return;
   }
 
-  if (entitlement.reversal_status === "reversed") return; // 冪等。
+  // 千ノ国パスポート モジュール化後バグ修正・Phase B改修指示書 Phase A-2(§5.3・5.4)。
+  // process_entitlement_revocation()(Postgres関数、マイグレーション20260808000003)が
+  // claim検証・残高減算・reversal_status更新を単一トランザクションで実行するため、
+  // 途中でプロセスが落ちても二重取消は起こらない。statusの更新順序に関わらず、実際に
+  // 残高が反映されていた場合のみ取消(減算)を行う(既存挙動を維持)。
+  const { data: revokeResultData, error: revokeError } = await supabase
+    .rpc("process_entitlement_revocation", { p_entitlement_row_id: entitlement.id })
+    .single();
+  if (revokeError) throw revokeError;
+  const revokeResult = revokeResultData as ProcessEntitlementRevocationResult;
 
-  if (entitlement.status !== "revoked") {
-    const { error: statusUpdateError } = await supabase
-      .from("entitlements")
-      .update({ status: "revoked", revoked_at: new Date().toISOString() })
-      .eq("id", entitlement.id);
-    if (statusUpdateError) throw statusUpdateError;
+  if (revokeResult.claim_outcome === "dead") {
+    throw new Error(`entitlement取消は再試行の上限に達しています(entitlement_id=${entitlementId})`);
   }
-
-  const balanceColumn = BALANCE_ENTITLEMENT_COLUMNS[entitlement.entitlement_type as string];
-  if (balanceColumn && entitlement.user_id && entitlement.application_status === "applied") {
-    try {
-      await adjustUserBalance(entitlement.user_id as string, balanceColumn, -(entitlement.quantity as number));
-    } catch (reverseError) {
-      const message = reverseError instanceof Error ? reverseError.message : "unknown error";
-      await supabase
-        .from("entitlements")
-        .update({
-          reversal_status: "failed",
-          reversal_last_error: message,
-          reversal_attempt_count: (entitlement.reversal_attempt_count ?? 0) + 1,
-        })
-        .eq("id", entitlement.id);
-      throw reverseError;
-    }
+  if (revokeResult.claim_outcome === "in_progress") {
+    throw new Error(`entitlement取消は他のリクエストが処理中です(entitlement_id=${entitlementId})`);
   }
-
-  const { error: reversalUpdateError } = await supabase
-    .from("entitlements")
-    .update({ reversal_status: "reversed", balance_reversed_at: new Date().toISOString() })
-    .eq("id", entitlement.id);
-  if (reversalUpdateError) throw reversalUpdateError;
 }
