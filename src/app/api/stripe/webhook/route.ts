@@ -4,6 +4,7 @@ import { getPaymentSettings } from "@/lib/payment-settings";
 import { createStripeClient } from "@/lib/stripe";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { runPurchaseGrant } from "@/lib/purchase-grants";
+import { decideStripeInboxAction } from "@/modules/commerce/domain/stripe-inbox";
 
 type SupabaseServerClient = ReturnType<typeof createSupabaseServerClient>;
 
@@ -86,7 +87,8 @@ export async function POST(request: NextRequest) {
     .maybeSingle();
   if (inboxFetchError) throw inboxFetchError;
 
-  if (existingInboxEvent?.status === "succeeded") {
+  const inboxAction = decideStripeInboxAction(existingInboxEvent);
+  if (inboxAction.type === "skip_duplicate") {
     return NextResponse.json({ received: true }); // 処理済みイベントの再送(冪等)。
   }
 
@@ -95,7 +97,7 @@ export async function POST(request: NextRequest) {
     inboxEventId = existingInboxEvent.id as string;
     await supabase
       .from("stripe_webhook_events")
-      .update({ status: "processing", attempt_count: (existingInboxEvent.attempt_count ?? 0) + 1 })
+      .update({ status: "processing", attempt_count: inboxAction.attemptCount })
       .eq("id", inboxEventId);
   } else {
     const { data: inserted, error: insertError } = await supabase
@@ -105,7 +107,7 @@ export async function POST(request: NextRequest) {
         event_type: event.type,
         payload: event as unknown as Record<string, unknown>,
         status: "processing",
-        attempt_count: 1,
+        attempt_count: inboxAction.attemptCount,
       })
       .select("id")
       .single();
