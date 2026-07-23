@@ -1,15 +1,17 @@
 import { consumeGachaTicket } from "@/lib/atomic-balance";
 import { getActiveConquestRule, isConquestSatisfied } from "@/lib/conquest-rules";
 import { selectAnimationForDraw, type SelectedAnimation } from "@/lib/gacha-animations";
-import { getGachaRateTiers, pickTierRates, type GachaRateTier } from "@/lib/gacha-rate-tiers";
+import { getGachaRateTiers } from "@/lib/gacha-rate-tiers";
 import { getLoginStreak, getStreakBonusDraws } from "@/lib/login-streak";
 import { getRegionKokudakaBonus, regionCompleteAchievementType } from "@/lib/regions";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { recordContribution } from "@/lib/user-activity";
+import { GachaLimitExceededError, InsufficientTicketsError, NoEligibleProvinceError } from "@/modules/gacha/domain/errors";
+import { pickSlot } from "@/modules/gacha/domain/draw-policy";
+import { didJustUnlockMino, isEventWindowActive, type ProvinceRow } from "@/modules/gacha/domain/draw-limit";
+import { calcContributionPoints } from "@/modules/gacha/domain/rarity";
 
-export class GachaLimitExceededError extends Error {}
-export class NoEligibleProvinceError extends Error {}
-export class InsufficientTicketsError extends Error {}
+export { GachaLimitExceededError, InsufficientTicketsError, NoEligibleProvinceError };
 
 type DrawCore = {
   drawLogId: string;
@@ -44,17 +46,6 @@ export type PaidGachaDrawResult = DrawCore & {
   remainingGachaTickets: number;
 };
 
-// 04_mvp_spec_v1.2.md 3.1: 制圧済み国数に応じた排出率ティア。
-// 管理画面(/admin/gacha-rates)から編集可能なgacha_rate_tiersテーブルを参照する
-// (ユーザー向け排出率開示ページ /rates も同じテーブルを参照するため、常に表示と実際の抽選が一致する)。
-export function pickSlot(conqueredCount: number, tiers: GachaRateTier[]): "common" | "mid" | "rare" {
-  const { rare, mid } = pickTierRates(tiers, conqueredCount);
-  const r = Math.random();
-  if (r < rare) return "rare";
-  if (r < rare + mid) return "mid";
-  return "common";
-}
-
 async function getConqueredProvinceCount(userId: string): Promise<number> {
   const supabase = createSupabaseServerClient();
   const { count, error } = await supabase
@@ -65,15 +56,6 @@ async function getConqueredProvinceCount(userId: string): Promise<number> {
 
   if (error) throw error;
   return count ?? 0;
-}
-
-// 開始/終了どちらかが未指定なら、その境界は「制限なし」として扱う
-// (03_gacha_game_design 15章: 「適用期間の開始・終了日時を指定可能(未指定なら手動で戻すまで持続)」)。
-export function isEventWindowActive(startAt: string | null, endAt: string | null): boolean {
-  const now = new Date();
-  if (startAt && now < new Date(startAt)) return false;
-  if (endAt && now > new Date(endAt)) return false;
-  return true;
 }
 
 // gacha_config は1行運用。行が無い場合はカラムのデフォルト値と同じ値にフォールバックする。
@@ -138,13 +120,6 @@ async function getTodaysDrawCount(userId: string, isPaid: boolean): Promise<numb
   if (error) throw error;
   return count ?? 0;
 }
-
-export type ProvinceRow = {
-  id: string;
-  region: string;
-  is_final_province: boolean;
-  unlock_condition_count: number | null;
-};
 
 async function getAllProvinces(): Promise<ProvinceRow[]> {
   const supabase = createSupabaseServerClient();
@@ -294,16 +269,6 @@ async function grantKokudakaBonus(userId: string, amount: number) {
   if (updateError) throw updateError;
 }
 
-// Ver2.0: 武将登用(ガチャ)結果に応じた国家貢献ポイント。指示書8章の「登用結果に応じて
-// 国家貢献ポイントを表示」に対応。ポイント配分は簡易な固定値で、経済ロジックの厳密さは
-// 今回のスコープ外(将来調整しやすいよう、この関数にのみ定義を置く)。
-const CONTRIBUTION_POINTS_BY_SLOT: Record<string, number> = { common: 5, mid: 15, rare: 40 };
-const CONTRIBUTION_POINTS_NEW_CARD_BONUS = 10;
-
-export function calcContributionPoints(slotType: string, isNewCard: boolean): number {
-  return (CONTRIBUTION_POINTS_BY_SLOT[slotType] ?? 0) + (isNewCard ? CONTRIBUTION_POINTS_NEW_CARD_BONUS : 0);
-}
-
 // 指定地方の国(美濃国を除く)がすべて制圧済みなら地方コンプ実績を記録し、石高ボーナスを付与する。
 // 03_gacha_game_design 13章の称号・クーポン・イベント特典のうち、石高ボーナスのみ自動付与する
 // (クーポン/イベント管理の基盤が無いため、その他は今後の課題)。
@@ -331,13 +296,6 @@ async function maybeCompleteRegion(userId: string, region: string, allProvinces:
   const bonus = getRegionKokudakaBonus(provinceIds.length);
   await grantKokudakaBonus(userId, bonus);
   return bonus;
-}
-
-// 制圧済み国数が美濃国の解放しきい値を今回の抽選で初めて超えたかどうか。
-export function didJustUnlockMino(previousCount: number, newCount: number, allProvinces: ProvinceRow[]): boolean {
-  const mino = allProvinces.find((p) => p.is_final_province);
-  if (!mino || mino.unlock_condition_count == null) return false;
-  return previousCount < mino.unlock_condition_count && newCount >= mino.unlock_condition_count;
 }
 
 // 無料/有料共通の抽選本体(排出率は共通。03_gacha_game_design 9章: 「排出率は無料と完全に共通、回数のみ増える」)。
