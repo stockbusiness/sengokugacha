@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { pickTierRates, type GachaRateTier } from "./gacha-rate-tiers";
+import { pickTierRates, type GachaRateTier } from "./rate-tiers";
 
 const TIERS: GachaRateTier[] = [
   { id: "1", tier_order: 1, max_conquered_count: 5, rare_rate: 0.15, mid_rate: 0.3 },

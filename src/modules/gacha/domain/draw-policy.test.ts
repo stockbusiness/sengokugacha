@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { pickSlot } from "./draw-policy";
-import type { GachaRateTier } from "@/lib/gacha-rate-tiers";
+import type { GachaRateTier } from "./rate-tiers";
 
 const TIERS: GachaRateTier[] = [{ id: "1", tier_order: 1, max_conquered_count: null, rare_rate: 0.1, mid_rate: 0.3 }];
 
