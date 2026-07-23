@@ -68,3 +68,21 @@ npm run build
 - revoke先行時も最終状態がrevoked(既存のP0-2実装を維持、本PRでの変更なし)
 
 上記はDB統合テスト環境(Supabase local等)が無いと自動検証できない。SQLのロジックレビュー(`docs/IMPLEMENTATION_HISTORY_BUGFIX.md`参照)は実施済みだが、実行結果としての確認はできていない。
+
+## PR4: fix: atomically claim Stripe webhook inbox events
+
+| コマンド | 結果 |
+|---|---|
+| `rm -rf .next && npx tsc --noEmit` | エラーなし |
+| `npm run lint` | 0 errors, 2 warnings(既存の`<img>`警告のみ、本作業と無関係) |
+| `npx vitest run` | 144/144 pass(`decideStripeInboxAction()`のテスト5件を削除したため150→144に減少。それ以外のテストに変更・回帰なし) |
+| `npm run build` | 成功 |
+
+### 未実施の検証(§6.3の受入条件のうち)
+
+- 同じStripe eventを10並列送信しても購入処理は1回だけ(`claim_stripe_webhook_event()`が`SELECT ... FOR UPDATE`で行ロックを取得したまま状態遷移するため、コードレビュー上は解消と判断)
+- unique違反がHTTP 500にならない(claim関数内の`ON CONFLICT DO NOTHING`+行ロックにより、呼び出し元にunique制約違反が伝播しない設計。コードレビュー上は解消と判断)
+- processing中イベントを別処理が再実行しない(`in_progress`判定により解消と判断)
+- lease切れ後の再claimで古いworkerが状態更新できない(`mark_stripe_webhook_succeeded`/`mark_stripe_webhook_failed`のclaim_token一致チェックにより解消と判断)
+
+上記はDB統合テスト環境(Supabase local等)が無いと自動検証できない。SQLのロジックレビュー(`docs/IMPLEMENTATION_HISTORY_BUGFIX.md`参照)は実施済みだが、実行結果としての確認はできていない。

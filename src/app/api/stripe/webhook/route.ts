@@ -1,12 +1,17 @@
+import crypto from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import Stripe from "stripe";
 import { getPaymentSettings } from "@/lib/payment-settings";
 import { createStripeClient } from "@/lib/stripe";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { runPurchaseGrant } from "@/lib/purchase-grants";
-import { decideStripeInboxAction } from "@/modules/commerce/domain/stripe-inbox";
 
 type SupabaseServerClient = ReturnType<typeof createSupabaseServerClient>;
+
+type ClaimStripeWebhookEventResult = {
+  claim_outcome: "new" | "retryable" | "duplicate" | "in_progress" | "dead";
+  inbox_event_id: string;
+};
 
 // 千ノ国パスポート 全体統合対応 実装計画(PR2)。
 // purchase.statusを先にcompletedへ確定してから区画・残高・報酬を処理する旧フローは、
@@ -79,54 +84,59 @@ export async function POST(request: NextRequest) {
 
   const supabase = createSupabaseServerClient();
 
-  // Stripe event inbox。stripe_event_idのunique制約でWebhook再送時の二重処理を検知する。
-  const { data: existingInboxEvent, error: inboxFetchError } = await supabase
-    .from("stripe_webhook_events")
-    .select("id, status, attempt_count")
-    .eq("stripe_event_id", event.id)
-    .maybeSingle();
-  if (inboxFetchError) throw inboxFetchError;
+  // 千ノ国パスポート モジュール化後バグ修正・Phase B改修指示書 Phase A-3(§6)。
+  // claim_stripe_webhook_event()(Postgres関数、マイグレーション20260808000004)が
+  // 「行が無ければ作成→SELECT ... FOR UPDATE→状態遷移判定→claim」を単一トランザクション
+  // で行うため、同一Stripe eventの並行到達でも二重にprocessingへ進むことはなく、
+  // unique制約違反が呼び出し元まで伝播することもない。
+  const claimToken = crypto.randomUUID();
+  const { data: claimResultData, error: claimError } = await supabase
+    .rpc("claim_stripe_webhook_event", {
+      p_stripe_event_id: event.id,
+      p_event_type: event.type,
+      p_payload: event as unknown as Record<string, unknown>,
+      p_claim_token: claimToken,
+    })
+    .single();
+  if (claimError) throw claimError;
+  const claimResult = claimResultData as ClaimStripeWebhookEventResult;
 
-  const inboxAction = decideStripeInboxAction(existingInboxEvent);
-  if (inboxAction.type === "skip_duplicate") {
+  if (claimResult.claim_outcome === "duplicate") {
     return NextResponse.json({ received: true }); // 処理済みイベントの再送(冪等)。
   }
-
-  let inboxEventId: string;
-  if (existingInboxEvent) {
-    inboxEventId = existingInboxEvent.id as string;
-    await supabase
-      .from("stripe_webhook_events")
-      .update({ status: "processing", attempt_count: inboxAction.attemptCount })
-      .eq("id", inboxEventId);
-  } else {
-    const { data: inserted, error: insertError } = await supabase
-      .from("stripe_webhook_events")
-      .insert({
-        stripe_event_id: event.id,
-        event_type: event.type,
-        payload: event as unknown as Record<string, unknown>,
-        status: "processing",
-        attempt_count: inboxAction.attemptCount,
-      })
-      .select("id")
-      .single();
-    if (insertError) throw insertError;
-    inboxEventId = inserted.id as string;
+  if (claimResult.claim_outcome === "in_progress") {
+    return NextResponse.json({ received: true }); // 他のリクエストが処理中(併走を許さず、待たせもしない)。
   }
+  if (claimResult.claim_outcome === "dead") {
+    // 再試行の上限に達している。Stripe側の再送に頼らず管理画面からの手動再実行に委ねるため、
+    // 200を返してStripeからの再送を止める。
+    console.error(`Stripe webhookイベント(${event.id})は再試行の上限に達しています`);
+    return NextResponse.json({ received: true });
+  }
+
+  const inboxEventId = claimResult.inbox_event_id;
 
   try {
     if (event.type === "checkout.session.completed") {
       await handleCheckoutSessionCompleted(supabase, event.data.object as Stripe.Checkout.Session);
     }
 
-    await supabase
-      .from("stripe_webhook_events")
-      .update({ status: "succeeded", processed_at: new Date().toISOString() })
-      .eq("id", inboxEventId);
+    const { data: succeeded, error: succeededError } = await supabase.rpc("mark_stripe_webhook_succeeded", {
+      p_inbox_event_id: inboxEventId,
+      p_claim_token: claimToken,
+    });
+    if (succeededError) throw succeededError;
+    if (!succeeded) {
+      console.error(`Stripe webhookイベント(${event.id})の完了記録がclaim_token不一致で失敗しました(横取りされた可能性)`);
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";
-    await supabase.from("stripe_webhook_events").update({ status: "failed", last_error: message }).eq("id", inboxEventId);
+    const { error: failedError } = await supabase.rpc("mark_stripe_webhook_failed", {
+      p_inbox_event_id: inboxEventId,
+      p_claim_token: claimToken,
+      p_error: message,
+    });
+    if (failedError) console.error("Stripe webhook失敗記録の更新に失敗しました", failedError);
     console.error("Stripe webhook処理に失敗しました", error);
     return NextResponse.json({ error: "internal error" }, { status: 500 });
   }

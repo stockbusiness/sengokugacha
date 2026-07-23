@@ -65,3 +65,28 @@
 - `user_id`の再解決(§5.5)は、entitlement受信イベントが再送されるたびに(=`process_entitlement_grant()`が呼ばれるたびに)自動的に試行される。ただし、送信元からの自発的な再送が来ない限りは再解決の機会が発生しないため、管理画面からの手動トリガー(§5.5後半)は別途必要(未対応事項として記録)。
 
 **検証**: `rm -rf .next && npx tsc --noEmit` / `npm run lint` / `npx vitest run`(150/150、変更なし) / `npm run build` 全て通過。DB統合テストは未実施(前提を参照)。
+
+## PR4: fix: atomically claim Stripe webhook inbox events
+
+**対象**: Phase A-3(§6)
+
+**変更ファイル**:
+- `supabase/migrations/20260808000004_stripe_webhook_event_atomic_claim.sql`(新規)
+  - `stripe_webhook_events`へ`claim_token uuid`・`claimed_at timestamptz`・`lease_expires_at timestamptz`列を追加。
+  - `status`のcheck制約に`dead`を追加(既存: `pending`/`processing`/`succeeded`/`failed`)。
+  - `claim_stripe_webhook_event(p_stripe_event_id, p_event_type, p_payload, p_claim_token, p_lease_seconds default 300, p_max_attempts default 10)`: 行が無ければ`ON CONFLICT DO NOTHING`で作成した上で`SELECT ... FOR UPDATE`により原子的にclaimする。戻り値`claim_outcome`は指示書§6.2の仕様通り`new`/`retryable`/`duplicate`/`in_progress`/`dead`のいずれか。`claim_token`は呼び出し側が生成して渡す(指示書§6.2の関数シグネチャに明記)。
+  - `mark_stripe_webhook_succeeded(p_inbox_event_id, p_claim_token)`/`mark_stripe_webhook_failed(p_inbox_event_id, p_claim_token, p_error)`: PR1と同じfencingパターン(claim_token一致時のみ更新、成功可否をbooleanで返す)。
+- `src/app/api/stripe/webhook/route.ts`(変更)
+  - 既存inbox実装(`stripe_webhook_events`のSELECT→`decideStripeInboxAction()`による判定→INSERT/UPDATEという複数DB往復)を、`claim_stripe_webhook_event()`の単一RPC呼び出し+`mark_stripe_webhook_succeeded()`/`mark_stripe_webhook_failed()`へ置き換えた。`claim_token`は`crypto.randomUUID()`で生成する。
+  - `claim_outcome`が`duplicate`/`in_progress`/`dead`のいずれの場合も200(`received: true`)を返す。`in_progress`は他リクエストの処理完了を待たせず終える設計、`dead`はStripe側の自動再送に頼らず管理画面からの手動再実行(全体統合対応PR3)に委ねるためログ記録のみ行い200を返す。
+- `src/modules/commerce/domain/stripe-inbox.ts`・`stripe-inbox.test.ts`(削除)
+  - モジュール化(PR12)で抽出した純粋関数`decideStripeInboxAction()`は判定ロジックがSQL側(`claim_stripe_webhook_event()`)へ完全移設されたため、呼び出し元が無くなり削除した。
+- `docs/MODULE_BOUNDARIES.md`(変更)
+  - `stripe-inbox.ts`の行を削除し、Postgres関数への統合経緯を注記として追加。
+
+**設計判断**:
+- PR1(`claim_purchase_grant_step`)と同じ「`SELECT ... FOR UPDATE`+動的SQLを使わない状態遷移判定+claim_tokenによるfencing」の設計を踏襲した。既存実装(SELECT→アプリ側で分岐→INSERT or UPDATE、という複数のDB往復)は、SELECTとその後の書き込みの間に他リクエストが割り込む余地があり、同一Stripe eventの並行到達(手動再送と自動再送の重複等)で二重に`processing`へ進み得たが、単一のPostgres関数内で行ロックを取得したまま状態遷移を完結させることでこれを解消した。
+- 指示書§6.2の関数シグネチャが`claim_token`を引数として明記していたため、PR1/PR3(関数内部で生成して返す方式)とは異なり、本PRでは呼び出し側でトークンを生成して渡す方式を採用した。fencingの安全性(claim_tokenが一致する呼び出しのみが完了・失敗を記録できる)自体はどちらの方式でも同じ。
+- `claim_stripe_webhook_event()`内の行作成(`insert ... on conflict (stripe_event_id) do nothing`)は`for update`より前に実行するため、行が存在しない初回呼び出しでも同一トランザクション内で作成直後にロックを取得できる。これにより指示書§6.3の「unique違反がHTTP 500にならない」を満たす(万一の競合はDB側の行ロックで直列化され、呼び出し元にunique制約違反が伝播することはない)。
+
+**検証**: `rm -rf .next && npx tsc --noEmit` / `npm run lint` / `npx vitest run`(144/144、`decideStripeInboxAction()`のテスト5件削除に伴い150→144。他は変更なし) / `npm run build` 全て通過。DB統合テストは未実施(前提を参照)。
