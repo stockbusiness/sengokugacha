@@ -9,7 +9,7 @@
 - **DBに依存しない純粋関数**は、通常どおりvitestで自動テスト化し、以下の各セクションに実行結果を記載する。
 - **DBに依存するフロー**(LINEログイン、Stripe決済、HMAC認証等のほとんど)は、自動テストの対象にはできないため、本書でソースコードから読み取った現状の動作を記録する(仕様書として固定し、モジュール分割後にこの記述と食い違う変更が入っていないかをレビューで確認する)。
 
-本書はモジュール化の各PRが進むごとに更新する(現時点ではPR2「ガチャ・国取り」・PR5「代理店・共通ID」分の自動テストが完了)。
+本書はモジュール化の各PRが進むごとに更新する(現時点ではPR2「ガチャ・国取り」・PR5「代理店・共通ID」・PR8「決済・権利」分の自動テストが完了)。
 
 ## ガチャ・国取り(PR2で自動テスト化、PR3/PR4でdomain層へ移設済み)
 
@@ -38,9 +38,9 @@
 
 | 対象 | テストファイル | 内容 |
 |---|---|---|
-| 代理店ランク解決 | `src/lib/agents.test.ts` | `resolveRank()`: `role_label`優先、`role_level`フォールバック、いずれも不明なら`アドバイザー`既定値 |
-| 代理店階層の平坦化 | `src/lib/agents.test.ts` | `flattenHierarchy()`: ネストしたツリーを親→子の順に平坦化、`external_id`欠落ノードのスキップ、`agent_code`/`parent_code`へのフォールバック |
-| 国家建設率計算 | `src/lib/passport.test.ts` | `calcNationBuildingRate()`: 各比率の重み付け平均(国盗り40%・図鑑30%・ログイン継続15%・任務15%)、ログイン継続日数の30日キャップ |
+| 代理店ランク解決 | `src/modules/agency/domain/rank-resolution.test.ts`(PR6でdomain層へ移設済み) | `resolveRank()`: `role_label`優先、`role_level`フォールバック、いずれも不明なら`アドバイザー`既定値 |
+| 代理店階層の平坦化 | `src/modules/agency/domain/hierarchy.test.ts`(PR6でdomain層へ移設済み) | `flattenHierarchy()`: ネストしたツリーを親→子の順に平坦化、`external_id`欠落ノードのスキップ、`agent_code`/`parent_code`へのフォールバック |
+| 国家建設率計算 | `src/modules/passport/domain/nation-building-rate.test.ts`(PR7でdomain層へ移設済み) | `calcNationBuildingRate()`: 各比率の重み付け平均(国盗り40%・図鑑30%・ログイン継続15%・任務15%)、ログイン継続日数の30日キャップ |
 
 ### DB/JWT依存のため自動テスト対象外(ソースコードから記録)
 
@@ -50,13 +50,37 @@
 - **代理店SSO検証**: `verifyAgencySsoToken()`(`src/lib/agency-sso.ts`)がRS256署名・issuer・audience・有効期限をJWKS経由で検証し、`jti`のワンタイム利用を`agency_sso_used_jti`のunique制約(23505)で検知する。無効化済み代理店(`status='inactive'`)はログイン不可。
 - **HMAC認証(新規千ノ国連携)**: `verifySenNoKuniHubRequest()`がタイムスタンプ許容誤差5分以内、`HMAC-SHA256(timestamp + "." + raw_body)`の一致、nonceのワンタイム利用(unique制約)を検証する(署名検証はP0-2で完了済み、既存のvitestテストは無し。契約書v1.1 DRAFTで署名対象文字列の全システム合意が未確定のため、現行実装を安易に変更しない方針、詳細は`docs/IMPLEMENTATION_STATUS_P0_2.md`参照)。
 
-## 決済・権利(未着手)
+## 決済・権利(PR8で棚卸し・自動テスト化済み)
 
-対応するモジュール化PR8「commerceとentitlementワークフローのテスト」着手時に本書へ追記する。
+`src/lib/atomic-balance.ts`・`src/lib/entitlements.ts`・`src/lib/shopping-order-events.ts`・
+`src/lib/integration-outbox.ts`・`src/lib/purchases.ts`・`src/lib/purchase-grants.ts`・
+`src/lib/stripe.ts`・`src/lib/commission-rule-sets.ts`を棚卸しした結果、これらはいずれも
+Supabase呼び出しに直結する薄いラッパー(DB CRUD・Postgres関数呼び出し・外部HTTP送信)のみで
+構成されており、新たに切り出せる純粋関数は無かった。決済・権利領域の純粋関数は、既存の
+P0-2作業までにすべて自動テスト化済みであることを確認した(以下)。
+
+| 対象 | テストファイル | 内容 |
+|---|---|---|
+| 城主契約の状態遷移 | `src/lib/castle-lord-contracts.test.ts`(既存) | `isValidContractTransition()`: 9状態の遷移マトリクス、`canOperatorPerformTransition()`: operator/manager権限分岐 |
+| 外部注文の状態遷移 | `src/lib/external-order-state.test.ts`(既存) | `isValidExternalOrderTransition()`: draft〜rights_granted/cancelled/refundedの遷移マトリクス、`canOperatorPerformOrderTransition()`: 権限分岐 |
+| 外部注文の割当状態算出 | `src/lib/external-orders.test.ts`(既存) | `computeOrderAssignmentStatus()`: 複数区画注文(7-1/7-2)の割当済み数量からplot_assignment_pending/partially_assigned/ready_to_grantを算出 |
+| 報酬エンジン | `src/lib/castle-commission-engine.test.ts`(既存) | `computeLandSaleCommissionLines()`/`computeRefundAdjustments()`: 要件書8.7 TC1〜TC7全ケース |
+| HMACペイロードハッシュ | `src/lib/integration-inbox.test.ts`(既存) | `computePayloadHash()`: 同一本文で同一ハッシュ、本文差分・空白差分での不一致(冪等性判定の基礎) |
+
+### DB依存のため自動テスト対象外(ソースコードから記録)
+
+- **残高の原子的更新**: `adjustUserBalance()`/`consumeGachaTicket()`(`src/lib/atomic-balance.ts`)がPostgres関数`adjust_user_balance`/`consume_gacha_ticket`をRPC呼び出しし、read-modify-write競合を回避する。ガチャ券残高不足時は`insufficient_gacha_tickets`メッセージの例外を送出する。
+- **購入権利付与のステップ冪等化**: `runPurchaseGrant()`(`src/lib/purchase-grants.ts`)が`purchase_grant_steps`テーブルでステップ単位(balance_granted/plot_completed/commission_posted/agent_sale_recorded/referral_confirmed/notification_sent)の完了状態を管理し、既にcompletedのステップは再実行しない。全ステップ成功で`purchases.status='completed'`・`grant_status='granted'`、失敗時は`grant_status='failed'`を記録して例外を投げ直す。
+- **Stripe Webhook本体**: `src/app/api/stripe/webhook/route.ts`が`stripe_webhook_events`へ`stripe_event_id`単位でupsertし二重処理を防止、`purchases.status`を`processing`へ更新後に`runPurchaseGrant()`を呼ぶ(全体統合対応PR1/PR2)。
+- **権利付与・取消**: `handleEntitlementGranted()`/`handleEntitlementRevoked()`(`src/lib/entitlements.ts`)が`entitlement_id`+`source_system_key`単位で冪等処理し、`entitlement_type`が`kokudaka`/`gacha_ticket`の場合のみ`adjustUserBalance()`で残高反映する。grant/revokeの順序逆転(revokeが先に届く場合)は`entitlement_pending_revocations`に保留し、grant到着時に適用する(P0-2 §4.3/4.4)。
+- **購入・返金イベント記録**: `recordShoppingOrderEvent()`(`src/lib/shopping-order-events.ts`)が`shopping_order_events`へ`source_system_key`+`event_id`単位で冪等insertする(監査目的、当面は残高・権利への副作用なし)。
+- **Outbox送達管理**: `enqueueOutboxEvent()`/`markOutboxEventSent()`/`markOutboxEventFailed()`(`src/lib/integration-outbox.ts`)が`integration_outbox_events`への送達記録・再送用ステータス管理を行う。
+- **Inboxの原子的claim**: `claimInboxEvent()`(`src/lib/integration-inbox.ts`)がPostgres関数`claim_integration_inbox_event`経由でINSERT ON CONFLICT+SELECT FOR UPDATEにより、同一`event_id`への並行リクエストのうち1件のみが実処理を行うようclaimする(P0-2 §4.5でバグ#5修正済み)。
+- **月間利用上限判定**: `getMonthlySpentYen()`(`src/lib/purchases.ts`)が当月(サーバーローカル日付基準)の`completed`購入金額を合計する。
 
 ## 検証結果
 
 - `rm -rf .next && npx tsc --noEmit`: エラーなし
 - `npm run lint`: 既存の`<img>`警告2件のみ(本作業と無関係)
-- `npx vitest run`: 111/111 pass(モジュール化PR2で2ファイル・17テスト、PR5で2ファイル・10テストを追加)
+- `npx vitest run`: 111/111 pass(モジュール化PR2で2ファイル・17テスト、PR5で2ファイル・10テストを追加。PR8は既存テストの棚卸しのみで新規テスト追加なし)
 - `npm run build`: 成功
