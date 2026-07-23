@@ -63,3 +63,17 @@
 - `src/lib/entitlements.ts`の`handleEntitlementGranted()`/`handleEntitlementRevoked()`は、上記2つのPostgres関数を呼び出す形に簡略化した。`BALANCE_ENTITLEMENT_COLUMNS`・`adjustUserBalance`の直接呼び出しはSQL側へ移設したため削除した。
 
 **未対応の残存事項**: §5.5後半が求める管理画面(未解決entitlement一覧・common_user_id/entitlement_id/source_system_key/entitlement_type/受信日時の表示・再解決ボタン・却下/保留・監査ログ)は本PRのスコープに含めていない。`process_entitlement_grant()`はentitlement受信イベントの再送時にのみ`user_id`再解決を試みるため、送信元からの再送が来ない限り、未解決のまま放置されるentitlementが残り得る。管理画面からの手動再解決トリガーは別PRで対応する。
+
+## Phase A-3: Stripe inbox原子的claim
+
+### PR4: fix: atomically claim Stripe webhook inbox events
+
+| 項目 | 状況 |
+|---|---|
+| §6.2 原子的claim(`claim_stripe_webhook_event`/`mark_stripe_webhook_succeeded`/`mark_stripe_webhook_failed`、claim_tokenによるfencing) | 1. ソースコード上で実装済み |
+| §6.2 unique違反がHTTP 500にならないこと(claim関数内で`ON CONFLICT DO NOTHING`+`FOR UPDATE`により、呼び出し元へunique制約違反が伝播しない設計) | 1. ソースコード上で実装済み |
+| 並行実行時の受入条件(§6.3、同一event 10並列実行で1回だけ処理等) | 6. 未確認(コードレビューのみ、DB統合テスト未実施) |
+
+**実装内容の要約**: PR1/PR3と同じ設計方針(`SELECT ... FOR UPDATE`+claim_tokenによるfencing)を`stripe_webhook_events`へ適用した。`claim_stripe_webhook_event()`は指示書§6.2の戻り値仕様(`new`/`duplicate`/`in_progress`/`retryable`/`dead`)をそのまま実装し、`claim_token`は呼び出し側(TypeScript、`crypto.randomUUID()`)が生成して渡す設計とした(指示書§6.2の関数シグネチャに明記の通り)。`src/app/api/stripe/webhook/route.ts`の既存inbox実装(`existingInboxEvent`のSELECT→`decideStripeInboxAction()`による判定→INSERT/UPDATE、という複数DB往復)を、単一のRPC呼び出し+`mark_stripe_webhook_succeeded()`/`mark_stripe_webhook_failed()`へ置き換えた。モジュール化(PR12)時点で抽出していた純粋関数`src/modules/commerce/domain/stripe-inbox.ts`(`decideStripeInboxAction()`)は、判定ロジックがSQL側へ完全移設されたため削除した。
+
+**未対応の残存事項**: §7(HMAC署名v2)は別PRで対応する。

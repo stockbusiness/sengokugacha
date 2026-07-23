@@ -109,3 +109,31 @@ alter table entitlements
 ### 影響範囲
 
 本PRは`entitlements`テーブルへの列追加・関数追加、および`src/lib/entitlements.ts`内の残高操作ロジックのSQL側への移設のみで、既存の`entitlements`テーブルの既存カラム・`entitlement_pending_revocations`テーブル・`users`テーブルの既存データには影響しない。ロールバックしても既存の権利台帳データ・残高データは変更されない。既存のP0-2実装(revoke先行時の保留取消の仕組み)はPR3で変更していないため、ロールバックの影響を受けない。
+
+## PR4: fix: atomically claim Stripe webhook inbox events
+
+### ロールバック手順
+
+1. 該当コミットを`git revert`する。ロールバックすると`src/app/api/stripe/webhook/route.ts`は本PR以前の実装(`decideStripeInboxAction()`ベース)に戻るため、`src/modules/commerce/domain/stripe-inbox.ts`・`stripe-inbox.test.ts`も`git revert`により復元される。
+2. `claim_stripe_webhook_event()`/`mark_stripe_webhook_succeeded()`/`mark_stripe_webhook_failed()`をDB側から削除し、列・check制約を戻す場合は以下を適用する:
+
+```sql
+drop function if exists mark_stripe_webhook_failed(uuid, uuid, text);
+drop function if exists mark_stripe_webhook_succeeded(uuid, uuid);
+drop function if exists claim_stripe_webhook_event(text, text, jsonb, uuid, int, int);
+
+alter table stripe_webhook_events drop constraint stripe_webhook_events_status_check;
+alter table stripe_webhook_events add constraint stripe_webhook_events_status_check
+  check (status in ('pending', 'processing', 'succeeded', 'failed'));
+
+alter table stripe_webhook_events
+  drop column if exists claim_token,
+  drop column if exists claimed_at,
+  drop column if exists lease_expires_at;
+```
+
+3. ロールバック実行前に、`stripe_webhook_events.status = 'processing'`の行が無いことを確認する。処理中に切り戻すと、旧コード(`decideStripeInboxAction()`)はこの行を「再処理対象」と判定して再実行してしまう可能性がある(本PR以前と同じ挙動に戻るだけで新たな問題ではないが、切り戻しのタイミングによっては同一Stripeイベントが二重に権利付与処理へ進みうる)。
+
+### 影響範囲
+
+本PRは`stripe_webhook_events`テーブルへの列追加・関数追加と、`src/app/api/stripe/webhook/route.ts`内のinbox判定ロジックの呼び出し方変更のみで、既存カラム・既存の`purchases`テーブル・`users`テーブルのデータには影響しない。ロールバックしても既存のStripe決済履歴・残高データは変更されない。
