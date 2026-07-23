@@ -1,18 +1,13 @@
-import { randomBytes, createHash } from "node:crypto";
+import { randomBytes } from "node:crypto";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { hashApiKey } from "@/modules/agency/domain/api-key";
+import { ROLE_LEVEL_TO_RANK, resolveRank, type AgentRank } from "@/modules/agency/domain/rank-resolution";
+import { flattenHierarchy, type AgencySyncPayload, type HierarchyNode } from "@/modules/agency/domain/hierarchy";
 
-const RANKS = ["アドバイザー", "ディレクター", "エージェント"] as const;
-export type AgentRank = (typeof RANKS)[number];
-
-const ROLE_LEVEL_TO_RANK: Record<number, AgentRank> = {
-  1: "アドバイザー",
-  2: "ディレクター",
-  3: "エージェント",
-};
-
-function hashApiKey(raw: string): string {
-  return createHash("sha256").update(raw).digest("hex");
-}
+export type { AgentRank };
+export { resolveRank };
+export type { AgencySyncPayload, HierarchyNode };
+export { flattenHierarchy };
 
 export type AgencyIntegrationSettings = {
   id: string | null;
@@ -87,27 +82,6 @@ export async function regenerateInboundApiKey(): Promise<{ rawKey: string; setti
   if (result.error) throw result.error;
 
   return { rawKey, settings: { ...DEFAULT_SETTINGS, ...result.data } };
-}
-
-export type AgencySyncPayload = {
-  external_id: string;
-  parent_external_id?: string | null;
-  name: string;
-  contact_name?: string | null;
-  contact_email?: string | null;
-  login_email?: string | null;
-  phone?: string | null;
-  line_url?: string | null;
-  status?: string | null;
-  role_level?: number | null;
-  role_label?: string | null;
-  lp_urls?: unknown;
-};
-
-export function resolveRank(roleLevel: number | null | undefined, roleLabel: string | null | undefined): AgentRank {
-  if (roleLabel && (RANKS as readonly string[]).includes(roleLabel)) return roleLabel as AgentRank;
-  if (typeof roleLevel === "number" && ROLE_LEVEL_TO_RANK[roleLevel]) return ROLE_LEVEL_TO_RANK[roleLevel];
-  return "アドバイザー";
 }
 
 // sengoku-ai.comから受信した代理店データをupsertする。external_idを一意キーとする。
@@ -252,44 +226,6 @@ export async function testOutboundConnection(): Promise<{ ok: boolean; status: n
   } catch (error) {
     return { ok: false, status: 0, message: error instanceof Error ? error.message : "接続に失敗しました" };
   }
-}
-
-export type HierarchyNode = {
-  external_id?: string;
-  agent_code?: string;
-  parent_external_id?: string;
-  parent_code?: string;
-  name?: string;
-  contact_email?: string;
-  login_email?: string;
-  phone?: string;
-  role_level?: number;
-  role_label?: string;
-  status?: string;
-  children?: HierarchyNode[];
-};
-
-export function flattenHierarchy(nodes: HierarchyNode[], parentExternalId: string | null = null): AgencySyncPayload[] {
-  const result: AgencySyncPayload[] = [];
-  for (const node of nodes) {
-    const externalId = node.external_id ?? node.agent_code;
-    if (!externalId) continue;
-    result.push({
-      external_id: externalId,
-      parent_external_id: node.parent_external_id ?? node.parent_code ?? parentExternalId,
-      name: node.name ?? externalId,
-      contact_email: node.contact_email ?? null,
-      login_email: node.login_email ?? null,
-      phone: node.phone ?? null,
-      status: node.status ?? "active",
-      role_level: node.role_level ?? null,
-      role_label: node.role_label ?? null,
-    });
-    if (node.children?.length) {
-      result.push(...flattenHierarchy(node.children, externalId));
-    }
-  }
-  return result;
 }
 
 // 管理画面の「手動で階層を同期」ボタン用。sengoku-ai.comの階層取得APIを呼び、
