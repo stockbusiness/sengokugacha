@@ -4,7 +4,7 @@ import {
   CONTRACT_STATUSES,
   isValidContractTransition,
   type ContractStatus,
-} from "./castle-lord-contracts";
+} from "./contract-state";
 
 describe("isValidContractTransition", () => {
   it("allows the documented happy path draft -> active", () => {
