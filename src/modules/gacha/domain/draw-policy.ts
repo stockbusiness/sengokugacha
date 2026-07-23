@@ -1,4 +1,4 @@
-import { pickTierRates, type GachaRateTier } from "@/lib/gacha-rate-tiers";
+import { pickTierRates, type GachaRateTier } from "@/modules/gacha/domain/rate-tiers";
 
 // 千ノ国パスポート モジュール化・保守性改善指示書 Phase 2(§7)。src/lib/gacha.tsから移設。
 // 04_mvp_spec_v1.2.md 3.1: 制圧済み国数に応じた排出率ティア。
