@@ -47,7 +47,7 @@ export type PaidGachaDrawResult = DrawCore & {
 // 04_mvp_spec_v1.2.md 3.1: 制圧済み国数に応じた排出率ティア。
 // 管理画面(/admin/gacha-rates)から編集可能なgacha_rate_tiersテーブルを参照する
 // (ユーザー向け排出率開示ページ /rates も同じテーブルを参照するため、常に表示と実際の抽選が一致する)。
-function pickSlot(conqueredCount: number, tiers: GachaRateTier[]): "common" | "mid" | "rare" {
+export function pickSlot(conqueredCount: number, tiers: GachaRateTier[]): "common" | "mid" | "rare" {
   const { rare, mid } = pickTierRates(tiers, conqueredCount);
   const r = Math.random();
   if (r < rare) return "rare";
@@ -69,7 +69,7 @@ async function getConqueredProvinceCount(userId: string): Promise<number> {
 
 // 開始/終了どちらかが未指定なら、その境界は「制限なし」として扱う
 // (03_gacha_game_design 15章: 「適用期間の開始・終了日時を指定可能(未指定なら手動で戻すまで持続)」)。
-function isEventWindowActive(startAt: string | null, endAt: string | null): boolean {
+export function isEventWindowActive(startAt: string | null, endAt: string | null): boolean {
   const now = new Date();
   if (startAt && now < new Date(startAt)) return false;
   if (endAt && now > new Date(endAt)) return false;
@@ -139,7 +139,7 @@ async function getTodaysDrawCount(userId: string, isPaid: boolean): Promise<numb
   return count ?? 0;
 }
 
-type ProvinceRow = {
+export type ProvinceRow = {
   id: string;
   region: string;
   is_final_province: boolean;
@@ -300,7 +300,7 @@ async function grantKokudakaBonus(userId: string, amount: number) {
 const CONTRIBUTION_POINTS_BY_SLOT: Record<string, number> = { common: 5, mid: 15, rare: 40 };
 const CONTRIBUTION_POINTS_NEW_CARD_BONUS = 10;
 
-function calcContributionPoints(slotType: string, isNewCard: boolean): number {
+export function calcContributionPoints(slotType: string, isNewCard: boolean): number {
   return (CONTRIBUTION_POINTS_BY_SLOT[slotType] ?? 0) + (isNewCard ? CONTRIBUTION_POINTS_NEW_CARD_BONUS : 0);
 }
 
@@ -334,7 +334,7 @@ async function maybeCompleteRegion(userId: string, region: string, allProvinces:
 }
 
 // 制圧済み国数が美濃国の解放しきい値を今回の抽選で初めて超えたかどうか。
-function didJustUnlockMino(previousCount: number, newCount: number, allProvinces: ProvinceRow[]): boolean {
+export function didJustUnlockMino(previousCount: number, newCount: number, allProvinces: ProvinceRow[]): boolean {
   const mino = allProvinces.find((p) => p.is_final_province);
   if (!mino || mino.unlock_condition_count == null) return false;
   return previousCount < mino.unlock_condition_count && newCount >= mino.unlock_condition_count;
