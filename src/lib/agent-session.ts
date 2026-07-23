@@ -1,23 +1,11 @@
-import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { signSessionJwt, verifySessionJwt } from "@/shared/auth";
 
 export const AGENT_SESSION_COOKIE_NAME = "sengoku_agent_session";
 const AGENT_SESSION_MAX_AGE_SECONDS = 60 * 60 * 12; // 12時間(SSOで再ログインしてもらう想定)
 
-function getSecretKey() {
-  const secret = process.env.SESSION_SECRET;
-  if (!secret) {
-    throw new Error("SESSION_SECRET が未設定です");
-  }
-  return new TextEncoder().encode(secret);
-}
-
 export async function setAgentSessionCookie(agentId: string, externalId: string, name: string) {
-  const token = await new SignJWT({ role: "agent", agentId, externalId, name })
-    .setProtectedHeader({ alg: "HS256" })
-    .setIssuedAt()
-    .setExpirationTime(`${AGENT_SESSION_MAX_AGE_SECONDS}s`)
-    .sign(getSecretKey());
+  const token = await signSessionJwt({ role: "agent", agentId, externalId, name }, AGENT_SESSION_MAX_AGE_SECONDS);
 
   const cookieStore = await cookies();
   cookieStore.set(AGENT_SESSION_COOKIE_NAME, token, {
@@ -36,17 +24,13 @@ export async function getAgentSession(): Promise<AgentSession | null> {
   const token = cookieStore.get(AGENT_SESSION_COOKIE_NAME)?.value;
   if (!token) return null;
 
-  try {
-    const { payload } = await jwtVerify(token, getSecretKey());
-    if (payload.role !== "agent" || typeof payload.agentId !== "string") return null;
-    return {
-      agentId: payload.agentId,
-      externalId: typeof payload.externalId === "string" ? payload.externalId : "",
-      name: typeof payload.name === "string" ? payload.name : "",
-    };
-  } catch {
-    return null;
-  }
+  const payload = await verifySessionJwt(token);
+  if (!payload || payload.role !== "agent" || typeof payload.agentId !== "string") return null;
+  return {
+    agentId: payload.agentId,
+    externalId: typeof payload.externalId === "string" ? payload.externalId : "",
+    name: typeof payload.name === "string" ? payload.name : "",
+  };
 }
 
 export async function clearAgentSessionCookie() {

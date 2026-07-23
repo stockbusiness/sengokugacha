@@ -1,27 +1,15 @@
-import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
+import { signSessionJwt, verifySessionJwt } from "@/shared/auth";
 
 const SESSION_COOKIE_NAME = "sengoku_session";
 const SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // 30日
-
-function getSecretKey() {
-  const secret = process.env.SESSION_SECRET;
-  if (!secret) {
-    throw new Error("SESSION_SECRET が未設定です");
-  }
-  return new TextEncoder().encode(secret);
-}
 
 export type SessionPayload = {
   userId: string;
 };
 
 export async function createSessionToken(payload: SessionPayload) {
-  return new SignJWT(payload)
-    .setProtectedHeader({ alg: "HS256" })
-    .setIssuedAt()
-    .setExpirationTime(`${SESSION_MAX_AGE_SECONDS}s`)
-    .sign(getSecretKey());
+  return signSessionJwt(payload, SESSION_MAX_AGE_SECONDS);
 }
 
 export async function setSessionCookie(payload: SessionPayload) {
@@ -41,13 +29,9 @@ export async function getSession(): Promise<SessionPayload | null> {
   const token = cookieStore.get(SESSION_COOKIE_NAME)?.value;
   if (!token) return null;
 
-  try {
-    const { payload } = await jwtVerify(token, getSecretKey());
-    if (typeof payload.userId !== "string") return null;
-    return { userId: payload.userId };
-  } catch {
-    return null;
-  }
+  const payload = await verifySessionJwt(token);
+  if (!payload || typeof payload.userId !== "string") return null;
+  return { userId: payload.userId };
 }
 
 export async function clearSessionCookie() {
