@@ -77,3 +77,21 @@
 **実装内容の要約**: PR1/PR3と同じ設計方針(`SELECT ... FOR UPDATE`+claim_tokenによるfencing)を`stripe_webhook_events`へ適用した。`claim_stripe_webhook_event()`は指示書§6.2の戻り値仕様(`new`/`duplicate`/`in_progress`/`retryable`/`dead`)をそのまま実装し、`claim_token`は呼び出し側(TypeScript、`crypto.randomUUID()`)が生成して渡す設計とした(指示書§6.2の関数シグネチャに明記の通り)。`src/app/api/stripe/webhook/route.ts`の既存inbox実装(`existingInboxEvent`のSELECT→`decideStripeInboxAction()`による判定→INSERT/UPDATE、という複数DB往復)を、単一のRPC呼び出し+`mark_stripe_webhook_succeeded()`/`mark_stripe_webhook_failed()`へ置き換えた。モジュール化(PR12)時点で抽出していた純粋関数`src/modules/commerce/domain/stripe-inbox.ts`(`decideStripeInboxAction()`)は、判定ロジックがSQL側へ完全移設されたため削除した。
 
 **未対応の残存事項**: §7(HMAC署名v2)は別PRで対応する。
+
+## Phase A-3: HMAC署名v2
+
+### PR5: feat: support HMAC signature v2 alongside v1
+
+| 項目 | 状況 |
+|---|---|
+| §7.1 既存v1署名の維持(既存接続を破壊しない) | 1. ソースコード上で実装済み |
+| §7.2 v2署名(key_id/timestamp/nonce/event_version/idempotency_key/raw_bodyを署名対象に含める、`X-SenNoKuni-Signature-Version: 2`) | 1. ソースコード上で実装済み |
+| §7.3 v1/v2併存、システム単位の許可バージョン設定(`v1_disabled_at`)、v1利用ログ記録 | 1. ソースコード上で実装済み |
+| §7.3 新規連携はv2必須 | 実装済み(運用上の取り決め。接続開始時に`v1_disabled_at`をnow()に設定することで実現。DB制約では強制しない) |
+| §7.3 v1停止日時を決定 | 7. 未対応(運用判断。列は用意済みだが、実際の停止日時決定・管理画面からの設定UIは別途必要) |
+| §7.4 必須検証(nonce/Idempotency-Key/event_version/key_id/raw_body変更で署名不一致) | 2. unit test確認済み(`sen-no-kuni-hub-signature.test.ts`、canonical string構築の純粋関数レベルで検証) |
+| §7.4 timestamp期限切れ・nonce再利用 | 6. 未確認(既存v1と同じくDB/時刻依存のためコードレビューのみ、DB統合テスト未実施) |
+
+**実装内容の要約**: `src/modules/integrations/domain/sen-no-kuni-hub-signature.ts`(新規)にHMAC署名のバージョン判定・v2 canonical string構築・v1停止判定を純粋関数として実装し、`sen-no-kuni-hub-signature.test.ts`でunit testを追加した(§7.4の必須検証のうち、nonce/Idempotency-Key/event_version/key_id/raw_bodyの各要素を変更するとcanonical stringが変化することを確認)。`src/lib/sen-no-kuni-hub-auth.ts`の`verifySenNoKuniHubRequest()`は`X-SenNoKuni-Signature-Version`ヘッダー(省略時はv1として扱う)で分岐し、v2の場合は`X-Event-Version`/`Idempotency-Key`ヘッダーも署名対象に含める。`sen_no_kuni_hub_settings`へ`v1_disabled_at`/`v1_last_used_at`/`v1_usage_count`列を追加し、システム単位でv1署名の受付終了日時を設定できるようにした(未設定なら無期限にv1を許可、既存接続を破壊しない)。v1署名でのリクエスト成功時は`record_sen_no_kuni_hub_v1_usage()`(単一UPDATE文による原子的インクリメント)でベストエフォートに利用ログを記録する。
+
+**未対応の残存事項**: v1停止日時を実際に決定し設定する運用判断、および管理画面からの`v1_disabled_at`設定UIは本PRのスコープに含めていない(列・関数のみ用意)。
