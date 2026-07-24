@@ -3,6 +3,7 @@ import { completePlotPurchase } from "@/lib/plot-reservations";
 import { postLandSaleCommission } from "@/lib/castle-commissions";
 import { notifyPlotPurchase } from "@/lib/castle-notifications";
 import { confirmReferral } from "@/lib/common-user-hub";
+import { enqueueOutboxEvent, markOutboxFailed, markOutboxSent } from "@/lib/integration-outbox";
 
 type SupabaseServerClient = ReturnType<typeof createSupabaseServerClient>;
 
@@ -145,7 +146,12 @@ async function recordAgentSaleStep(
 
 // sengoku-ai.com EXTERNAL_DEVELOPER_GUIDE 10.2章。referral_session_keyが
 // 保存されているユーザー(=紹介URL経由で登録したユーザー)の購入完了を通知する。
-// ベストエフォート(confirmReferral自体がfail-open)なので、失敗しても購入処理は継続する。
+// 千ノ国パスポート モジュール化後バグ修正・Phase B改修指示書 Phase A-1(§4.3.3)。
+// 送信前にintegration_outbox_eventsへ登録し、送信結果(成功/失敗)を記録する。
+// 旧実装はconfirmReferral()自体がfail-open(例外を投げない)なため、purchase_grant_steps上は
+// 常に「completed」扱いになり、実際の送信失敗が記録に残らなかった。outbox化により
+// 失敗を検知・追跡し、管理画面から再送できるようにする(この関数自体は引き続き
+// ベストエフォートとして扱い、送信失敗時も購入処理を継続させる)。
 async function confirmReferralForPurchase(
   supabase: SupabaseServerClient,
   userId: string,
@@ -160,12 +166,64 @@ async function confirmReferralForPurchase(
     .maybeSingle();
   if (error || !user?.referral_session_key) return;
 
-  await confirmReferral({
+  const input = {
     referralSessionKey: user.referral_session_key,
     externalUserId: userId,
-    referralSource: "purchase",
+    referralSource: "purchase" as const,
     metadata: { purchase_id: purchaseId, item_type: itemType, amount: amountYen },
-  });
+  };
+  const outboxId = await enqueueOutboxEvent(
+    supabase,
+    "integration_outbox_events",
+    "purchase",
+    purchaseId,
+    "referral.confirmed",
+    "sengoku-ai",
+    input
+  );
+
+  const sent = await confirmReferral(input);
+  if (sent) {
+    await markOutboxSent(supabase, "integration_outbox_events", outboxId);
+  } else {
+    await markOutboxFailed(supabase, "integration_outbox_events", outboxId, "confirmReferralが失敗を返しました", 0);
+  }
+}
+
+// 区画購入確定のLINE通知。モジュール化後バグ修正・Phase B改修指示書 Phase A-1(§4.3.3)。
+// 送信前にnotification_outbox_eventsへ登録し、送信結果を記録する(referral_confirmedと
+// 同じ設計、対象がLINE通知であるためintegration_outbox_eventsとは別テーブル)。
+async function notifyPlotPurchaseViaOutbox(
+  supabase: SupabaseServerClient,
+  purchaseId: string,
+  userId: string,
+  plotId: string | null
+): Promise<void> {
+  if (!plotId) return;
+
+  const outboxId = await enqueueOutboxEvent(
+    supabase,
+    "notification_outbox_events",
+    "purchase",
+    purchaseId,
+    "notification.plot_purchased",
+    "line",
+    { user_id: userId, plot_id: plotId }
+  );
+
+  try {
+    const sent = await notifyPlotPurchase(userId, plotId);
+    if (sent) {
+      await markOutboxSent(supabase, "notification_outbox_events", outboxId);
+    } else {
+      // LINE未連携・LINE設定未登録等、送信不要な対象外ケース(既存挙動と同じ「何もしない」)。
+      // 再送しても意味が無いため送信済み扱いにする。
+      await markOutboxSent(supabase, "notification_outbox_events", outboxId);
+    }
+  } catch (sendError) {
+    const message = sendError instanceof Error ? sendError.message : "unknown error";
+    await markOutboxFailed(supabase, "notification_outbox_events", outboxId, message, 0);
+  }
 }
 
 // 千ノ国パスポート 全体統合対応 実装計画(PR2/PR3)。P0-2(§4.1)でステップ単位の冪等化を追加。
@@ -195,7 +253,9 @@ export async function runPurchaseGrant(purchaseId: string): Promise<void> {
       // 土地区画の購入(城主プラン)。kokudaka/gacha_ticket用のapplyBalanceGrantStep()とは別経路。
       await runStep(supabase, purchase.id, "plot_completed", () => completePlotPurchase(purchase.id));
       await runStep(supabase, purchase.id, "commission_posted", () => postLandSaleCommission(purchase.id));
-      await runStep(supabase, purchase.id, "notification_sent", () => notifyPlotPurchase(purchase.user_id, purchase.plot_id));
+      await runStep(supabase, purchase.id, "notification_sent", () =>
+        notifyPlotPurchaseViaOutbox(supabase, purchase.id, purchase.user_id, purchase.plot_id)
+      );
     } else if (purchase.grant_amount > 0) {
       // 付与量は購入時にpurchasesへ保存した値を正とする(後からパック設定が変わっても影響を受けない)。
       await applyBalanceGrantStep(supabase, purchase.id, purchase.user_id, purchase.item_type, purchase.grant_amount);

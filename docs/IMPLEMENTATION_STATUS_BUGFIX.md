@@ -151,3 +151,20 @@
 - `/admin/integration-recovery`画面へ「未解決のcommon_user統合イベント」セクションを追加し、既存の「未解決の担当代理店割当」セクションと同じUIパターン(一覧表示+全件再試行ボタン)で運用できるようにした。
 
 **設計判断**: 新設ルート(`retry-common-user-merges`)は既存4ルートの§9の対象リストには含まれていないが、同じ「連携基盤の再解決」カテゴリの操作であるため、一貫性のため`requireManagerRole()`を最初から適用した(§9で既存ルートをmanager限定化した直後に、新設ルートだけoperatorアクセス可能にする方が不整合と判断)。
+
+## Phase A-1(残): 購入イベント外部副作用のoutbox化
+
+### PR9: fix: move external purchase side effects to outbox
+
+| 項目 | 状況 |
+|---|---|
+| §4.3.3 外部副作用(紹介confirm)の送信前outbox登録・結果追跡 | 1. ソースコード上で実装済み |
+| §4.3.3 外部副作用(区画購入LINE通知)の送信前outbox登録・結果追跡 | 1. ソースコード上で実装済み |
+| 管理画面からの再送(手動drain) | 1. ソースコード上で実装済み |
+| 並行実行時の受入条件(同一購入への再実行で重複送信が起きないこと) | 6. 未確認(コードレビューのみ、DB統合テスト未実施。`enqueueOutboxEvent()`のunique制約+`23505`検知による冪等insertはコードレビュー上健全と判断) |
+
+**実装内容の要約**: `confirmReferral()`(`src/lib/common-user-hub.ts`)・`notifyPlotPurchase()`(`src/lib/castle-notifications.ts`)は、いずれも失敗時に例外を投げず`null`/ログのみで処理を終える「fail-open」設計であるため、既存の`runStep()`によるステップclaim機構が常に`completed`と記録してしまい、実際の外部送信が失敗しても記録に残らず再送手段も無かった。両関数の戻り値を`Promise<void>`から`Promise<boolean>`(実際に送信できたか)へ変更し(既存の唯一の他呼び出し元である`src/lib/passport.ts`は戻り値を使用しないため非破壊的な変更)、新設の`src/lib/integration-outbox.ts`(`enqueueOutboxEvent`/`markOutboxSent`/`markOutboxFailed`/`listPendingOrFailedOutboxEvents`、`integration_outbox_events`・`notification_outbox_events`の2テーブルを共通関数でパラメータ化)経由で、送信前にoutboxへ記録→送信試行→結果を反映、という流れに変更した。`src/lib/purchase-grants.ts`の`confirmReferralForPurchase()`・新設`notifyPlotPurchaseViaOutbox()`がこの流れを実装する。管理画面からの手動再送用に`POST /api/admin/integration-outbox/drain`(`requireManagerRole()`で保護)・一覧取得用`GET /api/admin/integration-outbox`を新設し、`/admin/integration-recovery`画面に一覧表示+全件再送ボタンのセクションを追加した。
+
+**設計判断**: 全体統合対応PR5で用意されていた`src/lib/integration-outbox.ts`(`source_type`/`source_id`を持たず`integration_outbox_events`専用、冪等性のための一意キーが無い)は、grepで確認した通り本PR以前は呼び出し元が存在せず未使用だったため、本PRの要件(2テーブル共用・`source_type`/`source_id`による冪等enqueue)に合わせて全面的に置き換えた。`integration_outbox_events`への`source_type`/`source_id`列追加(NOT NULL)は、既存行が無い前提のマイグレーションであるため、本番適用前に`select count(*) from integration_outbox_events;`で0件であることを確認する必要がある旨をマイグレーションのコメントに明記した。
+
+**未対応の残存事項**: `notifyPlotPurchaseViaOutbox()`は、LINE未連携・LINE設定未登録等の「送信不要な対象外ケース」(`notifyPlotPurchase()`が`false`を返す場合)も`sent`として記録する設計とした(再送しても意味が無いため)。これにより、outbox一覧上は「実際に送信を試みて失敗した」ケースと「そもそも送信対象外だった」ケースが区別できない(いずれも最終的に`sent`または`failed`のいずれかに収束するのみで、後者を示す専用ステータスは無い)。運用上問題になる場合は、専用ステータス(例: `skipped`)の追加を別途検討する。

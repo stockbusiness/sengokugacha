@@ -205,3 +205,34 @@
 - `handleCommonUserMerged()`の統合先競合パス(target側に既に別ユーザーが割当済み)でも`markUnresolvedCommonUserMergeResolved()`を呼ぶようにした。これは「統合元ユーザーが同期された」という当初の未解決理由(`source_user_not_found`)が解消されたことを示すためであり、統合先競合という別の問題(`common_user_merge_conflicts`で別途追跡)が残っていても、`unresolved_common_user_merges`側の記録としては役目を終えたと判断した。
 
 **検証**: `rm -rf .next && npx tsc --noEmit` / `npm run lint` / `npx vitest run`(152/152、変更なし。本PRはDB依存のイベント処理・新規APIルートのみでunit test化可能な新規純粋ロジックは無い) / `npm run build` 全て通過(新規ルート`retry-common-user-merges`/`unresolved-common-user-merges`がビルド出力に含まれることを確認)。DB統合テストは未実施(前提を参照)。
+
+## PR9: fix: move external purchase side effects to outbox
+
+**対象**: §4.3.3(Phase A-1残: 外部副作用のoutbox化)
+
+**変更ファイル**:
+- `supabase/migrations/20260808000009_purchase_outbox.sql`(新規)
+  - `integration_outbox_events`(全体統合対応PR5で新設・これまで呼び出し元が無かった)へ`source_type`/`source_id`列(NOT NULL)を追加し、`unique(source_type, source_id, event_type, target_system_key)`制約を追加。
+  - `notification_outbox_events`(新規テーブル): `source_type`/`source_id`/`event_type`/`target_system_key`(default `'line'`)/`payload`/`status`(pending/sent/failed)/`attempt_count`/`last_error`/`created_at`/`sent_at`、同じunique制約。
+- `src/lib/integration-outbox.ts`(全面書き換え)
+  - 旧実装(`source_type`/`source_id`を持たず`integration_outbox_events`専用、呼び出し元皆無)を、`OutboxTable`(2テーブル)をパラメータとして受け取る汎用実装へ置き換え。`enqueueOutboxEvent()`(unique制約違反`23505`検知による冪等insert)・`markOutboxSent()`・`markOutboxFailed()`・`listPendingOrFailedOutboxEvents()`を追加。
+- `src/lib/common-user-hub.ts`(変更)
+  - `confirmReferral()`の戻り値を`Promise<void>`から`Promise<boolean>`(`postToAgencySystem()`の結果が`null`でないか)へ変更。
+- `src/lib/castle-notifications.ts`(変更)
+  - `notifyPlotPurchase()`を`sendBestEffort()`(ログのみで例外を握りつぶす)経由から`pushMessage()`直接呼び出しへ変更し、戻り値を`Promise<boolean>`(実際に送信を試みたか)へ変更。送信失敗時は例外をそのまま呼び出し元(`purchase-grants.ts`)へ伝播させる(他の通知関数`notifyContractTransition`/`notifyCommissionConfirmed`/`notifyCommissionReversed`は変更なし、`sendBestEffort`のfail-open方針を維持)。
+- `src/lib/purchase-grants.ts`(変更)
+  - `confirmReferralForPurchase()`を、送信前に`integration_outbox_events`へenqueueし、`confirmReferral()`の戻り値に応じて`markOutboxSent`/`markOutboxFailed`を呼ぶ実装へ書き換え。
+  - 新設`notifyPlotPurchaseViaOutbox()`: `notification_outbox_events`へのenqueue→`notifyPlotPurchase()`呼び出し→結果記録(例外時も`markOutboxFailed`で捕捉)。`runPurchaseGrant()`の`land_plot`分岐で`notifyPlotPurchase()`直接呼び出しからこの関数経由へ変更。
+- `src/app/api/admin/integration-outbox/route.ts`(新規)
+  - `GET`: 2テーブルの未送信・失敗イベント一覧を返す(`getAdminSession()`のみ、読み取り専用のため他の一覧系routeと同じ認可レベル)。
+- `src/app/api/admin/integration-outbox/drain/route.ts`(新規)
+  - `POST`: `requireManagerRole()`で保護。2テーブルの未送信・失敗イベントを再送し(`event_type`別に`confirmReferral()`/`notifyPlotPurchase()`を呼び分け)、結果を記録・監査ログに記録する。Cron等のバックグラウンドジョブ基盤が無いため、既存の`retry-agent-assignments`等と同じ「管理者トリガーによる全件再試行」方式を踏襲。
+- `src/app/admin/(dashboard)/integration-recovery/page.tsx`(変更)
+  - 「購入イベント外部送信(未送信・失敗)」セクションを追加(一覧表示+「全件再送を試行」ボタン、既存の各セクションと同じUIパターン)。
+
+**設計判断**:
+- `confirmReferral()`/`notifyPlotPurchase()`を「例外を投げるよう変更する」のではなく「戻り値でboolean結果を返す」設計にしたのは、両関数の「主処理(購入・登録)を絶対に止めない」という既存のfail-open方針そのものは維持しつつ、新規の呼び出し元(outbox経由の`purchase-grants.ts`)だけが送信結果を検知できるようにするため。他の既存呼び出し元(`confirmReferral()`の`passport.ts`)は戻り値を使用しないため、この変更は非破壊的である(grepで確認済み)。
+- `src/lib/integration-outbox.ts`(全体統合対応PR5で新設)は、grepで確認した通り呼び出し元が一つも無い未使用コードだったため、削除して作り直すのではなく既存ファイルの内容を全面的に置き換える形にした(`stripe-inbox.ts`削除(PR4)・`rarity.ts`/`conquest-policy.ts`削除(PR6)と同じ「完全に置き換わった既存基盤コードは残さない」という本バグ修正シリーズの一貫方針)。
+- `notifyPlotPurchaseViaOutbox()`は、LINE未連携等の「送信対象外」ケース(`notifyPlotPurchase()`が`false`を返す)も`markOutboxSent()`で「送信済み」扱いにする。これは「対象外」を再送しても意味が無いためだが、結果として「実際に送信を試みて失敗した」ケースとの区別がステータス上つかない(いずれの理由でも最終的に`sent`または`failed`に収束する)。
+
+**検証**: `rm -rf .next && npx tsc --noEmit` / `npm run lint`(0 errors, 2 warnings、既存の`<img>`警告のみ) / `npx vitest run`(152/152、変更なし。本PRは外部副作用の記録経路変更のみでunit test化可能な新規純粋ロジックは無い) / `npm run build` 全て通過(新規ルート`/api/admin/integration-outbox`・`/api/admin/integration-outbox/drain`がビルド出力に含まれることを確認)。DB統合テストは未実施(前提を参照)。

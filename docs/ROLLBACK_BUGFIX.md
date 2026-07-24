@@ -240,3 +240,29 @@ alter table unresolved_agent_assignments add constraint unresolved_agent_assignm
 ### 影響範囲
 
 本PRは`unresolved_agent_assignments`のcheck制約変更、`unresolved_common_user_merges`テーブルの新設、および`src/lib/agency-events.ts`内の「対象ユーザー未検出時の挙動」の変更(イベント破棄→保存)のみで、既存の`users`・`unresolved_agent_assignments`・`common_user_merge_conflicts`テーブルの既存データには影響しない。ロールバックしても既存の代理店紐付け・共通ユーザー統合データは変更されない。
+
+## PR9: fix: move external purchase side effects to outbox
+
+### ロールバック手順
+
+1. 該当コミットを`git revert`する。ロールバックすると`confirmReferral()`/`notifyPlotPurchase()`は本PR以前の戻り値(`Promise<void>`)・実装(fail-open/`sendBestEffort`経由)に戻り、`src/lib/purchase-grants.ts`の`confirmReferralForPurchase()`/`notifyPlotPurchaseViaOutbox()`はoutbox記録を行わない旧実装に戻る。新規の2ルート(`/api/admin/integration-outbox`・`/api/admin/integration-outbox/drain`)と管理画面の「購入イベント外部送信」セクションも削除される。`src/lib/integration-outbox.ts`は本PR以前の実装(`source_type`/`source_id`を持たない旧`enqueueOutboxEvent()`等、呼び出し元が無い状態)に戻る。
+2. `notification_outbox_events`テーブル・`integration_outbox_events`への列追加を戻す場合は以下を適用する:
+
+```sql
+drop table if exists notification_outbox_events;
+
+alter table integration_outbox_events drop constraint if exists integration_outbox_events_source_event_target_key;
+
+alter table integration_outbox_events
+  drop column if exists source_type,
+  drop column if exists source_id;
+```
+
+3. `notification_outbox_events`をDROPすると、その時点で保存されていた未送信・送信失敗のLINE通知イベントの記録が完全に失われる。ロールバック後もこれらを再送したい場合は、DROPする前にテーブルの内容をバックアップしておくこと。
+4. `integration_outbox_events`の列を削除する前に、本PR以降に記録された行(`source_type`/`source_id`が設定されている行)の扱いを確認する。列削除は行自体を削除しないため、`source_type`/`source_id`以外の情報(`event_type`/`payload`/`status`等)は残るが、本PRで追加したunique制約による冪等性は失われる。
+
+### 影響範囲
+
+本PRは`integration_outbox_events`への列追加(NOT NULL、既存行0件が前提)、`notification_outbox_events`テーブルの新設、`confirmReferral()`/`notifyPlotPurchase()`の戻り値変更(既存の他の呼び出し元は戻り値を使用しないため非破壊的)、および購入権利付与フロー内の外部送信呼び出し経路の変更のみで、既存の`purchases`・`purchase_grant_steps`・`users`テーブルの既存データには影響しない。ロールバックしても、外部システムへの実際の送信内容(送信先・ペイロード)自体は変更されない(記録・追跡方法のみが変わる)。
+
+**注意**: 本PRの適用前に本番の`integration_outbox_events`に既存行がある場合(全体統合対応PR5時点で想定されていなかったケース)、マイグレーションの`NOT NULL`列追加が失敗する。適用前に`select count(*) from integration_outbox_events;`で0件であることを必ず確認すること(マイグレーションのコメントにも明記済み)。
