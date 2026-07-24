@@ -14,6 +14,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from("common_user_merge_conflicts")
     .select("id, source_common_user_id, target_common_user_id, source_user_id, conflicting_target_user_id, created_at")
+    .is("resolved_at", null)
     .order("created_at", { ascending: false })
     .limit(200);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

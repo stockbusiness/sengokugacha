@@ -193,3 +193,28 @@ drop table if exists gacha_daily_usage;
 本PRは`gacha_daily_usage`テーブルの新設、`gacha_logs`/`achievements`テーブルへの列・制約追加、および`src/lib/gacha.ts`の書き込みロジックのSQL側への移設のみで、既存の`user_warlords`・`user_provinces`・`gacha_logs`・`achievements`・`users`テーブルの既存カラム・既存データには影響しない。ロールバックしても既存の武将所持数・国制覇状況・実績・残高データは変更されない。
 
 **注意**: `achievements_user_id_achievement_type_key`制約はロールバック後もDB上に残しておくこと自体は害が無い(旧コードのSELECT→INSERTパターンと併存しても、正常系では制約に抵触しない)。ロールバックの一環として制約自体を削除する必要は本来無いが、旧実装の挙動を完全に復元したい場合の手順として上記に含めた。
+
+## PR7: fix: require manager role for integration-recovery admin actions
+
+### ロールバック手順
+
+1. 該当コミットを`git revert`する。ロールバックすると4つのAPIルートは`requireManagerRole()`チェック無しの実装に戻り、`merge-conflicts/[id]/resolve`・`unresolved-agent-assignments/[id]/dismiss`はDELETEベースの実装に戻る。
+2. `resolved_at`/`resolved_by`/`resolution_note`列を戻す場合は以下を適用する:
+
+```sql
+alter table common_user_merge_conflicts
+  drop column if exists resolved_at,
+  drop column if exists resolved_by,
+  drop column if exists resolution_note;
+
+alter table unresolved_agent_assignments
+  drop column if exists resolved_at,
+  drop column if exists resolved_by,
+  drop column if exists resolution_note;
+```
+
+3. ロールバック前に、本PR以降にresolve/dismissされた行(`resolved_at`が設定されている行)が無いことを確認する。列を削除すると、旧コード(DELETEベース)へ戻った直後にそれらの行が「未解決」として管理画面に再表示されてしまう(データが失われるわけではないが、既に対応済みの案件が再度目に入ることになる)。気になる場合は、列を削除する前に該当行を手動でDELETEしておく。
+
+### 影響範囲
+
+本PRは`common_user_merge_conflicts`・`unresolved_agent_assignments`テーブルへの列追加と、4つのAPIルートの認可チェック・DB操作方法の変更のみで、既存カラム・既存データには影響しない。ロールバックしても解決済み・未解決を問わず既存の行データは変更されない(列を削除した場合のみ、上記2の通り「解決済み」の情報が失われる)。

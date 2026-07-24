@@ -68,28 +68,32 @@ export default function IntegrationRecoveryPage() {
   }
 
   async function handleResolveMergeConflict(id: string) {
+    setMessage("");
     setBusyId(id);
     try {
       const res = await fetch(`/api/admin/integrations/sen-no-kuni-hub/merge-conflicts/${id}/resolve`, { method: "POST" });
-      if (!res.ok) throw new Error();
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "解決済みへの更新に失敗しました。");
       await load();
-    } catch {
-      setMessage("解決済みへの更新に失敗しました。");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "解決済みへの更新に失敗しました。");
     } finally {
       setBusyId(null);
     }
   }
 
   async function handleDismissUnresolvedAssignment(id: string) {
+    setMessage("");
     setBusyId(id);
     try {
       const res = await fetch(`/api/admin/integrations/sen-no-kuni-hub/unresolved-agent-assignments/${id}/dismiss`, {
         method: "POST",
       });
-      if (!res.ok) throw new Error();
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "却下に失敗しました。");
       await load();
-    } catch {
-      setMessage("却下に失敗しました。");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "却下に失敗しました。");
     } finally {
       setBusyId(null);
     }

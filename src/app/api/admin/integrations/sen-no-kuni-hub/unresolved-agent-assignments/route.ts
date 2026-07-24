@@ -13,6 +13,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from("unresolved_agent_assignments")
     .select("id, common_user_id, reason, created_at, updated_at")
+    .is("resolved_at", null)
     .order("updated_at", { ascending: false })
     .limit(200);
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });

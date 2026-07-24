@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
+import { getAdminActorName, getAdminSession, requireManagerRole } from "@/lib/admin-session";
 import { logAdminAction } from "@/lib/admin-audit-log";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
@@ -9,9 +9,14 @@ import { createSupabaseServerClient } from "@/lib/supabase-server";
 // 削除アクションとして提供する(cleanup_expired_sen_no_kuni_hub_nonces()、
 // マイグレーション20260807000006)。24時間より前のnonceはタイムスタンプ許容誤差
 // (5分)を大きく超えており、削除してもリプレイ防止の実効性を失わない。
+// モジュール化後バグ修正・Phase B改修指示書§9。連携基盤に影響する操作のため
+// 本部管理者(manager)のみ許可する。
 export async function POST() {
   if (!(await getAdminSession())) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  if (!(await requireManagerRole())) {
+    return NextResponse.json({ error: "この操作は本部管理者のみ実行できます" }, { status: 403 });
   }
 
   const supabase = createSupabaseServerClient();

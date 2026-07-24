@@ -154,3 +154,30 @@
 **未対応の残存事項・既知の制約**: `docs/IMPLEMENTATION_STATUS_BUGFIX.md`のPR6セクションに記載の通り、選出可能国一覧のTOCTOU(既存実装から変更なし、実害は限定的)、`xmax = 0`イディオムの実地未確認、`date`型RPCパラメータの実地未確認、`achievements`への新規unique制約適用前の重複データ確認が必要である旨を記録した。
 
 **検証**: `rm -rf .next && npx tsc --noEmit` / `npm run lint` / `npx vitest run`(152/152、`draw-limit.test.ts`へ3件追加・`rarity.test.ts`5件と`conquest-policy.test.ts`5件を削除、159→152) / `npm run build` 全て通過。DB統合テストは未実施(前提を参照)。本PRはガチャという中核機能への大規模な変更であり、通常のP0修正PRより慎重なコードレビューを行った(SQL側のロジックが既存TSロジックと1対1で対応することを個別に確認済み、詳細は本セクションの「設計判断」を参照)。
+
+## PR7: fix: require manager role for integration-recovery admin actions
+
+**対象**: §9(管理画面権限修正)
+
+**変更ファイル**:
+- `supabase/migrations/20260808000007_integration_recovery_soft_resolve.sql`(新規)
+  - `common_user_merge_conflicts`・`unresolved_agent_assignments`へ`resolved_at timestamptz`・`resolved_by text`・`resolution_note text`列を追加。
+- `src/app/api/admin/integrations/sen-no-kuni-hub/cleanup-nonces/route.ts`・`retry-agent-assignments/route.ts`(変更)
+  - `requireManagerRole()`を追加し、managerロールでない場合は403を返す。
+- `src/app/api/admin/integrations/sen-no-kuni-hub/merge-conflicts/[id]/resolve/route.ts`(変更)
+  - `requireManagerRole()`を追加。対象行のDELETEを、`resolved_at`/`resolved_by`/`resolution_note`を設定するUPDATEに変更。既に`resolved_at`が設定済みの行への再操作は409で拒否する(冪等な多重クリック対策)。`logAdminAction()`の`before`/`after`に更新前後のスナップショットを記録。リクエストボディの任意の`resolutionNote`を記録できるようにした。
+- `src/app/api/admin/integrations/sen-no-kuni-hub/unresolved-agent-assignments/[id]/dismiss/route.ts`(変更)
+  - 上記と同じ変更(`resolve`→`dismiss`)。
+- `src/app/api/admin/integrations/sen-no-kuni-hub/merge-conflicts/route.ts`・`unresolved-agent-assignments/route.ts`(変更)
+  - 一覧取得(GET)を`resolved_at is null`で絞り込むよう変更。DELETEからUPDATEへの変更に伴い、解決・却下済みの行が一覧に残り続けないようにするため。
+- `src/app/admin/(dashboard)/integration-recovery/page.tsx`(変更)
+  - `handleResolveMergeConflict()`/`handleDismissUnresolvedAssignment()`が、失敗時にサーバーの`error`メッセージ(403時の「本部管理者のみ実行できます」等)を表示するよう変更(`cleanup-nonces`/`retry-agent-assignments`の既存ハンドラと同じパターンに揃えた)。
+
+**設計判断**:
+- 指示書§9の対象4APIのうち、`cleanup-nonces`/`retry-agent-assignments`は単一行への操作ではない(nonce一括削除・複数行の再試行)ため、`requireManagerRole()`の追加のみとし、soft-resolve化の対象外とした。`merge-conflicts/resolve`/`unresolved-agent-assignments/dismiss`の2つは単一行の恒久的な状態変更のため、soft-resolve化(DELETE→UPDATE)を適用した。
+- `resolved_at`が既に設定されている行への再操作を409で拒否するのは、指示書に明記された要件ではないが、DELETEからUPDATEへ変更したことで「既に処理済みの行に対して誤って再度resolve/dismissを押す」という新しい操作ミスの可能性が生まれたため、防御的に追加した(元のDELETE実装では2回目の呼び出しは「対象が見つからない」という形で自然に無害化されていたが、UPDATEでは対象行が存在し続けるため、明示的なガードが必要と判断した)。
+- `unresolved_agent_assignments`の自動解決経路(`handleAssignedAgentUpdated()`が成功時に該当行を自己削除する、`src/lib/agency-events.ts`)は指示書§9の対象4API に含まれないため変更していない(引き続きハードDELETE)。管理者による手動判断(dismiss)のみをsoft-resolve化の対象とした。
+
+**未対応の残存事項**: `resolutionNote`の入力UIは`/admin/integration-recovery`画面に追加していない(APIはリクエストボディで受け取れるが、現状のUIからは送信されない)。
+
+**検証**: `rm -rf .next && npx tsc --noEmit` / `npm run lint` / `npx vitest run`(152/152、変更なし。本PRは認可チェック追加とDB操作の変更のみでunit test化可能な新規純粋ロジックは無い) / `npm run build` 全て通過。DB統合テストは未実施(前提を参照)。
