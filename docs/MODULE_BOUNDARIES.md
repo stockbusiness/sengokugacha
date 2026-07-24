@@ -80,8 +80,22 @@ HMAC署名検証(`verifySenNoKuniHubRequest`)、inboxの原子的claim(`claimInb
 ### identity・entitlements・wallet(domain層なし)
 
 - **identity**: セッション(`src/lib/session.ts`/`admin-session.ts`/`agent-session.ts`)はほぼ全体がCookie読み書き(`next/headers`依存)であり、DB非依存の純粋関数はJWT署名・検証部分のみ。この部分は`src/shared/auth/`へ統合済み(モジュール専用のdomain層ではなく共有インフラとして配置、詳細は`docs/ARCHITECTURE.md`)。
-- **entitlements**: `src/lib/entitlements.ts`・`shopping-order-events.ts`・`atomic-balance.ts`を全て確認したが、DB呼び出しに直結しない純粋関数は存在しなかった(PR8で確認済み)。
+- **entitlements**: `src/lib/entitlements.ts`・`shopping-order-events.ts`・`atomic-balance.ts`を全て確認したが、DB呼び出しに直結しない純粋関数は存在しなかった(PR8で確認済み)。domain層は無いままだが、Phase B-1(PR1)で`src/lib/entitlements.ts`の実装本体を`src/modules/entitlements/application/`(付与/取消/更新のオーケストレーション、`ports.ts`の`EntitlementRepository`インターフェースのみに依存)・`src/modules/entitlements/infrastructure/`(`SupabaseEntitlementRepository`、Supabase呼び出しの実装)へ分離した。詳細は下記「Phase B-1: application/infrastructure層の導入」を参照。
 - **wallet**: 独立したウォレット台帳への全面移行自体が指示書のスコープ外(既存のkokudaka/gacha_tickets列を維持する方針)。
+
+## Phase B-1: application/infrastructure層の導入(entitlementsモジュール、PR1)
+
+モジュール化(PR1〜PR14)ではdomain層(純粋関数)のみを`src/modules/*/domain/`へ抽出し、DB呼び出しを伴うapplication/infrastructure層は意図的に`src/lib/*.ts`に残していた(理由: DB統合テスト基盤が無く、大規模な移動はリグレッションリスクが高いため。`docs/ARCHITECTURE.md`参照)。
+
+モジュール化後バグ修正・Phase B改修指示書のPhase B-1は、この残された部分にもRepository/Application層を導入することを求める。ただし同じ理由(DB統合テスト基盤が無い)により、**最小リスク方針**を採用する:
+
+- `src/modules/<モジュール名>/application/ports.ts`: Repositoryインターフェース(ポート)を定義する。application層はこのインターフェースのみに依存し、`createSupabaseServerClient()`・`supabase.from()`・`supabase.rpc()`・`fetch()`・`NextRequest`/`NextResponse`を直接呼ばない。
+- `src/modules/<モジュール名>/application/*.ts`: ユースケースのオーケストレーション(例: `grant-entitlement.ts`の`grantEntitlement()`)。既存の`src/lib/*.ts`にあった分岐・エラーメッセージ・処理順序をそのまま移設する(挙動変更はしない)。
+- `src/modules/<モジュール名>/infrastructure/supabase-*-repository.ts`: Repositoryインターフェースの実装。既存の`src/lib/*.ts`にあったSupabaseクエリ・RPC呼び出しをそのまま移設する。
+- **単一トランザクションのPostgres関数呼び出し(例: `process_entitlement_grant()`)は分割せず、1つのRepositoryメソッド呼び出しとして丸ごとラップする。** ここでトランザクション境界を分割すると、バグ修正PR1〜PR6で解消した二重付与・二重取消等の競合状態バグが再発するリスクがあり、DB統合テストが無いため回帰を自動検知できないため、意図的に分割しない。
+- 既存の`src/lib/*.ts`のexportされた関数シグネチャ・挙動は完全に維持し、内部でRepositoryを生成してapplication層の関数を呼ぶだけの薄い互換ラッパーにする。呼び出し元(`src/app/api/**`)の変更は不要。
+
+`src/modules/architecture-rules.test.ts`のCI検証対象は`domain/`ディレクトリのみであり、`application/`・`infrastructure/`は対象外(Supabase等への依存は設計上想定内のため)。
 
 ## 依存方向の要約図
 
