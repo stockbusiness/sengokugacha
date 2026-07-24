@@ -130,6 +130,18 @@ export async function handleEntitlementGranted(body: Record<string, unknown>, sy
   await applyPendingRevocationIfAny(supabase, systemKey, entitlementId);
 }
 
+// 千ノ国パスポート モジュール化後バグ修正・Phase B改修指示書§5.5後半。
+// 管理画面(未解決entitlement一覧)からの手動再解決トリガー用。process_entitlement_grant()を
+// 直接呼び出し、common_user_idに対応するローカルユーザーの同期が進んでいれば残高付与まで
+// 完了させる(handleEntitlementGranted()と異なり、entitlement行の新規作成・
+// entitlement_pending_revocationsの適用は行わない。既に存在する行の再解決のみを対象とする)。
+export async function retryResolveEntitlementGrant(entitlementRowId: string): Promise<ProcessEntitlementGrantResult> {
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase.rpc("process_entitlement_grant", { p_entitlement_row_id: entitlementRowId }).single();
+  if (error) throw error;
+  return data as ProcessEntitlementGrantResult;
+}
+
 export async function handleEntitlementUpdated(body: Record<string, unknown>, systemKey: string): Promise<void> {
   const entitlementId = typeof body.entitlement_id === "string" ? body.entitlement_id : null;
   if (!entitlementId) throw new Error("entitlement_idが不足しています");

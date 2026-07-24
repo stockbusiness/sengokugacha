@@ -29,6 +29,16 @@ type UnresolvedCommonUserMerge = {
   updated_at: string;
 };
 
+type UnresolvedEntitlement = {
+  id: string;
+  entitlement_id: string;
+  common_user_id: string;
+  source_system_key: string;
+  entitlement_type: string;
+  application_attempt_count: number;
+  granted_at: string;
+};
+
 type OutboxEvent = {
   id: string;
   source_type: string;
@@ -56,6 +66,7 @@ export default function IntegrationRecoveryPage() {
   const [unresolvedAssignments, setUnresolvedAssignments] = useState<UnresolvedAgentAssignment[]>([]);
   const [unresolvedMerges, setUnresolvedMerges] = useState<UnresolvedCommonUserMerge[]>([]);
   const [outboxEvents, setOutboxEvents] = useState<OutboxEvent[]>([]);
+  const [unresolvedEntitlements, setUnresolvedEntitlements] = useState<UnresolvedEntitlement[]>([]);
   const [message, setMessage] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -65,18 +76,26 @@ export default function IntegrationRecoveryPage() {
       fetch("/api/admin/integrations/sen-no-kuni-hub/unresolved-agent-assignments"),
       fetch("/api/admin/integrations/sen-no-kuni-hub/unresolved-common-user-merges"),
       fetch("/api/admin/integration-outbox"),
+      fetch("/api/admin/entitlements/unresolved"),
     ])
-      .then(([conflictsRes, unresolvedRes, unresolvedMergesRes, outboxRes]) => {
-        if (!conflictsRes.ok || !unresolvedRes.ok || !unresolvedMergesRes.ok || !outboxRes.ok) {
+      .then(([conflictsRes, unresolvedRes, unresolvedMergesRes, outboxRes, unresolvedEntitlementsRes]) => {
+        if (!conflictsRes.ok || !unresolvedRes.ok || !unresolvedMergesRes.ok || !outboxRes.ok || !unresolvedEntitlementsRes.ok) {
           throw new Error("読み込みに失敗しました");
         }
-        return Promise.all([conflictsRes.json(), unresolvedRes.json(), unresolvedMergesRes.json(), outboxRes.json()]);
+        return Promise.all([
+          conflictsRes.json(),
+          unresolvedRes.json(),
+          unresolvedMergesRes.json(),
+          outboxRes.json(),
+          unresolvedEntitlementsRes.json(),
+        ]);
       })
-      .then(([conflicts, unresolved, unresolvedMergesData, outboxData]) => {
+      .then(([conflicts, unresolved, unresolvedMergesData, outboxData, unresolvedEntitlementsData]) => {
         setMergeConflicts(conflicts);
         setUnresolvedAssignments(unresolved);
         setUnresolvedMerges(unresolvedMergesData);
         setOutboxEvents([...outboxData.integrationEvents, ...outboxData.notificationEvents]);
+        setUnresolvedEntitlements(unresolvedEntitlementsData);
         setStatus("ready");
       })
       .catch(() => setStatus("error"));
@@ -179,6 +198,37 @@ export default function IntegrationRecoveryPage() {
       await load();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "再送に失敗しました。");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleRetryResolveEntitlements() {
+    setMessage("");
+    setBusyId("retry-entitlements-all");
+    try {
+      const res = await fetch("/api/admin/entitlements/retry-resolve", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "再解決に失敗しました");
+      setMessage(`${data.retriedCount}件を再試行し、${data.resolvedCount}件解決しました。`);
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "再解決に失敗しました。");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleDismissUnresolvedEntitlement(id: string) {
+    setMessage("");
+    setBusyId(id);
+    try {
+      const res = await fetch(`/api/admin/entitlements/${id}/dismiss`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "却下に失敗しました。");
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "却下に失敗しました。");
     } finally {
       setBusyId(null);
     }
@@ -368,6 +418,54 @@ export default function IntegrationRecoveryPage() {
                 <p>
                   試行回数: {e.attempt_count} / 登録: {new Date(e.created_at).toLocaleString("ja-JP")}
                 </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">未解決のentitlement(残高付与保留)</h2>
+          <button
+            onClick={handleRetryResolveEntitlements}
+            disabled={busyId === "retry-entitlements-all" || unresolvedEntitlements.length === 0}
+            className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+          >
+            全件再解決を試行
+          </button>
+        </div>
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          common_user_idに対応するローカルユーザーがまだ同期されておらず、残高付与を保留しているentitlementです。該当ユーザーの登録・common_user_id同期が進んだ後に「全件再解決を試行」で再処理できます。解消の見込みが無い場合は個別に却下できます。
+        </p>
+        {status === "loading" && <p className="text-sm text-zinc-500 dark:text-zinc-400">読み込み中...</p>}
+        {status === "error" && <p className="text-sm text-red-700 dark:text-red-400">読み込みに失敗しました。</p>}
+        {status === "ready" && unresolvedEntitlements.length === 0 && (
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">未解決のentitlementはありません。</p>
+        )}
+        {status === "ready" && unresolvedEntitlements.length > 0 && (
+          <div className="space-y-2">
+            {unresolvedEntitlements.map((e) => (
+              <div
+                key={e.id}
+                className="flex items-center justify-between rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950"
+              >
+                <div className="text-xs text-zinc-600 dark:text-zinc-400">
+                  <p>
+                    entitlement_id: {e.entitlement_id} / common_user_id: {e.common_user_id} / source_system_key: {e.source_system_key} /
+                    entitlement_type: {e.entitlement_type}
+                  </p>
+                  <p>
+                    受信: {new Date(e.granted_at).toLocaleString("ja-JP")} / 再試行回数: {e.application_attempt_count}
+                  </p>
+                </div>
+                <button
+                  onClick={() => handleDismissUnresolvedEntitlement(e.id)}
+                  disabled={busyId === e.id}
+                  className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-semibold text-zinc-700 hover:border-zinc-400 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300"
+                >
+                  却下
+                </button>
               </div>
             ))}
           </div>
