@@ -119,3 +119,17 @@
 - `execute_gacha_draw()`の`xmax = 0`による新規獲得判定は標準的なPostgresイディオムだが、DB統合テスト環境が無いため実行結果としての確認はできていない。
 - `p_business_date`はPostgreSQLの`date`型パラメータとしてISO 8601文字列("YYYY-MM-DD")をSupabase経由で渡す設計だが、実際のPostgREST/Supabase-js経由での型変換の実地確認はできていない。
 - `achievements`への`unique(user_id, achievement_type)`制約追加は、既存データに重複行が無いことを前提とする。本番適用前に`select user_id, achievement_type, count(*) from achievements group by 1, 2 having count(*) > 1;`で重複が無いことを確認すること(重複があればマイグレーション適用が失敗する)。
+
+## §9: 管理画面権限修正
+
+### PR7: fix: require manager role for integration-recovery admin actions
+
+| 項目 | 状況 |
+|---|---|
+| 4つのAPI(`cleanup-nonces`/`retry-agent-assignments`/`merge-conflicts/[id]/resolve`/`unresolved-agent-assignments/[id]/dismiss`)を`requireManagerRole()`でmanager限定にする | 1. ソースコード上で実装済み |
+| 記録を単純削除せず`resolved_at`/`resolved_by`/`resolution_note`を保持する(resolve/dismissの2つ) | 1. ソースコード上で実装済み |
+| 監査ログ(actor/action/target ID/before/after/reason/executed_at) | 1. ソースコード上で実装済み(`executed_at`は`admin_audit_logs.created_at`の既存自動記録、`reason`は`resolutionNote`として`logAdminAction()`の`details`引数に記録) |
+
+**実装内容の要約**: `supabase/migrations/20260808000007_integration_recovery_soft_resolve.sql`で`common_user_merge_conflicts`・`unresolved_agent_assignments`へ`resolved_at`/`resolved_by`/`resolution_note`列を追加した。4つのAPIルートすべてに`getAdminSession()`(既存)に加えて`requireManagerRole()`のチェックを追加し、operatorロールでは403を返すようにした。`merge-conflicts/[id]/resolve`・`unresolved-agent-assignments/[id]/dismiss`は、対象行をDELETEする実装から、`resolved_at`/`resolved_by`/`resolution_note`を設定するUPDATEに変更し、`logAdminAction()`の`before`/`after`スナップショットに更新前後の行データを記録するようにした(任意で`resolutionNote`をリクエストボディから受け取る)。一覧取得API(`merge-conflicts`・`unresolved-agent-assignments`のGET)は`resolved_at is null`で絞り込むよう変更し、既に解決・却下済みの行が管理画面に再表示されないようにした(既存UI`/admin/integration-recovery`の見た目・挙動は変更なし)。
+
+**未対応の残存事項**: `resolutionNote`の入力UIは管理画面(`/admin/integration-recovery`)には追加していない(APIはボディで受け取れるが、現状のUIは送信しないため常にnullで記録される)。将来的にUIから理由入力できるようにする余地があるが、本PRのスコープ(権限修正+ソフト削除化)には含めない。

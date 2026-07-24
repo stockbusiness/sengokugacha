@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
+import { getAdminActorName, getAdminSession, requireManagerRole } from "@/lib/admin-session";
 import { logAdminAction } from "@/lib/admin-audit-log";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { handleAssignedAgentUpdated } from "@/lib/agency-events";
@@ -9,9 +9,14 @@ import { handleAssignedAgentUpdated } from "@/lib/agency-events";
 // 後に手動で再解決する。Cron等のバックグラウンドジョブ基盤が無いため管理者トリガー方式。
 // handleAssignedAgentUpdated()は成功時に該当行を自己削除するため、呼び出し後に行が
 // 消えていれば解決成功とみなす。
+// モジュール化後バグ修正・Phase B改修指示書§9。連携基盤に影響する操作のため
+// 本部管理者(manager)のみ許可する。
 export async function POST() {
   if (!(await getAdminSession())) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+  if (!(await requireManagerRole())) {
+    return NextResponse.json({ error: "この操作は本部管理者のみ実行できます" }, { status: 403 });
   }
 
   const supabase = createSupabaseServerClient();
