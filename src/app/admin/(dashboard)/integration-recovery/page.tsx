@@ -29,6 +29,20 @@ type UnresolvedCommonUserMerge = {
   updated_at: string;
 };
 
+type OutboxEvent = {
+  id: string;
+  source_type: string;
+  source_id: string;
+  event_type: string;
+  target_system_key: string;
+  status: "pending" | "sent" | "failed";
+  attempt_count: number;
+  last_error: string | null;
+  created_at: string;
+  sent_at: string | null;
+  table: "integration_outbox_events" | "notification_outbox_events";
+};
+
 const REASON_LABEL: Record<string, string> = {
   agent_code_undetermined: "担当代理店コードを特定できず",
   agent_not_found: "該当代理店が未同期",
@@ -41,6 +55,7 @@ export default function IntegrationRecoveryPage() {
   const [mergeConflicts, setMergeConflicts] = useState<MergeConflict[]>([]);
   const [unresolvedAssignments, setUnresolvedAssignments] = useState<UnresolvedAgentAssignment[]>([]);
   const [unresolvedMerges, setUnresolvedMerges] = useState<UnresolvedCommonUserMerge[]>([]);
+  const [outboxEvents, setOutboxEvents] = useState<OutboxEvent[]>([]);
   const [message, setMessage] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -49,15 +64,19 @@ export default function IntegrationRecoveryPage() {
       fetch("/api/admin/integrations/sen-no-kuni-hub/merge-conflicts"),
       fetch("/api/admin/integrations/sen-no-kuni-hub/unresolved-agent-assignments"),
       fetch("/api/admin/integrations/sen-no-kuni-hub/unresolved-common-user-merges"),
+      fetch("/api/admin/integration-outbox"),
     ])
-      .then(([conflictsRes, unresolvedRes, unresolvedMergesRes]) => {
-        if (!conflictsRes.ok || !unresolvedRes.ok || !unresolvedMergesRes.ok) throw new Error("読み込みに失敗しました");
-        return Promise.all([conflictsRes.json(), unresolvedRes.json(), unresolvedMergesRes.json()]);
+      .then(([conflictsRes, unresolvedRes, unresolvedMergesRes, outboxRes]) => {
+        if (!conflictsRes.ok || !unresolvedRes.ok || !unresolvedMergesRes.ok || !outboxRes.ok) {
+          throw new Error("読み込みに失敗しました");
+        }
+        return Promise.all([conflictsRes.json(), unresolvedRes.json(), unresolvedMergesRes.json(), outboxRes.json()]);
       })
-      .then(([conflicts, unresolved, unresolvedMergesData]) => {
+      .then(([conflicts, unresolved, unresolvedMergesData, outboxData]) => {
         setMergeConflicts(conflicts);
         setUnresolvedAssignments(unresolved);
         setUnresolvedMerges(unresolvedMergesData);
+        setOutboxEvents([...outboxData.integrationEvents, ...outboxData.notificationEvents]);
         setStatus("ready");
       })
       .catch(() => setStatus("error"));
@@ -141,6 +160,25 @@ export default function IntegrationRecoveryPage() {
       await load();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "再解決に失敗しました。");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleDrainOutbox() {
+    setMessage("");
+    setBusyId("drain-outbox");
+    try {
+      const res = await fetch("/api/admin/integration-outbox/drain", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "再送に失敗しました");
+      setMessage(
+        `外部連携: ${data.integration.retried}件を再試行し${data.integration.sent}件送信、` +
+          `通知: ${data.notification.retried}件を再試行し${data.notification.sent}件送信しました。`
+      );
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "再送に失敗しました。");
     } finally {
       setBusyId(null);
     }
@@ -286,6 +324,49 @@ export default function IntegrationRecoveryPage() {
                 </p>
                 <p>
                   試行回数: {m.attempt_count} / 更新: {new Date(m.updated_at).toLocaleString("ja-JP")}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">購入イベント外部送信(未送信・失敗)</h2>
+          <button
+            onClick={handleDrainOutbox}
+            disabled={busyId === "drain-outbox" || outboxEvents.length === 0}
+            className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+          >
+            全件再送を試行
+          </button>
+        </div>
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          紹介confirm(sengoku-ai.com宛)・区画購入LINE通知のうち、未送信または送信失敗のイベントです。「全件再送を試行」で再送できます。
+        </p>
+        {status === "loading" && <p className="text-sm text-zinc-500 dark:text-zinc-400">読み込み中...</p>}
+        {status === "error" && <p className="text-sm text-red-700 dark:text-red-400">読み込みに失敗しました。</p>}
+        {status === "ready" && outboxEvents.length === 0 && (
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">未送信・失敗のイベントはありません。</p>
+        )}
+        {status === "ready" && outboxEvents.length > 0 && (
+          <div className="space-y-2">
+            {outboxEvents.map((e) => (
+              <div
+                key={e.id}
+                className="rounded-xl border border-zinc-200 bg-white p-4 text-xs text-zinc-600 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400"
+              >
+                <p>
+                  [{e.table === "integration_outbox_events" ? "外部連携" : "通知"}] {e.event_type} —{" "}
+                  {e.source_type}:{e.source_id} —{" "}
+                  <span className={e.status === "failed" ? "font-semibold text-red-700 dark:text-red-400" : "font-semibold text-amber-700 dark:text-amber-400"}>
+                    {e.status === "failed" ? "送信失敗" : "未送信"}
+                  </span>
+                </p>
+                {e.last_error && <p>直近エラー: {e.last_error}</p>}
+                <p>
+                  試行回数: {e.attempt_count} / 登録: {new Date(e.created_at).toLocaleString("ja-JP")}
                 </p>
               </div>
             ))}

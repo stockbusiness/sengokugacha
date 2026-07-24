@@ -98,11 +98,15 @@ export type ConfirmReferralInput = {
 };
 
 // ガイド10.2章 POST /api/referrals/confirm。登録確定・購入確定などの成果発生時に呼ぶ。
-export async function confirmReferral(input: ConfirmReferralInput): Promise<void> {
+// postToAgencySystem()は既存方針通りfail-open(例外を投げず、失敗時はnullを返す)。
+// 戻り値のboolean(送信成功したか)は、モジュール化後バグ修正・Phase B改修指示書§4.3.3で
+// 購入イベントの送信結果をoutboxへ記録する呼び出し元(src/lib/purchase-grants.ts)のために
+// 追加した。戻り値を使わない既存呼び出し元(src/lib/passport.ts)の挙動は変更しない。
+export async function confirmReferral(input: ConfirmReferralInput): Promise<boolean> {
   const config = await getOutboundConfig();
-  if (!config) return;
+  if (!config) return false;
 
-  await postToAgencySystem(config, "/api/referrals/confirm", {
+  const result = await postToAgencySystem(config, "/api/referrals/confirm", {
     session_key: input.referralSessionKey,
     system_key: COMMON_HUB_SYSTEM_KEY,
     external_user_id: input.externalUserId,
@@ -112,4 +116,5 @@ export async function confirmReferral(input: ConfirmReferralInput): Promise<void
     locked: true,
     metadata: input.metadata ?? undefined,
   });
+  return result !== null;
 }

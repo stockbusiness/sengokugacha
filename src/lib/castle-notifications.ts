@@ -55,16 +55,28 @@ export async function notifyContractTransition(
 }
 
 // 区画購入確定(Phase1スコープの4イベントのうち③)。
-export async function notifyPlotPurchase(buyerUserId: string, plotId: string | null): Promise<void> {
-  if (!plotId) return;
+// モジュール化後バグ修正・Phase B改修指示書§4.3.3。唯一の呼び出し元(src/lib/purchase-grants.ts)が
+// notification_outbox_eventsへの記録・送信結果の追跡を行うため、他の通知関数と異なり
+// ベストエフォート(sendBestEffort)で握りつぶさず、送信結果をboolean(実際に送信を試みたか)で
+// 返し、送信失敗時は例外をそのまま伝播する。
+export async function notifyPlotPurchase(buyerUserId: string, plotId: string | null): Promise<boolean> {
+  if (!plotId) return false;
   const lineUserId = await getLineUserIdByUserId(buyerUserId);
-  if (!lineUserId) return;
+  if (!lineUserId) return false;
 
   const supabase = createSupabaseServerClient();
   const { data: plot } = await supabase.from("castle_plots").select("name").eq("id", plotId).maybeSingle();
   const plotName = plot?.name ?? "区画";
 
-  await sendBestEffort(lineUserId, `【戦国パスポート】「${plotName}」のご購入が確定しました。マイページからご確認いただけます。`);
+  const settings = await getLineSettings();
+  if (!settings?.messaging_channel_access_token) return false;
+
+  await pushMessage(
+    settings.messaging_channel_access_token,
+    lineUserId,
+    `【戦国パスポート】「${plotName}」のご購入が確定しました。マイページからご確認いただけます。`
+  );
+  return true;
 }
 
 // 報酬確定(Phase1スコープの4イベントのうち④)。受取者がLINEユーザーとして
