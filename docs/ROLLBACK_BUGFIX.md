@@ -266,3 +266,23 @@ alter table integration_outbox_events
 本PRは`integration_outbox_events`への列追加(NOT NULL、既存行0件が前提)、`notification_outbox_events`テーブルの新設、`confirmReferral()`/`notifyPlotPurchase()`の戻り値変更(既存の他の呼び出し元は戻り値を使用しないため非破壊的)、および購入権利付与フロー内の外部送信呼び出し経路の変更のみで、既存の`purchases`・`purchase_grant_steps`・`users`テーブルの既存データには影響しない。ロールバックしても、外部システムへの実際の送信内容(送信先・ペイロード)自体は変更されない(記録・追跡方法のみが変わる)。
 
 **注意**: 本PRの適用前に本番の`integration_outbox_events`に既存行がある場合(全体統合対応PR5時点で想定されていなかったケース)、マイグレーションの`NOT NULL`列追加が失敗する。適用前に`select count(*) from integration_outbox_events;`で0件であることを必ず確認すること(マイグレーションのコメントにも明記済み)。
+
+## PR10: feat: add admin UI for unresolved entitlement resolution
+
+### ロールバック手順
+
+1. 該当コミットを`git revert`する。ロールバックすると新規3ルート(`/api/admin/entitlements/unresolved`・`/api/admin/entitlements/retry-resolve`・`/api/admin/entitlements/[id]/dismiss`)、`src/lib/entitlements.ts`の`retryResolveEntitlementGrant()`、管理画面の「未解決のentitlement」セクションが削除される。
+2. `entitlements`への列追加を戻す場合は以下を適用する:
+
+```sql
+alter table entitlements
+  drop column if exists resolution_dismissed_at,
+  drop column if exists resolution_dismissed_by,
+  drop column if exists resolution_dismissal_note;
+```
+
+3. 列を削除する前に、本PR以降に却下(`resolution_dismissed_at`設定済み)された行が無いことを確認する。列を削除すると、それらの行が旧コード(却下機能自体が存在しない状態)へ戻った直後に「未解決」として扱われる対象から外れる根拠(却下されていたという記録)が失われるが、`application_status`・`user_id`自体は変更されないため、既存の再送・再解決フロー(entitlement.granted再送等)には影響しない。
+
+### 影響範囲
+
+本PRは`entitlements`テーブルへの列追加(却下記録専用、既存の`application_status`/`user_id`等の状態列には影響しない)、および管理画面からの手動再解決・却下という新規操作の追加のみで、既存の`entitlements`・`users`テーブルの既存データ・既存の`process_entitlement_grant()`/`process_entitlement_revocation()`(PR3)の挙動には影響しない。ロールバックしても既存の残高・entitlement台帳データは変更されない。

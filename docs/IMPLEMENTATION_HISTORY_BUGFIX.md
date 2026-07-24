@@ -236,3 +236,28 @@
 - `notifyPlotPurchaseViaOutbox()`は、LINE未連携等の「送信対象外」ケース(`notifyPlotPurchase()`が`false`を返す)も`markOutboxSent()`で「送信済み」扱いにする。これは「対象外」を再送しても意味が無いためだが、結果として「実際に送信を試みて失敗した」ケースとの区別がステータス上つかない(いずれの理由でも最終的に`sent`または`failed`に収束する)。
 
 **検証**: `rm -rf .next && npx tsc --noEmit` / `npm run lint`(0 errors, 2 warnings、既存の`<img>`警告のみ) / `npx vitest run`(152/152、変更なし。本PRは外部副作用の記録経路変更のみでunit test化可能な新規純粋ロジックは無い) / `npm run build` 全て通過(新規ルート`/api/admin/integration-outbox`・`/api/admin/integration-outbox/drain`がビルド出力に含まれることを確認)。DB統合テストは未実施(前提を参照)。
+
+## PR10: feat: add admin UI for unresolved entitlement resolution
+
+**対象**: §5.5後半(Phase A-2残: 未解決entitlement管理画面)
+
+**変更ファイル**:
+- `supabase/migrations/20260808000010_unresolved_entitlements_dismissal.sql`(新規)
+  - `entitlements`へ`resolution_dismissed_at timestamptz`・`resolution_dismissed_by text`・`resolution_dismissal_note text`列を追加。
+- `src/lib/entitlements.ts`(変更)
+  - 新規`retryResolveEntitlementGrant(entitlementRowId)`: `process_entitlement_grant()`RPCを直接呼び出す薄いラッパー。`handleEntitlementGranted()`と異なり、entitlement行の新規作成・`entitlement_pending_revocations`の適用は行わない(既存行の再解決専用)。
+- `src/app/api/admin/entitlements/unresolved/route.ts`(新規)
+  - `GET`: `application_status='not_applied'` かつ `user_id is null` かつ `resolution_dismissed_at is null` の一覧を返す(`getAdminSession()`のみ、読み取り専用のため他の一覧系routeと同じ認可レベル)。
+- `src/app/api/admin/entitlements/retry-resolve/route.ts`(新規)
+  - `POST`: `requireManagerRole()`で保護。未解決行全件に対し`retryResolveEntitlementGrant()`を呼び、`retriedCount`/`resolvedCount`(`claim_outcome==='claimed'`の件数)を返す。既存の`retry-agent-assignments`と同じ「管理者トリガーによる全件再試行」方式。
+- `src/app/api/admin/entitlements/[id]/dismiss/route.ts`(新規)
+  - `POST`: `requireManagerRole()`で保護。対象行を`resolution_dismissed_at`/`resolution_dismissed_by`/`resolution_dismissal_note`で更新(DELETEしない)。既に却下済みの行は409。`logAdminAction()`の`before`/`after`に更新前後のスナップショットを記録。
+- `src/app/admin/(dashboard)/integration-recovery/page.tsx`(変更)
+  - 「未解決のentitlement(残高付与保留)」セクションを追加(一覧表示: entitlement_id/common_user_id/source_system_key/entitlement_type/受信日時(granted_at)/再試行回数 + 「全件再解決を試行」ボタン + 個別「却下」ボタン、既存の各セクションと同じUIパターン)。
+
+**設計判断**:
+- 一覧・再解決の対象条件(`application_status='not_applied'` かつ `user_id is null`)は、既存の`process_entitlement_grant()`(PR3、マイグレーション20260808000003)が`claim_outcome='user_unresolved'`を返すケースと厳密に一致するよう設計した。これにより、本画面は既存の判定ロジックをそのまま流用でき、独自の「未解決」判定基準を新設する必要が無い。
+- 指示書の「却下/保留」のうち、「却下」は既存の`unresolved_agent_assignments`・`common_user_merge_conflicts`(PR7/PR8)と同じsoft-resolveパターンで実装した。「保留」は明示的なアクションを要さない(却下しない限りデフォルトで一覧に残り続ける)ため、専用のAPIやUIボタンは追加していない。
+- `retryResolveEntitlementGrant()`を`handleEntitlementGranted()`とは別関数として新設したのは、後者がentitlement行の新規作成・`entitlement_pending_revocations`の適用処理を含み、管理画面からの手動再解決(既存行のuser_id再解決・残高付与のみが目的)には不要な処理を含んでしまうため。
+
+**検証**: `rm -rf .next && npx tsc --noEmit` / `npm run lint`(0 errors, 2 warnings、既存の`<img>`警告のみ) / `npx vitest run`(152/152、変更なし。本PRは管理画面API・DB操作のみでunit test化可能な新規純粋ロジックは無い) / `npm run build` 全て通過(新規ルート`/api/admin/entitlements/unresolved`・`/api/admin/entitlements/retry-resolve`・`/api/admin/entitlements/[id]/dismiss`がビルド出力に含まれることを確認)。DB統合テストは未実施(前提を参照)。

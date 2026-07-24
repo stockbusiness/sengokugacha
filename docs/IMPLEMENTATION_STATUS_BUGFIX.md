@@ -168,3 +168,22 @@
 **設計判断**: 全体統合対応PR5で用意されていた`src/lib/integration-outbox.ts`(`source_type`/`source_id`を持たず`integration_outbox_events`専用、冪等性のための一意キーが無い)は、grepで確認した通り本PR以前は呼び出し元が存在せず未使用だったため、本PRの要件(2テーブル共用・`source_type`/`source_id`による冪等enqueue)に合わせて全面的に置き換えた。`integration_outbox_events`への`source_type`/`source_id`列追加(NOT NULL)は、既存行が無い前提のマイグレーションであるため、本番適用前に`select count(*) from integration_outbox_events;`で0件であることを確認する必要がある旨をマイグレーションのコメントに明記した。
 
 **未対応の残存事項**: `notifyPlotPurchaseViaOutbox()`は、LINE未連携・LINE設定未登録等の「送信不要な対象外ケース」(`notifyPlotPurchase()`が`false`を返す場合)も`sent`として記録する設計とした(再送しても意味が無いため)。これにより、outbox一覧上は「実際に送信を試みて失敗した」ケースと「そもそも送信対象外だった」ケースが区別できない(いずれも最終的に`sent`または`failed`のいずれかに収束するのみで、後者を示す専用ステータスは無い)。運用上問題になる場合は、専用ステータス(例: `skipped`)の追加を別途検討する。
+
+## Phase A-2(残): 未解決entitlement管理画面
+
+### PR10: feat: add admin UI for unresolved entitlement resolution
+
+| 項目 | 状況 |
+|---|---|
+| §5.5後半 未解決entitlement一覧(common_user_id/entitlement_id/source_system_key/entitlement_type/受信日時表示) | 1. ソースコード上で実装済み |
+| §5.5後半 再解決ボタン | 1. ソースコード上で実装済み(`process_entitlement_grant()`の再呼び出し) |
+| §5.5後半 却下/保留 | 1. ソースコード上で実装済み(「却下」を個別soft-dismiss操作として実装。「保留」は明示的な操作を要さないデフォルト状態として扱う、下記「設計判断」参照) |
+| §5.5後半 監査ログ | 1. ソースコード上で実装済み(`logAdminAction()`、before/afterスナップショット付き) |
+| 並行実行時の受入条件(同一entitlementへの再解決試行が重複反映を起こさないこと) | 実装済み(既存PR3の`claim_entitlement_application()`によるfencingをそのまま利用するため、本PR固有の新規並行実行リスクは無いと判断) |
+
+**実装内容の要約**: `entitlements`テーブルへ`resolution_dismissed_at`/`resolution_dismissed_by`/`resolution_dismissal_note`列を追加した。`src/lib/entitlements.ts`に新規`retryResolveEntitlementGrant()`(既存`process_entitlement_grant()`RPCを直接呼び出す薄いラッパー)を追加し、`GET /api/admin/entitlements/unresolved`(一覧、`application_status='not_applied'` かつ `user_id is null` かつ却下されていない行)・`POST /api/admin/entitlements/retry-resolve`(全件再解決、`requireManagerRole()`で保護)・`POST /api/admin/entitlements/[id]/dismiss`(個別却下、`requireManagerRole()`で保護、既存の`resolved_at`/`resolved_by`/`resolution_note`と同じsoft-resolveパターン)を新設した。`/admin/integration-recovery`画面に「未解決のentitlement(残高付与保留)」セクションを追加し、既存の他セクションと同じUIパターン(一覧表示+全件再試行ボタン+個別却下ボタン)で運用できるようにした。
+
+**設計判断**:
+- 指示書が求める「却下/保留」のうち、「却下」は既存の`unresolved_agent_assignments`・`common_user_merge_conflicts`と同じsoft-resolveパターン(削除せず`resolution_dismissed_at`等を設定)で実装した。「保留」については、そもそも未解決entitlementのデフォルト状態(`application_status='not_applied'`のまま、却下も再解決成功もしていない)がそのまま「保留」に相当するため、別途の専用アクション・状態は設けなかった(却下しない限り一覧に残り続け、いつでも再解決を試行できる)。
+- 一覧・再解決の対象は「`application_status='not_applied'` かつ `user_id is null`」の行に限定した。これは既存の`process_entitlement_grant()`が`claim_outcome='user_unresolved'`を返すケースと厳密に一致する(§5.3〜5.5参照、PR3で実装済み)。
+- `retryResolveEntitlementGrant()`は`handleEntitlementGranted()`と異なり、entitlement行の新規作成・`entitlement_pending_revocations`の適用を行わない(既に存在する行の再解決専用)。管理画面からの再解決は「既存entitlement行のuser_id再解決・残高付与」のみを目的とするため、新規イベント受信を伴うロジックは含めない設計とした。
