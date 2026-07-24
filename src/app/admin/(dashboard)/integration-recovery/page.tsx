@@ -19,15 +19,28 @@ type UnresolvedAgentAssignment = {
   updated_at: string;
 };
 
+type UnresolvedCommonUserMerge = {
+  id: string;
+  source_common_user_id: string;
+  target_common_user_id: string;
+  reason: string;
+  attempt_count: number;
+  created_at: string;
+  updated_at: string;
+};
+
 const REASON_LABEL: Record<string, string> = {
   agent_code_undetermined: "担当代理店コードを特定できず",
   agent_not_found: "該当代理店が未同期",
+  user_not_found: "該当ユーザーが未同期",
+  source_user_not_found: "統合元ユーザーが未同期",
 };
 
 export default function IntegrationRecoveryPage() {
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [mergeConflicts, setMergeConflicts] = useState<MergeConflict[]>([]);
   const [unresolvedAssignments, setUnresolvedAssignments] = useState<UnresolvedAgentAssignment[]>([]);
+  const [unresolvedMerges, setUnresolvedMerges] = useState<UnresolvedCommonUserMerge[]>([]);
   const [message, setMessage] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -35,14 +48,16 @@ export default function IntegrationRecoveryPage() {
     return Promise.all([
       fetch("/api/admin/integrations/sen-no-kuni-hub/merge-conflicts"),
       fetch("/api/admin/integrations/sen-no-kuni-hub/unresolved-agent-assignments"),
+      fetch("/api/admin/integrations/sen-no-kuni-hub/unresolved-common-user-merges"),
     ])
-      .then(([conflictsRes, unresolvedRes]) => {
-        if (!conflictsRes.ok || !unresolvedRes.ok) throw new Error("読み込みに失敗しました");
-        return Promise.all([conflictsRes.json(), unresolvedRes.json()]);
+      .then(([conflictsRes, unresolvedRes, unresolvedMergesRes]) => {
+        if (!conflictsRes.ok || !unresolvedRes.ok || !unresolvedMergesRes.ok) throw new Error("読み込みに失敗しました");
+        return Promise.all([conflictsRes.json(), unresolvedRes.json(), unresolvedMergesRes.json()]);
       })
-      .then(([conflicts, unresolved]) => {
+      .then(([conflicts, unresolved, unresolvedMergesData]) => {
         setMergeConflicts(conflicts);
         setUnresolvedAssignments(unresolved);
+        setUnresolvedMerges(unresolvedMergesData);
         setStatus("ready");
       })
       .catch(() => setStatus("error"));
@@ -104,6 +119,22 @@ export default function IntegrationRecoveryPage() {
     setBusyId("retry-all");
     try {
       const res = await fetch("/api/admin/integrations/sen-no-kuni-hub/retry-agent-assignments", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "再解決に失敗しました");
+      setMessage(`${data.retriedCount}件を再試行し、${data.resolvedCount}件解決しました。`);
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "再解決に失敗しました。");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleRetryAllUnresolvedMerges() {
+    setMessage("");
+    setBusyId("retry-merges-all");
+    try {
+      const res = await fetch("/api/admin/integrations/sen-no-kuni-hub/retry-common-user-merges", { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "再解決に失敗しました");
       setMessage(`${data.retriedCount}件を再試行し、${data.resolvedCount}件解決しました。`);
@@ -217,6 +248,45 @@ export default function IntegrationRecoveryPage() {
                 >
                   却下
                 </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">未解決のcommon_user統合イベント</h2>
+          <button
+            onClick={handleRetryAllUnresolvedMerges}
+            disabled={busyId === "retry-merges-all" || unresolvedMerges.length === 0}
+            className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+          >
+            全件再解決を試行
+          </button>
+        </div>
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          common_user.mergedイベント受信時に統合元(source)のユーザーがまだ同期されておらず処理できなかったケースです。該当ユーザーの登録・common_user_id同期が進んだ後に「全件再解決を試行」で再処理できます。
+        </p>
+        {status === "loading" && <p className="text-sm text-zinc-500 dark:text-zinc-400">読み込み中...</p>}
+        {status === "error" && <p className="text-sm text-red-700 dark:text-red-400">読み込みに失敗しました。</p>}
+        {status === "ready" && unresolvedMerges.length === 0 && (
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">未解決の統合イベントはありません。</p>
+        )}
+        {status === "ready" && unresolvedMerges.length > 0 && (
+          <div className="space-y-2">
+            {unresolvedMerges.map((m) => (
+              <div
+                key={m.id}
+                className="rounded-xl border border-zinc-200 bg-white p-4 text-xs text-zinc-600 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-400"
+              >
+                <p>
+                  source: {m.source_common_user_id} → target: {m.target_common_user_id} —{" "}
+                  <span className="font-semibold text-amber-700 dark:text-amber-400">{REASON_LABEL[m.reason] ?? m.reason}</span>
+                </p>
+                <p>
+                  試行回数: {m.attempt_count} / 更新: {new Date(m.updated_at).toLocaleString("ja-JP")}
+                </p>
               </div>
             ))}
           </div>

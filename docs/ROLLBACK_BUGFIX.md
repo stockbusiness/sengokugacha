@@ -218,3 +218,25 @@ alter table unresolved_agent_assignments
 ### 影響範囲
 
 本PRは`common_user_merge_conflicts`・`unresolved_agent_assignments`テーブルへの列追加と、4つのAPIルートの認可チェック・DB操作方法の変更のみで、既存カラム・既存データには影響しない。ロールバックしても解決済み・未解決を問わず既存の行データは変更されない(列を削除した場合のみ、上記2の通り「解決済み」の情報が失われる)。
+
+## PR8: fix: persist unresolved events for not-yet-synced users
+
+### ロールバック手順
+
+1. 該当コミットを`git revert`する。ロールバックすると`handleAssignedAgentUpdated()`/`handleCommonUserMerged()`は本PR以前の実装(対象ユーザー未検出時に無条件で`return`し、イベントを破棄する)に戻り、新規の2つのAPIルート(`unresolved-common-user-merges`・`retry-common-user-merges`)と管理画面の「未解決のcommon_user統合イベント」セクションも削除される。
+2. `unresolved_common_user_merges`テーブル・`unresolved_agent_assignments.reason`のcheck制約変更を戻す場合は以下を適用する:
+
+```sql
+drop table if exists unresolved_common_user_merges;
+
+alter table unresolved_agent_assignments drop constraint unresolved_agent_assignments_reason_check;
+alter table unresolved_agent_assignments add constraint unresolved_agent_assignments_reason_check
+  check (reason in ('agent_code_undetermined', 'agent_not_found'));
+```
+
+3. `unresolved_agent_assignments.reason`のcheck制約を戻す前に、`reason = 'user_not_found'`の行が存在しないことを確認する(存在する場合、制約の再作成が失敗する)。存在する場合は、該当行を削除するか、他のreason値に変更してから制約を戻すこと。
+4. `unresolved_common_user_merges`テーブルをDROPすると、その時点で保存されていた未解決イベントの記録(再処理に必要なpayload含む)が完全に失われる。ロールバック後もこれらのイベントを再処理したい場合は、DROPする前にテーブルの内容をバックアップしておくこと。
+
+### 影響範囲
+
+本PRは`unresolved_agent_assignments`のcheck制約変更、`unresolved_common_user_merges`テーブルの新設、および`src/lib/agency-events.ts`内の「対象ユーザー未検出時の挙動」の変更(イベント破棄→保存)のみで、既存の`users`・`unresolved_agent_assignments`・`common_user_merge_conflicts`テーブルの既存データには影響しない。ロールバックしても既存の代理店紐付け・共通ユーザー統合データは変更されない。

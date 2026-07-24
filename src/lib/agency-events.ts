@@ -6,10 +6,51 @@ type SupabaseServerClient = ReturnType<typeof createSupabaseServerClient>;
 // これまで/api/integrations/agenciesが200受理・無視していた共通顧客HUBイベントのうち、
 // 「common_user_id」「代理店情報」の実装対象に該当する2つを実処理する。
 
+async function recordUnresolvedCommonUserMerge(
+  supabase: SupabaseServerClient,
+  sourceCommonUserId: string,
+  targetCommonUserId: string,
+  reason: "source_user_not_found",
+  payload: Record<string, unknown>
+): Promise<void> {
+  const { error } = await supabase.from("unresolved_common_user_merges").upsert(
+    {
+      source_common_user_id: sourceCommonUserId,
+      target_common_user_id: targetCommonUserId,
+      reason,
+      payload,
+      status: "pending",
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "source_common_user_id,target_common_user_id" }
+  );
+  if (error) throw error;
+}
+
+// この組み合わせのunresolved_common_user_merges行が(過去のuser_not_found記録として)
+// 存在すれば解決済みにする。該当行が無い場合(通常の一発成功パス)は何もしない。
+async function markUnresolvedCommonUserMergeResolved(
+  supabase: SupabaseServerClient,
+  sourceCommonUserId: string,
+  targetCommonUserId: string
+): Promise<void> {
+  const { error } = await supabase
+    .from("unresolved_common_user_merges")
+    .update({ status: "resolved", resolved_at: new Date().toISOString() })
+    .eq("source_common_user_id", sourceCommonUserId)
+    .eq("target_common_user_id", targetCommonUserId)
+    .eq("status", "pending");
+  if (error) throw error;
+}
+
 // EXTERNAL_DEVELOPER_GUIDE 11.2章のペイロード例に基づく。
 // {"event":"common_user.merged","details":{"source_common_user_id":"cu_source","target_common_user_id":"cu_target",...},...}
 // P0-2(§4.6相当): 競合(target側に既に別のローカルユーザーが割当済み)はログのみでなく
 // common_user_merge_conflictsへ永続化し、運用側で確認・手動対応できるようにする。
+// モジュール化後バグ修正・Phase B改修指示書§10.2: 統合元(source)のローカルユーザーが
+// まだ同期されていないだけの可能性があるため、「無関係なイベント」として破棄せず
+// unresolved_common_user_mergesへ保存し、ユーザー登録・common_user_id同期後に
+// 再処理できるようにする。
 export async function handleCommonUserMerged(body: Record<string, unknown>): Promise<void> {
   const details = body.details as Record<string, unknown> | undefined;
   const sourceCommonUserId = typeof details?.source_common_user_id === "string" ? details.source_common_user_id : null;
@@ -27,7 +68,10 @@ export async function handleCommonUserMerged(body: Record<string, unknown>): Pro
     .eq("common_user_id", sourceCommonUserId)
     .maybeSingle();
   if (sourceError) throw sourceError;
-  if (!sourceUser) return; // このアプリ側に該当ユーザーが無い(無関係なmergeイベント)。
+  if (!sourceUser) {
+    await recordUnresolvedCommonUserMerge(supabase, sourceCommonUserId, targetCommonUserId, "source_user_not_found", body);
+    return;
+  }
 
   const { data: targetUser, error: targetError } = await supabase
     .from("users")
@@ -49,9 +93,9 @@ export async function handleCommonUserMerged(body: Record<string, unknown>): Pro
       payload: body,
     });
     if (conflictError) {
-      if (conflictError.code === "23505") return; // 同一組み合わせは記録済み(冪等)。
-      throw conflictError;
+      if (conflictError.code !== "23505") throw conflictError; // 23505は同一組み合わせが記録済み(冪等)。
     }
+    await markUnresolvedCommonUserMergeResolved(supabase, sourceCommonUserId, targetCommonUserId);
     return;
   }
 
@@ -60,12 +104,13 @@ export async function handleCommonUserMerged(body: Record<string, unknown>): Pro
     .update({ common_user_id: targetCommonUserId, common_user_synced_at: new Date().toISOString() })
     .eq("id", sourceUser.id);
   if (updateError) throw updateError;
+  await markUnresolvedCommonUserMergeResolved(supabase, sourceCommonUserId, targetCommonUserId);
 }
 
 async function recordUnresolvedAgentAssignment(
   supabase: SupabaseServerClient,
   commonUserId: string,
-  reason: "agent_code_undetermined" | "agent_not_found",
+  reason: "agent_code_undetermined" | "agent_not_found" | "user_not_found",
   payload: Record<string, unknown>
 ): Promise<void> {
   const { error } = await supabase
@@ -119,7 +164,14 @@ export async function handleAssignedAgentUpdated(body: Record<string, unknown>):
     .eq("common_user_id", commonUserId)
     .maybeSingle();
   if (userError) throw userError;
-  if (!user) return; // このアプリ側に該当ユーザーが無い。
+  if (!user) {
+    // モジュール化後バグ修正・Phase B改修指示書§10.1。このアプリ側に該当ユーザーが
+    // まだ同期されていないだけの可能性があるため、破棄せずuser_not_foundとして
+    // 保存し、ユーザー登録・common_user_id同期後に再処理できるようにする。
+    console.warn(`[agency-events] common_user.assigned_agent.updated: 該当ユーザーが見つかりません(common_user_id=${commonUserId})`);
+    await recordUnresolvedAgentAssignment(supabase, commonUserId, "user_not_found", body);
+    return;
+  }
 
   if (isExplicitUnassignment(body, commonUser)) {
     const { error: updateError } = await supabase.from("users").update({ assigned_agent_id: null }).eq("id", user.id);
