@@ -181,3 +181,27 @@
 **未対応の残存事項**: `resolutionNote`の入力UIは`/admin/integration-recovery`画面に追加していない(APIはリクエストボディで受け取れるが、現状のUIからは送信されない)。
 
 **検証**: `rm -rf .next && npx tsc --noEmit` / `npm run lint` / `npx vitest run`(152/152、変更なし。本PRは認可チェック追加とDB操作の変更のみでunit test化可能な新規純粋ロジックは無い) / `npm run build` 全て通過。DB統合テストは未実施(前提を参照)。
+
+## PR8: fix: persist unresolved events for not-yet-synced users
+
+**対象**: §10(未同期ユーザーイベント保持)
+
+**変更ファイル**:
+- `supabase/migrations/20260808000008_unresolved_common_user_merges.sql`(新規)
+  - `unresolved_agent_assignments.reason`のcheck制約に`user_not_found`を追加(既存: `agent_code_undetermined`/`agent_not_found`)。
+  - `unresolved_common_user_merges`(新規テーブル): `source_common_user_id`/`target_common_user_id`/`payload`/`reason`(check: `source_user_not_found`)/`status`(check: `pending`/`resolved`)/`attempt_count`/`last_error`/`created_at`/`updated_at`/`resolved_at`。`unique(source_common_user_id, target_common_user_id)`。
+- `src/lib/agency-events.ts`(変更)
+  - `handleAssignedAgentUpdated()`: `common_user_id`に対応するローカルユーザーが見つからない場合、これまで`return`のみだった箇所を`recordUnresolvedAgentAssignment(..., "user_not_found", body)`で保存するよう変更。
+  - `handleCommonUserMerged()`: 統合元(source)のローカルユーザーが見つからない場合、これまで`return`のみだった箇所を新規ヘルパー`recordUnresolvedCommonUserMerge()`で`unresolved_common_user_merges`へ保存するよう変更。統合成功パス(通常の付け替え、および統合先競合でconflictテーブルへ記録するパスの両方)の末尾で新規ヘルパー`markUnresolvedCommonUserMergeResolved()`を呼び、対応する`unresolved_common_user_merges`行(存在する場合のみ)を`status='resolved'`へ更新するようにした。
+- `src/app/api/admin/integrations/sen-no-kuni-hub/unresolved-common-user-merges/route.ts`(新規)
+  - `unresolved_common_user_merges`の一覧取得(`status='pending'`のみ)。
+- `src/app/api/admin/integrations/sen-no-kuni-hub/retry-common-user-merges/route.ts`(新規)
+  - `requireManagerRole()`で保護。`status='pending'`の全行に対し`handleCommonUserMerged(row.payload)`を再実行する(既存`retry-agent-assignments`と同じ「全件再試行」パターン)。失敗時は`attempt_count`をインクリメントし`last_error`を記録する(頻度の低い管理操作のため、read-modify-writeによる原子性の欠如は許容する設計判断)。
+- `src/app/admin/(dashboard)/integration-recovery/page.tsx`(変更)
+  - 「未解決のcommon_user統合イベント」セクションを追加(一覧表示+「全件再解決を試行」ボタン、既存の「未解決の担当代理店割当」セクションと同じUIパターン)。`REASON_LABEL`に`user_not_found`/`source_user_not_found`のラベルを追加。
+
+**設計判断**:
+- 新設ルート`retry-common-user-merges`は指示書§9の対象4API明示リストには含まれないが、既存ルートと同じ「連携復旧操作」カテゴリであるため一貫性のため`requireManagerRole()`を最初から適用した。
+- `handleCommonUserMerged()`の統合先競合パス(target側に既に別ユーザーが割当済み)でも`markUnresolvedCommonUserMergeResolved()`を呼ぶようにした。これは「統合元ユーザーが同期された」という当初の未解決理由(`source_user_not_found`)が解消されたことを示すためであり、統合先競合という別の問題(`common_user_merge_conflicts`で別途追跡)が残っていても、`unresolved_common_user_merges`側の記録としては役目を終えたと判断した。
+
+**検証**: `rm -rf .next && npx tsc --noEmit` / `npm run lint` / `npx vitest run`(152/152、変更なし。本PRはDB依存のイベント処理・新規APIルートのみでunit test化可能な新規純粋ロジックは無い) / `npm run build` 全て通過(新規ルート`retry-common-user-merges`/`unresolved-common-user-merges`がビルド出力に含まれることを確認)。DB統合テストは未実施(前提を参照)。

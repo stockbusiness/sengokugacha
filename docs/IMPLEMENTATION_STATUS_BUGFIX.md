@@ -133,3 +133,21 @@
 **実装内容の要約**: `supabase/migrations/20260808000007_integration_recovery_soft_resolve.sql`で`common_user_merge_conflicts`・`unresolved_agent_assignments`へ`resolved_at`/`resolved_by`/`resolution_note`列を追加した。4つのAPIルートすべてに`getAdminSession()`(既存)に加えて`requireManagerRole()`のチェックを追加し、operatorロールでは403を返すようにした。`merge-conflicts/[id]/resolve`・`unresolved-agent-assignments/[id]/dismiss`は、対象行をDELETEする実装から、`resolved_at`/`resolved_by`/`resolution_note`を設定するUPDATEに変更し、`logAdminAction()`の`before`/`after`スナップショットに更新前後の行データを記録するようにした(任意で`resolutionNote`をリクエストボディから受け取る)。一覧取得API(`merge-conflicts`・`unresolved-agent-assignments`のGET)は`resolved_at is null`で絞り込むよう変更し、既に解決・却下済みの行が管理画面に再表示されないようにした(既存UI`/admin/integration-recovery`の見た目・挙動は変更なし)。
 
 **未対応の残存事項**: `resolutionNote`の入力UIは管理画面(`/admin/integration-recovery`)には追加していない(APIはボディで受け取れるが、現状のUIは送信しないため常にnullで記録される)。将来的にUIから理由入力できるようにする余地があるが、本PRのスコープ(権限修正+ソフト削除化)には含めない。
+
+## §10: 未同期ユーザーイベント保持
+
+### PR8: fix: persist unresolved events for not-yet-synced users
+
+| 項目 | 状況 |
+|---|---|
+| §10.1 対象ユーザーが見つからない場合もunresolved_agent_assignmentsへ保存(reason=`user_not_found`) | 1. ソースコード上で実装済み |
+| §10.2 統合元ユーザー未同期の場合もunresolved_common_user_mergesへ保存 | 1. ソースコード上で実装済み |
+| §10.2 ユーザー登録またはcommon_user_id同期後に再処理できること | 1. ソースコード上で実装済み(管理画面からの手動再解決トリガー、Cron等のバックグラウンドジョブ基盤が無いため既存の`retry-agent-assignments`と同じ方式) |
+
+**実装内容の要約**:
+- `src/lib/agency-events.ts`の`handleAssignedAgentUpdated()`が、`common_user_id`に対応するローカルユーザーが見つからない場合に何もせず`return`していた箇所を、`unresolved_agent_assignments`へ`reason='user_not_found'`で保存するよう変更した(`unresolved_agent_assignments.reason`のcheck制約に`user_not_found`を追加)。既存の`retry-agent-assignments`(PR7でmanager限定化済み)がそのまま再処理経路として機能する。
+- `handleCommonUserMerged()`が、統合元(source)の`common_user_id`に対応するローカルユーザーが見つからない場合に「無関係なイベント」として`return`していた箇所を、新設の`unresolved_common_user_merges`テーブル(`reason='source_user_not_found'`、`status`/`attempt_count`/`last_error`/`resolved_at`列を持つ)へ保存するよう変更した。
+- 新規管理API `GET /api/admin/integrations/sen-no-kuni-hub/unresolved-common-user-merges`(一覧)・`POST /api/admin/integrations/sen-no-kuni-hub/retry-common-user-merges`(全件再解決、`requireManagerRole()`で保護)を追加し、`handleCommonUserMerged()`を再度呼び出すことで再処理する(成功時は`handleCommonUserMerged()`内部で`status='resolved'`へ更新される)。
+- `/admin/integration-recovery`画面へ「未解決のcommon_user統合イベント」セクションを追加し、既存の「未解決の担当代理店割当」セクションと同じUIパターン(一覧表示+全件再試行ボタン)で運用できるようにした。
+
+**設計判断**: 新設ルート(`retry-common-user-merges`)は既存4ルートの§9の対象リストには含まれていないが、同じ「連携基盤の再解決」カテゴリの操作であるため、一貫性のため`requireManagerRole()`を最初から適用した(§9で既存ルートをmanager限定化した直後に、新設ルートだけoperatorアクセス可能にする方が不整合と判断)。
