@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { didJustUnlockMino, isEventWindowActive, type ProvinceRow } from "./draw-limit";
+import { didJustUnlockMino, getTokyoBusinessDate, isEventWindowActive, type ProvinceRow } from "./draw-limit";
 
 describe("isEventWindowActive", () => {
   afterEach(() => {
@@ -50,5 +50,21 @@ describe("didJustUnlockMino", () => {
   it("returns false when no final province is configured", () => {
     const provincesWithoutMino: ProvinceRow[] = [{ id: "other", region: "中部", is_final_province: false, unlock_condition_count: null }];
     expect(didJustUnlockMino(54, 55, provincesWithoutMino)).toBe(false);
+  });
+});
+
+describe("getTokyoBusinessDate", () => {
+  it("returns the same calendar date for a time well within JST daytime", () => {
+    expect(getTokyoBusinessDate(new Date("2026-07-24T05:00:00Z"))).toBe("2026-07-24"); // 14:00 JST
+  });
+
+  it("rolls over to the next day before UTC midnight, since JST is UTC+9", () => {
+    // 2026-07-24T15:30:00Z is 2026-07-25T00:30:00 JST.
+    expect(getTokyoBusinessDate(new Date("2026-07-24T15:30:00Z"))).toBe("2026-07-25");
+  });
+
+  it("stays on the previous day just before the JST midnight boundary", () => {
+    // 2026-07-24T14:59:00Z is 2026-07-24T23:59:00 JST.
+    expect(getTokyoBusinessDate(new Date("2026-07-24T14:59:00Z"))).toBe("2026-07-24");
   });
 });

@@ -1,15 +1,11 @@
-import { consumeGachaTicket } from "@/lib/atomic-balance";
-import { getActiveConquestRule, isConquestSatisfied } from "@/lib/conquest-rules";
+import crypto from "node:crypto";
 import { selectAnimationForDraw, type SelectedAnimation } from "@/lib/gacha-animations";
 import { getGachaRateTiers } from "@/lib/gacha-rate-tiers";
 import { getLoginStreak, getStreakBonusDraws } from "@/lib/login-streak";
-import { getRegionKokudakaBonus, regionCompleteAchievementType } from "@/lib/regions";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
-import { recordContribution } from "@/lib/user-activity";
 import { GachaLimitExceededError, InsufficientTicketsError, NoEligibleProvinceError } from "@/modules/gacha/domain/errors";
 import { pickSlot } from "@/modules/gacha/domain/draw-policy";
-import { didJustUnlockMino, isEventWindowActive, type ProvinceRow } from "@/modules/gacha/domain/draw-limit";
-import { calcContributionPoints } from "@/modules/gacha/domain/rarity";
+import { didJustUnlockMino, getTokyoBusinessDate, isEventWindowActive, type ProvinceRow } from "@/modules/gacha/domain/draw-limit";
 
 export { GachaLimitExceededError, InsufficientTicketsError, NoEligibleProvinceError };
 
@@ -44,6 +40,17 @@ export type GachaDrawResult = DrawCore & {
 export type PaidGachaDrawResult = DrawCore & {
   remainingPaidDrawsToday: number;
   remainingGachaTickets: number;
+};
+
+type ExecuteGachaDrawResult = {
+  log_id: string;
+  is_new_card: boolean;
+  province_conquered: boolean;
+  region_completed: string | null;
+  region_completion_bonus: number;
+  contribution_points_earned: number;
+  remaining_draws_today: number;
+  remaining_gacha_tickets: number | null;
 };
 
 async function getConqueredProvinceCount(userId: string): Promise<number> {
@@ -104,23 +111,6 @@ async function getEffectivePaidLimit(): Promise<number> {
   return config.base_daily_paid_limit;
 }
 
-// 「本日」はサーバーのローカル日付境界で判定する(MVP簡易実装。ユーザーのタイムゾーンは考慮しない)。
-async function getTodaysDrawCount(userId: string, isPaid: boolean): Promise<number> {
-  const supabase = createSupabaseServerClient();
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
-
-  const { count, error } = await supabase
-    .from("gacha_logs")
-    .select("id", { count: "exact", head: true })
-    .eq("user_id", userId)
-    .eq("is_paid", isPaid)
-    .gte("created_at", startOfDay.toISOString());
-
-  if (error) throw error;
-  return count ?? 0;
-}
-
 async function getAllProvinces(): Promise<ProvinceRow[]> {
   const supabase = createSupabaseServerClient();
   const { data, error } = await supabase
@@ -153,153 +143,21 @@ async function getEligibleProvinces(
     .filter((p) => !p.is_final_province || (p.unlock_condition_count != null && conqueredCount >= p.unlock_condition_count));
 }
 
-// 戻り値: このユーザーが今回初めてこの武将を獲得した(新規)かどうか。
-async function addWarlordToUser(userId: string, warlordId: string): Promise<boolean> {
-  const supabase = createSupabaseServerClient();
-
-  const { data: existing, error: findError } = await supabase
-    .from("user_warlords")
-    .select("id, count")
-    .eq("user_id", userId)
-    .eq("warlord_id", warlordId)
-    .maybeSingle();
-
-  if (findError) throw findError;
-
-  if (existing) {
-    const { error } = await supabase
-      .from("user_warlords")
-      .update({ count: existing.count + 1 })
-      .eq("id", existing.id);
-    if (error) throw error;
-    return false;
-  }
-
-  const { error } = await supabase
-    .from("user_warlords")
-    .insert({ user_id: userId, warlord_id: warlordId, count: 1 });
-  if (error) throw error;
-  return true;
-}
-
-// 国制覇条件を満たしていれば制圧済みにする。戻り値: 今回の抽選で新たに制圧したかどうか。
-// conquest_rulesに有効な条件が設定されていればそれを使い、無ければ従来通り
-// 「その国の武将を全部所持」で判定する(既存60国の挙動を変えないフォールバック。
-// 実装計画3-4章参照)。
-async function maybeConquerProvince(userId: string, provinceId: string): Promise<boolean> {
-  const supabase = createSupabaseServerClient();
-
-  const rule = await getActiveConquestRule(provinceId);
-
-  let warlordIds: string[];
-  if (rule) {
-    warlordIds = rule.warlordIds;
-  } else {
-    const { data: provinceWarlords, error: warlordsError } = await supabase
-      .from("warlords")
-      .select("id")
-      .eq("province_id", provinceId);
-    if (warlordsError) throw warlordsError;
-    warlordIds = (provinceWarlords ?? []).map((w) => w.id);
-  }
-  if (warlordIds.length === 0) return false;
-
-  const { data: ownedRows, error: ownedError } = await supabase
-    .from("user_warlords")
-    .select("warlord_id")
-    .eq("user_id", userId)
-    .in("warlord_id", warlordIds);
-
-  if (ownedError) throw ownedError;
-  const alreadyConquered = isConquestSatisfied(
-    warlordIds,
-    (ownedRows ?? []).map((r) => r.warlord_id as string)
-  );
-  if (!alreadyConquered) return false;
-
-  const { error: upsertError } = await supabase
-    .from("user_provinces")
-    .upsert(
-      { user_id: userId, province_id: provinceId, is_conquered: true, conquered_at: new Date().toISOString() },
-      { onConflict: "user_id,province_id" }
-    );
-
-  if (upsertError) throw upsertError;
-  return true;
-}
-
-// 実績を記録する。既に記録済みなら何もしない(冪等)。
-async function recordAchievementOnce(userId: string, achievementType: string): Promise<boolean> {
-  const supabase = createSupabaseServerClient();
-
-  const { data: existing, error: existingError } = await supabase
-    .from("achievements")
-    .select("id")
-    .eq("user_id", userId)
-    .eq("achievement_type", achievementType)
-    .maybeSingle();
-  if (existingError) throw existingError;
-  if (existing) return false;
-
-  const { data: user, error: userError } = await supabase
-    .from("users")
-    .select("referring_agent_id")
-    .eq("id", userId)
-    .single();
-  if (userError) throw userError;
-
-  const { error: insertError } = await supabase.from("achievements").insert({
-    user_id: userId,
-    achievement_type: achievementType,
-    referring_agent_id: user.referring_agent_id,
-  });
-  if (insertError) throw insertError;
-
-  return true;
-}
-
-async function grantKokudakaBonus(userId: string, amount: number) {
-  const supabase = createSupabaseServerClient();
-  const { data: user, error } = await supabase.from("users").select("kokudaka").eq("id", userId).single();
-  if (error) throw error;
-  const { error: updateError } = await supabase
-    .from("users")
-    .update({ kokudaka: user.kokudaka + amount })
-    .eq("id", userId);
-  if (updateError) throw updateError;
-}
-
-// 指定地方の国(美濃国を除く)がすべて制圧済みなら地方コンプ実績を記録し、石高ボーナスを付与する。
-// 03_gacha_game_design 13章の称号・クーポン・イベント特典のうち、石高ボーナスのみ自動付与する
-// (クーポン/イベント管理の基盤が無いため、その他は今後の課題)。
-// 戻り値: 今回新たに達成した場合は付与した石高ボーナス額、それ以外は0。
-async function maybeCompleteRegion(userId: string, region: string, allProvinces: ProvinceRow[]): Promise<number> {
-  const supabase = createSupabaseServerClient();
-
-  const provinceIds = allProvinces.filter((p) => p.region === region && !p.is_final_province).map((p) => p.id);
-  if (provinceIds.length === 0) return 0;
-
-  const { data: conqueredRows, error: conqueredError } = await supabase
-    .from("user_provinces")
-    .select("province_id")
-    .eq("user_id", userId)
-    .eq("is_conquered", true)
-    .in("province_id", provinceIds);
-  if (conqueredError) throw conqueredError;
-
-  const allConquered = (conqueredRows ?? []).length === provinceIds.length;
-  if (!allConquered) return 0;
-
-  const newlyCompleted = await recordAchievementOnce(userId, regionCompleteAchievementType(region));
-  if (!newlyCompleted) return 0;
-
-  const bonus = getRegionKokudakaBonus(provinceIds.length);
-  await grantKokudakaBonus(userId, bonus);
-  return bonus;
-}
-
 // 無料/有料共通の抽選本体(排出率は共通。03_gacha_game_design 9章: 「排出率は無料と完全に共通、回数のみ増える」)。
-async function performDraw(userId: string, isPaid: boolean, conqueredCount: number): Promise<DrawCore> {
+//
+// 千ノ国パスポート モジュール化後バグ修正・Phase B改修指示書 Phase A-4(§8)。
+// 国・スロット・武将の決定(排出率tier参照)はDB設定に依存する読み取り専用処理のため
+// ここ(TS)で行うが、その決定結果を反映する書き込み側(日次上限予約・ガチャ券消費・
+// user_warlords更新・gacha_logs追加・国家貢献ポイント加算・国制覇・実績・地方ボーナス)は
+// execute_gacha_draw()(マイグレーション20260808000006)へ委ね、単一トランザクションで
+// 実行する。動画演出の選定・記録のみ、既存方針(失敗してもガチャ自体を失敗させない)を
+// 維持するためコミット後のベストエフォート処理として残す。
+async function performDraw(
+  userId: string,
+  isPaid: boolean,
+  conqueredCount: number,
+  dailyLimit: number
+): Promise<DrawCore & { remainingDrawsToday: number; remainingGachaTickets: number | null }> {
   const supabase = createSupabaseServerClient();
 
   const [allProvinces, tiers] = await Promise.all([getAllProvinces(), getGachaRateTiers()]);
@@ -321,49 +179,54 @@ async function performDraw(userId: string, isPaid: boolean, conqueredCount: numb
 
   if (warlordError) throw warlordError;
 
-  const isNewCard = await addWarlordToUser(userId, warlord.id);
+  const { data: drawResultData, error: drawError } = await supabase
+    .rpc("execute_gacha_draw", {
+      p_user_id: userId,
+      p_draw_type: isPaid ? "paid" : "free",
+      p_business_date: getTokyoBusinessDate(new Date()),
+      p_daily_limit: dailyLimit,
+      p_selected_province_id: provinceId,
+      p_selected_warlord_id: warlord.id,
+      p_conquered_provinces_count_at_draw: conqueredCount,
+      p_request_id: crypto.randomUUID(),
+    })
+    .single();
+  if (drawError) {
+    if (drawError.message?.includes("gacha_daily_limit_exceeded")) {
+      throw new GachaLimitExceededError(
+        isPaid ? "本日の有料ガチャ回数の上限に達しています" : "本日の無料ガチャ回数の上限に達しています"
+      );
+    }
+    if (drawError.message?.includes("insufficient_gacha_tickets")) {
+      throw new InsufficientTicketsError("ガチャ券が不足しています");
+    }
+    throw drawError;
+  }
+  const drawResult = drawResultData as ExecuteGachaDrawResult;
 
   // 動画演出の選定は結果表示用の付随情報であり、失敗してもガチャ自体を
-  // 失敗させてはならない(仕様書2.1/5.4)。
-  const animation = await selectAnimationForDraw(
-    warlord.slot_type as "common" | "mid" | "rare",
-    isNewCard
-  ).catch((error) => {
-    console.error("ガチャ動画演出の選定に失敗しました", error);
-    return null;
-  });
+  // 失敗させてはならない(仕様書2.1/5.4)。原子的トランザクションのコミット後に
+  // ベストエフォートで選定・記録する。
+  const animation = await selectAnimationForDraw(warlord.slot_type as "common" | "mid" | "rare", drawResult.is_new_card).catch(
+    (error) => {
+      console.error("ガチャ動画演出の選定に失敗しました", error);
+      return null;
+    }
+  );
+  if (animation) {
+    const { error: animationUpdateError } = await supabase
+      .from("gacha_logs")
+      .update({ animation_asset_id: animation.id, animation_key: animation.key })
+      .eq("id", drawResult.log_id);
+    if (animationUpdateError) {
+      console.error("ガチャ動画演出の記録に失敗しました", animationUpdateError);
+    }
+  }
 
-  const { data: log, error: logError } = await supabase
-    .from("gacha_logs")
-    .insert({
-      user_id: userId,
-      warlord_id: warlord.id,
-      is_paid: isPaid,
-      conquered_provinces_count_at_draw: conqueredCount,
-      animation_asset_id: animation?.id ?? null,
-      animation_key: animation?.key ?? null,
-    })
-    .select("id")
-    .single();
-  if (logError) throw logError;
-
-  const contributionPointsEarned = calcContributionPoints(warlord.slot_type, isNewCard);
-  await recordContribution(userId, "gacha_draw", contributionPointsEarned);
-
-  const provinceConquered = await maybeConquerProvince(userId, provinceId);
-
-  let regionCompleted: string | null = null;
-  let regionCompletionBonus = 0;
   let minoUnlocked = false;
   let tenkaToitsuTriggered = false;
-
-  if (provinceConquered) {
+  if (drawResult.province_conquered) {
     const newConqueredCount = conqueredCount + 1;
-    const bonus = await maybeCompleteRegion(userId, chosenProvince.region, allProvinces);
-    if (bonus > 0) {
-      regionCompleted = chosenProvince.region;
-      regionCompletionBonus = bonus;
-    }
     minoUnlocked = didJustUnlockMino(conqueredCount, newConqueredCount, allProvinces);
     tenkaToitsuTriggered = chosenProvince.is_final_province;
   }
@@ -371,7 +234,7 @@ async function performDraw(userId: string, isPaid: boolean, conqueredCount: numb
   const province = warlord.provinces as unknown as { id: string; name: string };
 
   return {
-    drawLogId: log.id,
+    drawLogId: drawResult.log_id,
     warlord: {
       id: warlord.id,
       name: warlord.name,
@@ -381,65 +244,45 @@ async function performDraw(userId: string, isPaid: boolean, conqueredCount: numb
       imageUrl: warlord.image_url,
     },
     province: { id: province.id, name: province.name },
-    provinceConquered,
-    regionCompleted,
-    regionCompletionBonus,
+    provinceConquered: drawResult.province_conquered,
+    regionCompleted: drawResult.region_completed,
+    regionCompletionBonus: drawResult.region_completion_bonus,
     minoUnlocked,
     tenkaToitsuTriggered,
-    isNewCard,
+    isNewCard: drawResult.is_new_card,
     animation,
-    contributionPointsEarned,
+    contributionPointsEarned: drawResult.contribution_points_earned,
+    remainingDrawsToday: drawResult.remaining_draws_today,
+    remainingGachaTickets: drawResult.remaining_gacha_tickets,
   };
 }
 
 export async function drawFreeGacha(userId: string): Promise<GachaDrawResult> {
-  const [freeLimit, todaysCount, conqueredCount] = await Promise.all([
-    getEffectiveFreeLimit(userId),
-    getTodaysDrawCount(userId, false),
-    getConqueredProvinceCount(userId),
-  ]);
+  const [freeLimit, conqueredCount] = await Promise.all([getEffectiveFreeLimit(userId), getConqueredProvinceCount(userId)]);
 
-  if (todaysCount >= freeLimit) {
-    throw new GachaLimitExceededError("本日の無料ガチャ回数の上限に達しています");
-  }
-
-  const core = await performDraw(userId, false, conqueredCount);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- 無料ガチャのレスポンスには含めない。
+  const { remainingDrawsToday, remainingGachaTickets: _remainingGachaTickets, ...core } = await performDraw(
+    userId,
+    false,
+    conqueredCount,
+    freeLimit
+  );
 
   return {
     ...core,
-    remainingFreeDrawsToday: Math.max(freeLimit - (todaysCount + 1), 0),
+    remainingFreeDrawsToday: remainingDrawsToday,
   };
 }
 
 // 有料ガチャ: ガチャ券を1枚消費する。排出率・国盗り判定ロジックは無料と共通。
 export async function drawPaidGacha(userId: string): Promise<PaidGachaDrawResult> {
-  const [paidLimit, todaysCount, conqueredCount] = await Promise.all([
-    getEffectivePaidLimit(),
-    getTodaysDrawCount(userId, true),
-    getConqueredProvinceCount(userId),
-  ]);
+  const [paidLimit, conqueredCount] = await Promise.all([getEffectivePaidLimit(), getConqueredProvinceCount(userId)]);
 
-  if (todaysCount >= paidLimit) {
-    throw new GachaLimitExceededError("本日の有料ガチャ回数の上限に達しています");
-  }
-
-  // ガチャ券消費は原子的なDB関数で行う(read-modify-write競合の解消。
-  // 全体統合対応 実装計画PR2)。残高不足時はDB側がinsufficient_gacha_ticketsを送出する。
-  let remainingGachaTickets: number;
-  try {
-    remainingGachaTickets = await consumeGachaTicket(userId);
-  } catch (error) {
-    if (error instanceof Error && error.message.includes("insufficient_gacha_tickets")) {
-      throw new InsufficientTicketsError("ガチャ券が不足しています");
-    }
-    throw error;
-  }
-
-  const core = await performDraw(userId, true, conqueredCount);
+  const { remainingDrawsToday, remainingGachaTickets, ...core } = await performDraw(userId, true, conqueredCount, paidLimit);
 
   return {
     ...core,
-    remainingPaidDrawsToday: Math.max(paidLimit - (todaysCount + 1), 0),
-    remainingGachaTickets,
+    remainingPaidDrawsToday: remainingDrawsToday,
+    remainingGachaTickets: remainingGachaTickets as number,
   };
 }

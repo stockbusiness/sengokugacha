@@ -119,3 +119,38 @@
 - 「新規連携はv2必須」(§7.3)はDB制約では強制せず、新規`sen_no_kuni_hub_settings`行作成時に`v1_disabled_at`をnow()に設定する運用上の取り決めとして扱うこととした(接続時点で「新規」かどうかをスキーマから機械的に判定する手段が無いため)。
 
 **検証**: `rm -rf .next && npx tsc --noEmit` / `npm run lint` / `npx vitest run`(159/159、`sen-no-kuni-hub-signature.test.ts`の新規テスト15件追加に伴い144→159) / `npm run build` 全て通過。DB統合テストは未実施(前提を参照)。
+
+## PR6: fix: make gacha draws transactionally safe
+
+**対象**: Phase A-4(§8)
+
+**変更ファイル**:
+- `supabase/migrations/20260808000006_gacha_draw_atomic.sql`(新規)
+  - `gacha_daily_usage`(新規テーブル): 日次上限の原子的な確認・予約用。`unique(user_id, business_date, draw_type)`。
+  - `gacha_logs`へ`request_id uuid`(部分unique index)・`is_new_card`・`province_conquered`・`region_completed`・`region_completion_bonus`・`contribution_points_earned`列を追加。
+  - `achievements`へ`unique(user_id, achievement_type)`制約を追加。
+  - `execute_gacha_draw(p_user_id, p_draw_type, p_business_date, p_daily_limit, p_selected_province_id, p_selected_warlord_id, p_conquered_provinces_count_at_draw, p_request_id)`: 指示書§8.3の9手順(日次上限確認・予約→ガチャ券消費→`user_warlords`upsert→`gacha_logs`追加→国家貢献ポイント加算→国制覇判定→実績upsert→地方ボーナス加算→commit)を単一トランザクションで実行する。`request_id`による冪等リプレイに対応。
+- `src/modules/gacha/domain/draw-limit.ts`(変更)・`draw-limit.test.ts`(変更)
+  - `getTokyoBusinessDate(now: Date): string`を追加。`Intl.DateTimeFormat`の`Asia/Tokyo`タイムゾーンで"YYYY-MM-DD"を算出する純粋関数(§8.5)。JST日付境界のロールオーバーをunit testで検証。
+- `src/lib/gacha.ts`(全面改修)
+  - `performDraw()`: 国・スロット・武将の決定(排出率tier参照)はTS側に残し、その結果を`execute_gacha_draw()`へ渡して書き込み側を単一トランザクション化した。日次上限は事前の`COUNT`クエリ(`getTodaysDrawCount`、削除)ではなく、SQL関数内の原子的な確認・予約に一本化した。
+  - `addWarlordToUser()`/`maybeConquerProvince()`/`recordAchievementOnce()`/`grantKokudakaBonus()`/`maybeCompleteRegion()`(旧実装、それぞれread-modify-writeまたはSELECT→INSERTのレースを含んでいた)を削除し、`execute_gacha_draw()`呼び出しに置き換えた。
+  - 動画演出の選定(`selectAnimationForDraw`)は、`execute_gacha_draw()`が返す`is_new_card`を使い、コミット後にベストエフォートで実行・記録する(既存方針「演出選定の失敗でガチャ自体を失敗させない」を維持)。
+  - `GachaLimitExceededError`/`InsufficientTicketsError`は、SQL関数が`raise exception`する`gacha_daily_limit_exceeded`/`insufficient_gacha_tickets`(既存の`consume_gacha_ticket()`由来)を`error.message`で判定して変換する(既存の`consumeGachaTicket()`ラッパーと同じ変換パターン)。
+- `src/modules/gacha/domain/rarity.ts`・`rarity.test.ts`(削除)
+  - `calcContributionPoints()`(スロット別基礎点+新規カードボーナス)のロジックを`execute_gacha_draw()`内のSQLへ移設したため、TS側の呼び出し元が無くなり削除した。
+- `src/modules/conquest/domain/conquest-policy.ts`・`conquest-policy.test.ts`(削除)
+  - `isConquestSatisfied()`(必須武将の充足判定)のロジックを`execute_gacha_draw()`内のSQL(所持数と必須数の比較)へ移設したため、TS側の呼び出し元が無くなり削除した。`src/lib/conquest-rules.ts`の re-export も削除。
+- `src/lib/user-activity.ts`(変更)
+  - `gacha_draw`アクティビティの記録は`execute_gacha_draw()`内で直接行うようになったため、`recordContribution()`を経由しなくなった旨をコメントで明記した(関数自体は他のアクティビティ種別で引き続き使用)。
+- `docs/MODULE_BOUNDARIES.md`(変更): 上記削除・統合を反映。
+
+**設計判断**:
+- 指示書§8.3の関数シグネチャ例(`selected_province_id`/`selected_warlord_id`/`contribution_points`等を引数に取る)は、抽選そのもの(排出率tier・動画アセット等のDB設定に依存する読み取り専用処理)をアプリ側で行い、その決定結果を反映する書き込み側のみをSQL関数に閉じ込める設計を示唆していると解釈した。ただし`contribution_points`は`isNewCard`(SQL関数内で`xmax = 0`により確定)に依存するため、TS側で事前計算せず関数内で算出する設計に変更した(`calcContributionPoints()`のロジックをSQLへ移設)。同様に動画演出選定も`isNewCard`に依存するため、SQL関数の外(コミット後)で行う設計とした。
+- `user_warlords`の新規獲得判定は、追加の読み取りクエリを挟まずに`INSERT ... ON CONFLICT ... DO UPDATE ... RETURNING (xmax = 0)`という単一SQL文で行う(新規insert行かどうかを示す標準的なPostgresイディオム)。
+- 国制覇条件判定(`conquest_rules`優先、無ければ「その国の武将を全部所持」にフォールバック)・地方コンプ実績のスラグ変換(`REGION_SLUGS`)・石高ボーナス計算(`KOKUDAKA_BONUS_PER_PROVINCE`)は、いずれも既存TS実装(`src/lib/gacha.ts`の削除済み関数群、`src/modules/conquest/domain/region-completion.ts`)と完全に同じロジックをSQLへ複製した。`region-completion.ts`自体は`src/lib/regions.ts`の`getRegionProgress()`(地方進捗の読み取り専用表示)が引き続き利用するため削除していない。SQL側のコメントに「両者を同期させること」を明記した。
+- `request_id`はPR1/PR3/PR4のfencing token(claim_token)とは異なり、呼び出し側(TS)が生成して渡す設計とした(指示書§8.3の関数シグネチャに`request_id`が引数として明記されているため、PR4のStripe inbox原子的claimと同じ判断)。
+
+**未対応の残存事項・既知の制約**: `docs/IMPLEMENTATION_STATUS_BUGFIX.md`のPR6セクションに記載の通り、選出可能国一覧のTOCTOU(既存実装から変更なし、実害は限定的)、`xmax = 0`イディオムの実地未確認、`date`型RPCパラメータの実地未確認、`achievements`への新規unique制約適用前の重複データ確認が必要である旨を記録した。
+
+**検証**: `rm -rf .next && npx tsc --noEmit` / `npm run lint` / `npx vitest run`(152/152、`draw-limit.test.ts`へ3件追加・`rarity.test.ts`5件と`conquest-policy.test.ts`5件を削除、159→152) / `npm run build` 全て通過。DB統合テストは未実施(前提を参照)。本PRはガチャという中核機能への大規模な変更であり、通常のP0修正PRより慎重なコードレビューを行った(SQL側のロジックが既存TSロジックと1対1で対応することを個別に確認済み、詳細は本セクションの「設計判断」を参照)。

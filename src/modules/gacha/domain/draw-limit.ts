@@ -22,3 +22,16 @@ export function didJustUnlockMino(previousCount: number, newCount: number, allPr
   if (!mino || mino.unlock_condition_count == null) return false;
   return previousCount < mino.unlock_condition_count && newCount >= mino.unlock_condition_count;
 }
+
+// 千ノ国パスポート モジュール化後バグ修正・Phase B改修指示書 Phase A-4(§8.5)。
+// ガチャの日次上限はAsia/Tokyo基準の日付境界で判定する(旧実装はサーバーのローカル
+// 日付境界だった)。"YYYY-MM-DD"形式で返し、execute_gacha_draw()のbusiness_date引数
+// (date型)にそのまま渡せるようにする。
+export function getTokyoBusinessDate(now: Date): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now);
+}

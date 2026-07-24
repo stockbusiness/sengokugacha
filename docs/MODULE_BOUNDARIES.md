@@ -17,20 +17,18 @@
 |---|---|
 | `draw-policy.ts` | 排出スロット(rare/mid/common)の乱数判定(`pickSlot`) |
 | `rate-tiers.ts` | 制圧数に応じた排出率ティア選択(`pickTierRates`)、デフォルトティア定義 |
-| `draw-limit.ts` | イベント期間判定、美濃国解放判定 |
-| `rarity.ts` | 国家貢献ポイント計算 |
+| `draw-limit.ts` | イベント期間判定、美濃国解放判定、Asia/Tokyo基準の日次業務日算出(`getTokyoBusinessDate`、モジュール化後バグ修正Phase A-4 §8.5) |
 | `errors.ts` | ガチャ関連のドメインエラークラス(上限超過・対象国無し・券不足) |
 
-DB依存の抽選実行(`drawFreeGacha`/`drawPaidGacha`/`performDraw`)、日次上限・武将重複数のDB参照は`src/lib/gacha.ts`に残置。排出率のDB取得(`getGachaRateTiers`)は`src/lib/gacha-rate-tiers.ts`に残置。
+DB依存の抽選実行(`drawFreeGacha`/`drawPaidGacha`/`performDraw`)、日次上限・武将重複数のDB参照は`src/lib/gacha.ts`に残置。排出率のDB取得(`getGachaRateTiers`)は`src/lib/gacha-rate-tiers.ts`に残置。国家貢献ポイント計算(旧`rarity.ts`)・国制覇判定(旧`conquest-policy.ts`、次項)は、モジュール化後バグ修正Phase A-4(§8)でPostgres関数`execute_gacha_draw()`(マイグレーション`20260808000006`)へ統合されたため、TS側の純粋関数は削除した。
 
 ### conquest(`src/modules/conquest/domain/`)
 
 | ファイル | 責務 |
 |---|---|
-| `conquest-policy.ts` | 必須武将の充足判定による国制覇判定(`isConquestSatisfied`) |
 | `region-completion.ts` | 地方コンプ実績スラグ変換・石高ボーナス計算 |
 
-国制覇条件のDB CRUD(`getActiveConquestRule`等)は`src/lib/conquest-rules.ts`、地方進捗のDB集計(`getRegionProgress`)は`src/lib/regions.ts`に残置。
+国制覇条件のDB CRUD(`getActiveConquestRule`等)は`src/lib/conquest-rules.ts`、地方進捗のDB集計(`getRegionProgress`)は`src/lib/regions.ts`に残置。必須武将の充足判定(旧`conquest-policy.ts`の`isConquestSatisfied`)は、モジュール化後バグ修正Phase A-4(§8)で`execute_gacha_draw()`内のSQLへ統合されたため削除した(`src/lib/regions.ts`の`getRegionProgress`は引き続き`region-completion.ts`のREGION_SLUGS等を利用する読み取り専用の表示機能であり、この統合の対象外)。
 
 ### agency(`src/modules/agency/domain/`)
 

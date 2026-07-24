@@ -11,8 +11,7 @@ export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   login: "ログイン",
 };
 
-// Ver2.3指示書1章の取得例に対応する固定ポイント(武将登用のみレアリティに応じて可変、
-// src/lib/gacha.ts の calcContributionPoints を参照)。
+// Ver2.3指示書1章の取得例に対応する固定ポイント(武将登用のみレアリティに応じて可変)。
 export const MANUAL_ACTIVITY_POINTS: Record<Exclude<ActivityType, "gacha_draw">, number> = {
   academy_view: 30,
   market_view: 5,
@@ -21,8 +20,11 @@ export const MANUAL_ACTIVITY_POINTS: Record<Exclude<ActivityType, "gacha_draw">,
 };
 
 // 活動ログへの記録と users.contribution_points(総国家貢献)への加算をまとめて行う。
-// 呼び出し側(gacha.ts / daily-missions.ts / passport.ts)は必ずこの関数経由でポイントを
-// 付与する(集計元を一本化し、活動ログと総国家貢献の値がずれないようにするため)。
+// 呼び出し側(daily-missions.ts / passport.ts)は必ずこの関数経由でポイントを付与する
+// (集計元を一本化し、活動ログと総国家貢献の値がずれないようにするため)。
+// gacha_draw(武将登用)のみ例外で、execute_gacha_draw()(マイグレーション20260808000006)が
+// 同一トランザクション内でuser_activity挿入+残高加算を直接行うため、この関数を経由しない
+// (モジュール化後バグ修正Phase A-4 §8、ガチャ全体を単一トランザクションにするための設計)。
 export async function recordContribution(userId: string, activityType: ActivityType, point: number): Promise<void> {
   const supabase = createSupabaseServerClient();
 

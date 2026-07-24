@@ -95,3 +95,27 @@
 **実装内容の要約**: `src/modules/integrations/domain/sen-no-kuni-hub-signature.ts`(新規)にHMAC署名のバージョン判定・v2 canonical string構築・v1停止判定を純粋関数として実装し、`sen-no-kuni-hub-signature.test.ts`でunit testを追加した(§7.4の必須検証のうち、nonce/Idempotency-Key/event_version/key_id/raw_bodyの各要素を変更するとcanonical stringが変化することを確認)。`src/lib/sen-no-kuni-hub-auth.ts`の`verifySenNoKuniHubRequest()`は`X-SenNoKuni-Signature-Version`ヘッダー(省略時はv1として扱う)で分岐し、v2の場合は`X-Event-Version`/`Idempotency-Key`ヘッダーも署名対象に含める。`sen_no_kuni_hub_settings`へ`v1_disabled_at`/`v1_last_used_at`/`v1_usage_count`列を追加し、システム単位でv1署名の受付終了日時を設定できるようにした(未設定なら無期限にv1を許可、既存接続を破壊しない)。v1署名でのリクエスト成功時は`record_sen_no_kuni_hub_v1_usage()`(単一UPDATE文による原子的インクリメント)でベストエフォートに利用ログを記録する。
 
 **未対応の残存事項**: v1停止日時を実際に決定し設定する運用判断、および管理画面からの`v1_disabled_at`設定UIは本PRのスコープに含めていない(列・関数のみ用意)。
+
+## Phase A-4: ガチャ・国取り安全化
+
+### PR6: fix: make gacha draws transactionally safe
+
+| 項目 | 状況 |
+|---|---|
+| §8.3 単一Postgres関数`execute_gacha_draw()`への統合(日次上限予約・ガチャ券消費・武将count・ログ・国家貢献ポイント・国制覇・実績・地方ボーナス) | 1. ソースコード上で実装済み |
+| §8.3 必須制約(`unique(user_id, warlord_id)`/`unique(user_id, achievement_type)`/`unique(user_id, province_id)`/`unique(request_id)`) | 1. ソースコード上で実装済み(前3つは既存制約を再利用、`achievement_type`のみ本PRで新設、`request_id`も新設) |
+| §8.5 Asia/Tokyo基準の日付境界(`getTokyoBusinessDate()`) | 2. unit test確認済み(`draw-limit.test.ts`) |
+| §8.4 失敗時に副作用が残らないこと(ガチャ券・武将・ログ・ポイント・国制覇) | 1. ソースコード上で実装済み(単一トランザクションのため、途中で例外が発生すれば全体がロールバックされる。コードレビュー上の判断) |
+| §8.5 並行実行時の受入条件(20並列実行で上限超過なし・ガチャ券1枚で2回引けない等) | 6. 未確認(コードレビューのみ、DB統合テスト未実施) |
+
+**実装内容の要約**: 国・スロット・武将の決定(排出率tier参照、DB設定に依存する読み取り専用処理)は`src/lib/gacha.ts`(TS)で従来通り行い、その決定結果を反映する書き込み側(日次上限予約・ガチャ券消費・`user_warlords`更新・`gacha_logs`追加・国家貢献ポイント加算・国制覇判定・実績記録・地方ボーナス付与)を単一のPostgres関数`execute_gacha_draw()`(マイグレーション`20260808000006`)へ統合した。日次上限は新設の`gacha_daily_usage`テーブル(`unique(user_id, business_date, draw_type)`)に対する`SELECT ... FOR UPDATE`で原子的に確認・予約し、行ロックを保持したまま関数全体を実行することで、同一ユーザーの並行リクエストを直列化する。`user_warlords`の被り枚数更新は`INSERT ... ON CONFLICT ... DO UPDATE`+`RETURNING (xmax = 0)`(新規獲得判定の標準的なPostgresイディオム)で原子化し、`achievements`は新設の`unique(user_id, achievement_type)`制約+`ON CONFLICT DO NOTHING`で重複防止した。`request_id`(呼び出しごとにTS側で`crypto.randomUUID()`生成)による冪等リプレイにも対応し、同一`request_id`での再呼び出しは副作用を再実行せず前回の結果をそのまま返す。動画演出の選定・記録のみ、既存方針(失敗してもガチャ自体を失敗させない)を維持するため、コミット後のベストエフォート処理として残した。
+
+日次上限の判定基準を、旧実装のサーバーローカル日付境界から、`getTokyoBusinessDate()`(純粋関数、`draw-limit.test.ts`でunit test済み)によるAsia/Tokyo基準の日付境界に変更した(§8.5)。
+
+**クリーンアップ**: ロジックがSQL側へ完全移設されたため、`src/modules/gacha/domain/rarity.ts`(`calcContributionPoints`)・`src/modules/conquest/domain/conquest-policy.ts`(`isConquestSatisfied`)とそれぞれのテストを削除した(モジュール化(PR3/PR4)で抽出した純粋関数だが、本PRで唯一の呼び出し元だった`gacha.ts`から呼ばれなくなったため)。
+
+**未対応の残存事項・既知の制約**:
+- 選出可能国一覧(`getEligibleProvinces`)の取得は`execute_gacha_draw()`のトランザクション外(TS側の事前読み取り)のため、同一国を狙う並行リクエストが極めて僅かな時間差で選出結果に影響し得る(TOCTOU)。ただし選出国は`user_provinces.is_conquered=true`の国を除外するため、一度制圧された国は以降選出されなくなり実害は限定的(既存実装から変更していない挙動)。
+- `execute_gacha_draw()`の`xmax = 0`による新規獲得判定は標準的なPostgresイディオムだが、DB統合テスト環境が無いため実行結果としての確認はできていない。
+- `p_business_date`はPostgreSQLの`date`型パラメータとしてISO 8601文字列("YYYY-MM-DD")をSupabase経由で渡す設計だが、実際のPostgREST/Supabase-js経由での型変換の実地確認はできていない。
+- `achievements`への`unique(user_id, achievement_type)`制約追加は、既存データに重複行が無いことを前提とする。本番適用前に`select user_id, achievement_type, count(*) from achievements group by 1, 2 having count(*) > 1;`で重複が無いことを確認すること(重複があればマイグレーション適用が失敗する)。
