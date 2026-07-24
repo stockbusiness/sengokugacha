@@ -42,6 +42,33 @@ export class SupabasePurchaseRepository implements PurchaseRepository {
       .eq("id", purchaseId);
   }
 
+  async findByStripeSessionId(sessionId: string): Promise<{ id: string; status: string } | null> {
+    const { data, error } = await this.supabase.from("purchases").select("id, status").eq("stripe_session_id", sessionId).maybeSingle();
+    if (error) throw error;
+    return (data as { id: string; status: string } | null) ?? null;
+  }
+
+  async claimForProcessing(
+    purchaseId: string,
+    paymentIntentId: string | null,
+    amountReceivedYen: number | undefined
+  ): Promise<boolean> {
+    const { data, error } = await this.supabase
+      .from("purchases")
+      .update({
+        status: "processing",
+        grant_status: "processing",
+        payment_intent_id: paymentIntentId,
+        ...(amountReceivedYen !== undefined ? { amount_received_yen: amountReceivedYen } : {}),
+      })
+      .eq("id", purchaseId)
+      .eq("status", "pending")
+      .select("id")
+      .maybeSingle();
+    if (error) throw error;
+    return !!data;
+  }
+
   // 使いすぎ防止(payment_settings.monthly_spending_cap_yen)の判定に使う、
   // 当月(サーバーのローカル日付基準)の完了済み購入金額の合計。
   async getMonthlySpentYen(userId: string): Promise<number> {
