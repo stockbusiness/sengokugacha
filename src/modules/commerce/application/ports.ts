@@ -46,6 +46,31 @@ export interface PurchaseRepository {
   markCompleted(purchaseId: string): Promise<void>;
   markGrantFailed(purchaseId: string, message: string, previousAttemptCount: number): Promise<void>;
   getMonthlySpentYen(userId: string): Promise<number>;
+  // Stripe Webhook(PR3)向け。
+  findByStripeSessionId(sessionId: string): Promise<{ id: string; status: string } | null>;
+  // pending→processingへの原子的な遷移(guard-clause update)。既にpendingでない場合はfalseを
+  // 返す(「処理中または処理済み」とみなし、二重付与を避けるためここで終える呼び出し元の
+  // 判断に使う)。
+  claimForProcessing(purchaseId: string, paymentIntentId: string | null, amountReceivedYen: number | undefined): Promise<boolean>;
+}
+
+export type ClaimStripeWebhookEventResult = {
+  claim_outcome: "new" | "retryable" | "duplicate" | "in_progress" | "dead";
+  inbox_event_id: string;
+};
+
+// Stripe event inboxの原子的claim・完了・失敗記録(モジュール化後バグ修正Phase A-3・§6)。
+// claim_stripe_webhook_event()は「行が無ければ作成→SELECT ... FOR UPDATE→状態遷移判定→claim」を
+// 単一トランザクションで行うPostgres関数であり、分割しない(最小リスク方針)。
+export interface StripeInboxRepository {
+  claimEvent(
+    stripeEventId: string,
+    eventType: string,
+    payload: Record<string, unknown>,
+    claimToken: string
+  ): Promise<ClaimStripeWebhookEventResult>;
+  markSucceeded(inboxEventId: string, claimToken: string): Promise<boolean>;
+  markFailed(inboxEventId: string, claimToken: string, message: string): Promise<void>;
 }
 
 // purchase_grant_stepsの原子的claim・完了・失敗記録(バグ修正PR1・PR2)。
