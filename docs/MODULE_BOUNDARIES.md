@@ -83,6 +83,8 @@ Phase B-1(PR4)で、`src/lib/external-orders.ts`(767行)の実装本体を、元
 
 HMAC署名検証(`verifySenNoKuniHubRequest`)、inboxの原子的claim(`claimInboxEvent`)、イベント種別ごとのディスパッチはそれぞれ`src/lib/sen-no-kuni-hub-auth.ts`・`src/lib/integration-inbox.ts`・`src/app/api/integrations/sen-no-kuni-hub/route.ts`に残置。
 
+Phase B-1で、`src/lib/sen-no-kuni-hub-auth.ts`・`src/lib/integration-inbox.ts`・`src/lib/integration-outbox.ts`・`src/lib/agency-events.ts`の実装本体を`src/modules/integrations/application/`(`verify-sen-no-kuni-hub-request.ts`・`handle-common-user-merged.ts`・`handle-assigned-agent-updated.ts`、`ports.ts`の`IntegrationOutboxRepository`/`IntegrationInboxRepository`/`SenNoKuniHubSettingsRepository`/`AgencyEventRepository`インターフェースのみに依存)・`src/modules/integrations/infrastructure/`(`SupabaseIntegrationOutboxRepository`等)へ分離した。`claim_integration_inbox_event()`(Postgres関数)は分割せず1メソッド呼び出しとして丸ごとラップした(最小リスク方針)。`verifySenNoKuniHubRequest()`のNextRequestヘッダー抽出は`src/lib/sen-no-kuni-hub-auth.ts`(互換ラッパー)側に残し、application層(`verifySenNoKuniHubIdentity()`)はプレーンな文字列のみを受け取る形にしてNext.js非依存にした。commerceモジュールの`PurchaseOutboxGateway`(`src/modules/commerce/infrastructure/supabase-purchase-outbox-gateway.ts`)は、この`IntegrationOutboxRepository`を直接使う実装へ差し替えた(PR2時点では`src/lib/integration-outbox.ts`の関数を直接呼ぶ暫定アダプタだった)。
+
 ### identity・entitlements・wallet(domain層なし)
 
 - **identity**: セッション(`src/lib/session.ts`/`admin-session.ts`/`agent-session.ts`)はほぼ全体がCookie読み書き(`next/headers`依存)であり、DB非依存の純粋関数はJWT署名・検証部分のみ。この部分は`src/shared/auth/`へ統合済み(モジュール専用のdomain層ではなく共有インフラとして配置、詳細は`docs/ARCHITECTURE.md`)。
