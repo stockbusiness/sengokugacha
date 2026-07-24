@@ -137,3 +137,25 @@ alter table stripe_webhook_events
 ### 影響範囲
 
 本PRは`stripe_webhook_events`テーブルへの列追加・関数追加と、`src/app/api/stripe/webhook/route.ts`内のinbox判定ロジックの呼び出し方変更のみで、既存カラム・既存の`purchases`テーブル・`users`テーブルのデータには影響しない。ロールバックしても既存のStripe決済履歴・残高データは変更されない。
+
+## PR5: feat: support HMAC signature v2 alongside v1
+
+### ロールバック手順
+
+1. 該当コミットを`git revert`する。ロールバックすると`src/lib/sen-no-kuni-hub-auth.ts`は本PR以前の実装(v1署名のみ)に戻り、`src/modules/integrations/domain/sen-no-kuni-hub-signature.ts`・`sen-no-kuni-hub-signature.test.ts`も削除される。
+2. `record_sen_no_kuni_hub_v1_usage()`をDB側から削除し、列を戻す場合は以下を適用する:
+
+```sql
+drop function if exists record_sen_no_kuni_hub_v1_usage(text);
+
+alter table sen_no_kuni_hub_settings
+  drop column if exists v1_disabled_at,
+  drop column if exists v1_last_used_at,
+  drop column if exists v1_usage_count;
+```
+
+3. ロールバック前に、v2署名で接続している外部システムが無いことを確認する。v2署名のみを使うよう案内済みの連携先が存在する場合、ロールバックするとその接続先からのリクエストは全て`invalid_signature_version`または署名不一致で拒否されるようになる(v1署名へ戻すよう連携先に依頼するか、ロールバックを見送る)。
+
+### 影響範囲
+
+本PRは`sen_no_kuni_hub_settings`テーブルへの列追加・関数追加と、`src/lib/sen-no-kuni-hub-auth.ts`内の署名検証ロジックの変更のみで、既存のv1署名接続には影響しない(`v1_disabled_at`が未設定の既存行はロールバック前後を問わずv1署名を受け付け続ける)。既存の`sen_no_kuni_hub_used_nonces`・`integration_inbox_events`等のデータには影響しない。

@@ -90,3 +90,32 @@
 - `claim_stripe_webhook_event()`内の行作成(`insert ... on conflict (stripe_event_id) do nothing`)は`for update`より前に実行するため、行が存在しない初回呼び出しでも同一トランザクション内で作成直後にロックを取得できる。これにより指示書§6.3の「unique違反がHTTP 500にならない」を満たす(万一の競合はDB側の行ロックで直列化され、呼び出し元にunique制約違反が伝播することはない)。
 
 **検証**: `rm -rf .next && npx tsc --noEmit` / `npm run lint` / `npx vitest run`(144/144、`decideStripeInboxAction()`のテスト5件削除に伴い150→144。他は変更なし) / `npm run build` 全て通過。DB統合テストは未実施(前提を参照)。
+
+## PR5: feat: support HMAC signature v2 alongside v1
+
+**対象**: Phase A-3(§7)
+
+**変更ファイル**:
+- `supabase/migrations/20260808000005_sen_no_kuni_hub_signature_v2.sql`(新規)
+  - `sen_no_kuni_hub_settings`へ`v1_disabled_at timestamptz`・`v1_last_used_at timestamptz`・`v1_usage_count bigint not null default 0`列を追加。
+  - `record_sen_no_kuni_hub_v1_usage(p_key_id text)`: `v1_usage_count`を単一UPDATE文で原子的にインクリメントし`v1_last_used_at`を更新する(read-modify-writeを避けるため、`adjust_user_balance()`等と同じ設計方針)。
+- `src/modules/integrations/domain/sen-no-kuni-hub-signature.ts`(新規)・`sen-no-kuni-hub-signature.test.ts`(新規)
+  - `resolveSignatureVersion(header)`: `X-SenNoKuni-Signature-Version`ヘッダーの値を`"1"`/`"2"`/`null`(不正値)へ正規化する純粋関数。省略時は`"1"`を返す(既存接続の後方互換)。
+  - `buildV1SignedPayload(timestamp, rawBody)`: 既存v1署名対象文字列(`timestamp + "." + rawBody`)を構築する。
+  - `buildV2CanonicalString({keyId, timestamp, nonce, eventVersion, idempotencyKey, rawBody})`: 指示書§7.2の推奨canonical string(`key_id\ntimestamp\nnonce\nevent_version\nidempotency_key\nsha256(raw_body)`)を構築する。
+  - `isV1SignatureAllowed(v1DisabledAt, now)`: システム単位でv1署名がまだ許可されているかを判定する純粋関数。
+  - テストで上記4関数のロジックを検証(nonce/Idempotency-Key/event_version/key_id/raw_bodyの各要素を変更するとcanonical stringが変化することを含む、§7.4の必須検証のうちunit test化可能な部分)。
+- `src/lib/sen-no-kuni-hub-auth.ts`(変更)
+  - `verifySenNoKuniHubRequest()`が`X-SenNoKuni-Signature-Version`ヘッダーで署名バージョンを判定し、v1/v2それぞれに応じた署名対象文字列で検証するよう変更。v2の場合は`X-Event-Version`/`Idempotency-Key`ヘッダーの存在も必須にする(欠落時は`missing_headers`エラー)。
+  - `settings.v1_disabled_at`を参照し、期限を過ぎたシステムのv1署名を`v1_disabled`エラーで拒否する。
+  - v1署名でのリクエスト成功時、`record_sen_no_kuni_hub_v1_usage()`をベストエフォートで呼び出し利用ログを記録する(失敗してもリクエスト自体は成功させる)。
+  - `SenNoKuniHubAuthErrorCode`に`invalid_signature_version`・`v1_disabled`を追加。`SenNoKuniHubIdentity`に`signatureVersion`を追加(既存呼び出し元`route.ts`は`systemKey`のみ参照しているため後方互換)。
+- `docs/MODULE_BOUNDARIES.md`(変更): `sen-no-kuni-hub-signature.ts`の行を追加。
+
+**設計判断**:
+- 契約書のバージョン別名(§00_COMMON_INTEGRATION_CONTRACT.md)のうち署名対象文字列の全システム合意がDRAFT段階で未確定だったため、モジュール化時点のP0-2では既存v1実装を維持する方針を取っていた(`docs/BASELINE_TEST_RESULTS.md`参照)。今回のバグ修正指示書§7で具体的なv2仕様が明示されたため、v1を破壊せず併存させる形でv2を追加した。
+- v2のraw_bodyをそのままcanonical stringへ連結すると、本文中の改行文字等でフィールド境界が曖昧になり得るため、指示書の推奨仕様通りsha256ハッシュ値(hex)を連結する設計とした。
+- `v1_disabled_at`は「システム単位の許可バージョン設定」(§7.3)と「v1停止日時を決定」(§7.3)を1つの列で兼ねる設計にした。未設定(null)ならv1を無期限に許可し(既存接続を破壊しない)、値を設定すればその日時以降v1を拒否する。ロールバックは列をnullに戻すだけで済む(§7.3「ロールバック可能にする」)。
+- 「新規連携はv2必須」(§7.3)はDB制約では強制せず、新規`sen_no_kuni_hub_settings`行作成時に`v1_disabled_at`をnow()に設定する運用上の取り決めとして扱うこととした(接続時点で「新規」かどうかをスキーマから機械的に判定する手段が無いため)。
+
+**検証**: `rm -rf .next && npx tsc --noEmit` / `npm run lint` / `npx vitest run`(159/159、`sen-no-kuni-hub-signature.test.ts`の新規テスト15件追加に伴い144→159) / `npm run build` 全て通過。DB統合テストは未実施(前提を参照)。

@@ -86,3 +86,30 @@ npm run build
 - lease切れ後の再claimで古いworkerが状態更新できない(`mark_stripe_webhook_succeeded`/`mark_stripe_webhook_failed`のclaim_token一致チェックにより解消と判断)
 
 上記はDB統合テスト環境(Supabase local等)が無いと自動検証できない。SQLのロジックレビュー(`docs/IMPLEMENTATION_HISTORY_BUGFIX.md`参照)は実施済みだが、実行結果としての確認はできていない。
+
+## PR5: feat: support HMAC signature v2 alongside v1
+
+| コマンド | 結果 |
+|---|---|
+| `rm -rf .next && npx tsc --noEmit` | エラーなし |
+| `npm run lint` | 0 errors, 2 warnings(既存の`<img>`警告のみ、本作業と無関係) |
+| `npx vitest run` | 159/159 pass(`sen-no-kuni-hub-signature.test.ts`の新規テスト15件追加に伴い144→159) |
+| `npm run build` | 成功 |
+
+### §7.4の必須検証のうちunit test確認済み
+
+- nonce変更で署名不一致 → `buildV2CanonicalString()`のnonce変更によるcanonical string変化を確認
+- Idempotency-Key変更で署名不一致 → 同上、idempotencyKey変更によるcanonical string変化を確認
+- event version変更で署名不一致 → 同上、eventVersion変更によるcanonical string変化を確認
+- key ID変更で署名不一致 → 同上、keyId変更によるcanonical string変化を確認
+- raw body変更で署名不一致 → 同上、rawBody変更(sha256ハッシュ値経由)によるcanonical string変化を確認
+
+canonical stringが変化すればHMAC署名も(暗号学的に無視できる確率を除き)変化するため、上記はunit testで実質的に検証済みと判断する。
+
+### 未実施の検証(§7.4の受入条件のうち)
+
+- timestamp期限切れ(v1と同じくDB非依存だが`Date.now()`依存のため、既存のタイムスタンプ検証ロジックと合わせてコードレビューのみで確認)
+- nonce再利用(既存のnonce unique制約に依存するためDB統合テストが必要)
+- v1/v2併存時の実際のHTTPリクエストレベルでの検証(curlでの自作署名リクエスト送信によるE2E確認、指示書§7.4冒頭で言及されている実地検証)
+
+上記はDB統合テスト環境(Supabase local等)が無いと自動検証できない。本番投入前にユーザー側での実地検証(curlでの署名検証、既存sengoku-ai.com連携・既存v1接続への回帰確認含む)を要する。
