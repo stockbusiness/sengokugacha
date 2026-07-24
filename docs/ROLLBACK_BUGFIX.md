@@ -159,3 +159,37 @@ alter table sen_no_kuni_hub_settings
 ### 影響範囲
 
 本PRは`sen_no_kuni_hub_settings`テーブルへの列追加・関数追加と、`src/lib/sen-no-kuni-hub-auth.ts`内の署名検証ロジックの変更のみで、既存のv1署名接続には影響しない(`v1_disabled_at`が未設定の既存行はロールバック前後を問わずv1署名を受け付け続ける)。既存の`sen_no_kuni_hub_used_nonces`・`integration_inbox_events`等のデータには影響しない。
+
+## PR6: fix: make gacha draws transactionally safe
+
+### ロールバック手順
+
+1. 該当コミットを`git revert`する。ロールバックすると`src/lib/gacha.ts`は本PR以前の実装(個別のread-modify-write処理群)に戻り、`src/modules/gacha/domain/rarity.ts`/`src/modules/conquest/domain/conquest-policy.ts`とそれぞれのテストも復元される。
+2. `execute_gacha_draw()`をDB側から削除し、列・制約を戻す場合は以下を適用する:
+
+```sql
+drop function if exists execute_gacha_draw(uuid, text, date, int, uuid, uuid, int, uuid);
+
+alter table achievements drop constraint if exists achievements_user_id_achievement_type_key;
+
+drop index if exists gacha_logs_request_id_key;
+
+alter table gacha_logs
+  drop column if exists request_id,
+  drop column if exists is_new_card,
+  drop column if exists province_conquered,
+  drop column if exists region_completed,
+  drop column if exists region_completion_bonus,
+  drop column if exists contribution_points_earned;
+
+drop table if exists gacha_daily_usage;
+```
+
+3. ロールバック実行前に、進行中のガチャ抽選リクエストが無いことを確認する(具体的な判定手段は無いため、可能であればメンテナンスモード等で新規リクエストを止めてから実施する)。`execute_gacha_draw()`は単一トランザクションのため`processing`のような中間状態は残らないが、ロールバック直後に旧コード(read-modify-write処理群)へ切り替わることで、旧実装が抱えていた既知のレース(§8.2、日次上限・武将count・実績重複等)が再発する点に注意する。
+4. `achievements_user_id_achievement_type_key`制約を削除する前に、この制約が実際に重複行の発生を防いでいた形跡(制約違反エラーのログ等)が無いか確認しておくと、ロールバック後の運用判断の参考になる。
+
+### 影響範囲
+
+本PRは`gacha_daily_usage`テーブルの新設、`gacha_logs`/`achievements`テーブルへの列・制約追加、および`src/lib/gacha.ts`の書き込みロジックのSQL側への移設のみで、既存の`user_warlords`・`user_provinces`・`gacha_logs`・`achievements`・`users`テーブルの既存カラム・既存データには影響しない。ロールバックしても既存の武将所持数・国制覇状況・実績・残高データは変更されない。
+
+**注意**: `achievements_user_id_achievement_type_key`制約はロールバック後もDB上に残しておくこと自体は害が無い(旧コードのSELECT→INSERTパターンと併存しても、正常系では制約に抵触しない)。ロールバックの一環として制約自体を削除する必要は本来無いが、旧実装の挙動を完全に復元したい場合の手順として上記に含めた。

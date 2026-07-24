@@ -1,8 +1,5 @@
 import { logAdminAction } from "@/lib/admin-audit-log";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
-import { isConquestSatisfied } from "@/modules/conquest/domain/conquest-policy";
-
-export { isConquestSatisfied };
 
 export type ConquestRule = {
   id: string;
