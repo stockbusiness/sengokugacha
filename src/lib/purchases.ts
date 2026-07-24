@@ -1,19 +1,9 @@
-import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { SupabasePurchaseRepository } from "@/modules/commerce/infrastructure/supabase-purchase-repository";
 
-// 使いすぎ防止(payment_settings.monthly_spending_cap_yen)の判定に使う、
-// 当月(サーバーのローカル日付基準)の完了済み購入金額の合計。
+// 千ノ国パスポート モジュール化後バグ修正・Phase B改修指示書 Phase B-1(commerceモジュール、PR2)。
+// 実装本体はsrc/modules/commerce/infrastructure/supabase-purchase-repository.tsへ移設した。
+// 既存のimport経路(@/lib/purchases)を変更せずに使い続けられるよう、本ファイルは薄い
+// 互換ラッパーとして残す。
 export async function getMonthlySpentYen(userId: string): Promise<number> {
-  const supabase = createSupabaseServerClient();
-  const now = new Date();
-  const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
-
-  const { data, error } = await supabase
-    .from("purchases")
-    .select("amount")
-    .eq("user_id", userId)
-    .eq("status", "completed")
-    .gte("created_at", startOfMonth.toISOString());
-
-  if (error) throw error;
-  return (data ?? []).reduce((sum, row) => sum + row.amount, 0);
+  return new SupabasePurchaseRepository().getMonthlySpentYen(userId);
 }
