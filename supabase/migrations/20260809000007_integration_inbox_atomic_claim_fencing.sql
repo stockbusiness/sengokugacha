@@ -17,6 +17,13 @@ alter table integration_inbox_events
   add column claim_token uuid,
   add column lease_expires_at timestamptz;
 
+-- create or replaceは引数シグネチャ(型・個数)が一致する場合のみ既存関数を置き換える。
+-- 新しい引数(p_claim_token/p_lease_seconds/p_max_attempts)を追加すると別シグネチャの
+-- オーバーロードとして扱われ、旧6引数版が残ったままになる。旧版が残っていると、
+-- 6引数で呼び出した際にどちらの関数を使うべきかPostgresが解決できずエラーになる
+-- (20260807000005と同じ理由で、まず明示的にdropする)。
+drop function if exists claim_integration_inbox_event(text, text, text, jsonb, text, text);
+
 create or replace function claim_integration_inbox_event(
   p_source_system_key text,
   p_event_id text,
