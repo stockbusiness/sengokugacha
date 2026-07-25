@@ -25,7 +25,12 @@
 
 - `typecheck`/`lint`/`unit-test`/`architecture-test`/`build`: **2. unit test確認済み**(このセッションで実際にローカル実行し成功を確認)。
 - `contract-test`のうちDBに依存しない認証ゲート(unauthorized/権限不足/HMACヘッダー欠落)部分: このセッションで実際に`next dev`を子プロセスとして起動し、`npm run test:contracts`をSupabase local無しで実行して成功を確認した(8/9件成功、DB依存の1件はskip)。**2. unit test確認済み**に準ずる形でHTTPレベルの実地確認ができている。
-- `migration-test`/`integration-test`/`contract-test`のDB依存部分、およびGitHub Actions上での`supabase/setup-cli@v1`→`supabase start`自体の動作: **7. 未確認**。GitHub-hosted runner(ubuntu-latest)はDockerレジストリへの制限が無いため動作する想定だが、このセッションでは実際にGitHub Actions上での実行結果を確認できていない。本PRのCI実行結果(GitHub上)で初めて実地確認されることになる。
+- `migration-test`/`integration-test`/`contract-test`のDB依存部分、およびGitHub Actions上での`supabase/setup-cli@v1`→`supabase start`自体の動作: **1. 実装済み・実地確認済み**(Phase C-0 PR4で更新)。開発サンドボックスからは確認できなかったが、PR #147への一連のプッシュ(§3〜§12対応、commit `831b58e`〜`801d112`)に対する実際のGitHub Actions実行で、8ジョブ全て(`typecheck`/`lint`/`unit-test`/`architecture-test`/`build`/`migration-test`/`integration-test`/`contract-test`)が繰り返しグリーンになることを確認した。`supabase/setup-cli@v1`→`supabase start`はGitHub-hosted runner上で問題なく動作し、`migration-test`ジョブでは§11で追加した既存データ相当フィクスチャ投入(`tests/migrations/run-preflight.sh`)も含めて成功している。開発用サンドボックスでのDocker制限は本番のCI実行には影響しない、という当初の想定が実地で裏付けられた。
+
+## Phase C-0 PR4(§13)での追加対応
+
+- §3〜§12で追加した統合テスト・Contractテスト・マイグレーション事前確認・RLS/RPC権限テストは、いずれも既存の8ジョブ構成(`migration-test`/`integration-test`/`contract-test`)にそのまま組み込まれ、ジョブ構成・トリガー条件(`push: main` / `pull_request`)の変更は不要だった。
+- §12のRLS/RPC権限テストで、`public`スキーマの全カスタム関数がデフォルトで`anon`/`authenticated`からEXECUTE可能だったバグ(20260809000009で修正)を検出・修正した。修正後もCIの8ジョブは全てグリーンのままであることを確認済み。
 
 ## branch protection(必須チェック化)について
 
