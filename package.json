@@ -7,7 +7,13 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:unit": "vitest run",
+    "test:architecture": "vitest run src/modules/architecture-rules.test.ts",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "test:contracts": "vitest run --config vitest.contracts.config.ts",
+    "test:migrations": "bash scripts/test-migrations.sh",
+    "ci": "npm run lint && npx tsc --noEmit && npm run test:unit && npm run test:architecture && npm run build"
   },
   "dependencies": {
     "@line/liff": "^2.29.1",
