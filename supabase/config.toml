@@ -1,0 +1,48 @@
+# 千ノ国パスポート Phase C-0(DB統合テスト・マイグレーション安全化・CI必須化指示書)。
+# Supabase local環境の設定。`supabase start`で起動する。
+# 本番Supabaseプロジェクトとは完全に独立しており、本番の接続情報(.env.localの
+# NEXT_PUBLIC_SUPABASE_URL等)はここでは一切参照しない。
+
+project_id = "sengoku-passport-test"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "storage"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 15
+
+[db.pooler]
+enabled = false
+
+[studio]
+enabled = true
+port = 54323
+
+[inbucket]
+enabled = false
+
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:3000"
+additional_redirect_urls = []
+jwt_expiry = 3600
+enable_signup = false
+
+[auth.email]
+enable_signup = false
+enable_confirmations = false
+
+[realtime]
+enabled = false
+
+[analytics]
+enabled = false
