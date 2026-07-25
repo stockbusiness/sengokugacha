@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { SignJWT } from "jose";
 
 // 千ノ国パスポート Phase C-0(§4 Supabase local環境)。
 // DB統合テストは、SUPABASE_TEST_URL/SUPABASE_TEST_SERVICE_ROLE_KEYが設定されている
@@ -46,6 +47,31 @@ export function getTestAnonSupabaseClient(): SupabaseClient {
   }
   requireLocalTestUrl(url);
   return createClient(url, anonKey, { auth: { autoRefreshToken: false, persistSession: false } });
+}
+
+// 千ノ国パスポート Phase C-0 PR4(§12 RLS追加試験)。このアプリはSupabase Authを
+// 使わない(LINEログイン+独自セッション)ため、実在するauthenticatedユーザーが
+// 存在しない。Supabase CLIはconfig.tomlでauth.jwt_secretを明示的に上書きしない限り、
+// ローカル開発専用の既知のデフォルト値("super-secret-jwt-token-with-at-least-
+// 32-characters-long")でJWTを署名する(本番プロジェクトは必ず固有のランダムな
+// シークレットを使うため、この値が本番で使われることはない)。本番/ステージングへの
+// 誤接続はrequireLocalTestUrl()で別途防止済みのため、ローカルSupabase専用の
+// 既知の値をテストでも使い、role="authenticated"のJWTを自前で組み立てて検証する。
+const SUPABASE_LOCAL_DEFAULT_JWT_SECRET = "super-secret-jwt-token-with-at-least-32-characters-long";
+
+export async function getTestAuthenticatedSupabaseClient(userId: string = crypto.randomUUID()): Promise<SupabaseClient> {
+  const url = process.env.SUPABASE_TEST_URL;
+  if (!url) {
+    throw new Error("SUPABASE_TEST_URLが設定されていません。");
+  }
+  requireLocalTestUrl(url);
+  const secret = new TextEncoder().encode(SUPABASE_LOCAL_DEFAULT_JWT_SECRET);
+  const token = await new SignJWT({ role: "authenticated", sub: userId, aud: "authenticated" })
+    .setProtectedHeader({ alg: "HS256" })
+    .setIssuedAt()
+    .setExpirationTime("3600s")
+    .sign(secret);
+  return createClient(url, token, { auth: { autoRefreshToken: false, persistSession: false } });
 }
 
 // テスト用ユーザー・購入等のfixtureを作成するための共通ヘルパー。
