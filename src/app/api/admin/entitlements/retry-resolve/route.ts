@@ -33,7 +33,9 @@ export async function POST() {
     retriedCount++;
     try {
       const result = await retryResolveEntitlementGrant(row.id as string);
-      if (result.claim_outcome === "claimed") resolvedCount++;
+      // claimed_then_reversed: 解決した時点で既にrevoke済みだったため、grant適用直後に
+      // 自動で取消まで完結したケース(マージ前最終修正指示§1)。resolvedはしているためカウントする。
+      if (result.claim_outcome === "claimed" || result.claim_outcome === "claimed_then_reversed") resolvedCount++;
     } catch {
       continue; // 未解決のまま残す。次回の再実行に委ねる。
     }
