@@ -40,6 +40,20 @@
 
 この設定変更はGitHubリポジトリの管理者権限操作であり、このセッションのGitHub連携ツールでは変更できない(またはリスクが大きいため意図的に行っていない)。**本部管理者がGitHubリポジトリのBranch protection設定を上記8ジョブ名で更新する必要がある。**
 
+### PR #147マージ前最終修正指示§7で追加要求された設定項目
+
+上記の8ジョブ必須化に加えて、以下5項目もSettings → Branches → Branch protection rules → `main`で有効化する必要がある(いずれも本部管理者による手動操作。このセッションで利用可能なGitHub連携ツール一式を確認したが、branch protection/repository rulesetsを変更するAPIエンドポイントに対応するツールは存在せず、このセッションからは実行できない)。
+
+| # | 設定項目 | GitHub UI上の該当チェックボックス |
+|---|---|---|
+| 1 | PRを経ないと`main`へマージできない | "Require a pull request before merging" |
+| 2 | マージ前にPRのbranchが`main`の最新コミットに追従していること | "Require branches to be up to date before merging"("Require status checks to pass before merging" 配下のオプション) |
+| 3 | 会話(レビューコメント)が全て解決済みであること | "Require conversation resolution before merging" |
+| 4 | `main`へのforce-pushを禁止 | "Do not allow force pushes"(=Allow force pushesのチェックを外したままにする) |
+| 5 | `main`ブランチの削除を禁止 | "Do not allow deletions"(=Allow deletionsのチェックを外したままにする) |
+
+上記1〜5と、既存の8ジョブRequired status checks設定を合わせて初めて、指示書§10(受入条件)・§11(ロールバック条件)が定める「branch protectionが設定されていること」を満たす。本部管理者が上記を設定した後、GitHub UIの当該画面のスクリーンショット、または`gh api repos/stockbusiness/sengokugacha/branches/main/protection`の出力を本対応の完了証跡として残すことを推奨する。
+
 ## 未対応・今後の課題
 
 - RLSテスト(§15)は`tests/integration/rls-policies.test.ts`としてintegration-testジョブに含めている(§15専用の別ジョブは設けていない)。
