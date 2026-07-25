@@ -27,14 +27,18 @@ if ! command -v psql >/dev/null 2>&1; then
   exit 0
 fi
 
-echo "[test-migrations] Applying all migrations to an empty database (§5.1)..."
-for f in supabase/migrations/*.sql; do
-  echo "  -> $f"
-  psql "$DATABASE_TEST_URL" -v ON_ERROR_STOP=1 -q -f "$f"
-done
-
-echo "[test-migrations] Applying seed.sql..."
-psql "$DATABASE_TEST_URL" -v ON_ERROR_STOP=1 -q -f supabase/seed.sql
+# `supabase start`(このスクリプトの前段)が起動時に既にsupabase/migrations配下の
+# 全マイグレーション+seed.sqlをローカルDBへ適用済みのため、ここで素のpsqlループで
+# 同じ内容を再適用すると「relation already exists」等で失敗する。§5.1が検証したい
+# 「空のDBへ全マイグレーションを順番に適用できること」は`supabase db reset`が
+# 改めてスキーマを空の状態に戻してから同じ手順を踏むため、それを使う。
+if command -v supabase >/dev/null 2>&1; then
+  echo "[test-migrations] Applying all migrations to an empty database via 'supabase db reset' (§5.1)..."
+  supabase db reset
+else
+  echo "[test-migrations] supabase CLI is not installed. Skipping (expected outside a Supabase local environment)." >&2
+  exit 0
+fi
 
 echo "[test-migrations] Running duplicate-check queries (§5.2, tests/migrations/duplicate-checks.sql)..."
 echo "[test-migrations] NOTE: an empty database will trivially report zero duplicates. Run this script"
