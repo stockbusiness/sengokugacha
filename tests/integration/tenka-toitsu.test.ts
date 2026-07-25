@@ -1,4 +1,4 @@
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createTestUser, deleteTestUser, getTestSupabaseClient, hasIntegrationTestDatabase } from "./support/env";
 
 // 千ノ国パスポート PR #147マージ前最終修正指示§5(ガチャ残テスト)。
@@ -32,6 +32,14 @@ describe.skipIf(!hasIntegrationTestDatabase())("美濃国制圧・天下統一(�
   const createdUserIds: string[] = [];
 
   beforeAll(async () => {
+    // src/lib/tenka-toitsu.ts内部のcreateSupabaseServerClient()は本番用の環境変数名
+    // (NEXT_PUBLIC_SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY)を読むため、CIワークフロー
+    // 既定のダミー値のままではSupabase local(SUPABASE_TEST_URL等)に接続できない。この
+    // テストファイル内でのみ、Supabase localの接続情報に一時的に差し替える
+    // (vi.stubEnvはテストファイル単位で有効、afterAllのvi.unstubAllEnvs()で確実に戻す)。
+    vi.stubEnv("NEXT_PUBLIC_SUPABASE_URL", process.env.SUPABASE_TEST_URL ?? "");
+    vi.stubEnv("SUPABASE_SERVICE_ROLE_KEY", process.env.SUPABASE_TEST_SERVICE_ROLE_KEY ?? "");
+
     const client = getTestSupabaseClient();
     const { data: mino, error: minoError } = await client.from("provinces").select("id, unlock_condition_count").eq("name", "美濃").single();
     if (minoError) throw minoError;
@@ -46,6 +54,10 @@ describe.skipIf(!hasIntegrationTestDatabase())("美濃国制圧・天下統一(�
     ashigaruId = (warlords as { id: string; slot_type: string }[]).find((w) => w.slot_type === "common")!.id;
     saitoDosanId = (warlords as { id: string; slot_type: string }[]).find((w) => w.slot_type === "mid")!.id;
     odaNobunagaId = (warlords as { id: string; slot_type: string }[]).find((w) => w.slot_type === "rare")!.id;
+  });
+
+  afterAll(() => {
+    vi.unstubAllEnvs();
   });
 
   afterEach(async () => {
