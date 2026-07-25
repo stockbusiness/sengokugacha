@@ -1,10 +1,17 @@
+import crypto from "node:crypto";
 import { NextResponse } from "next/server";
 import { getAdminActorName, getAdminSession, requireManagerRole } from "@/lib/admin-session";
 import { logAdminAction } from "@/lib/admin-audit-log";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { confirmReferral, type ConfirmReferralInput } from "@/lib/common-user-hub";
 import { notifyPlotPurchase } from "@/lib/castle-notifications";
-import { markOutboxFailed, markOutboxSent, type OutboxRow, type OutboxTable } from "@/lib/integration-outbox";
+import {
+  claimOutboxEventForDrain,
+  markOutboxFailedAfterClaim,
+  markOutboxSentAfterClaim,
+  type OutboxRow,
+  type OutboxTable,
+} from "@/lib/integration-outbox";
 
 // 千ノ国パスポート モジュール化後バグ修正・Phase B改修指示書§4.3.3。
 // integration_outbox_events/notification_outbox_eventsに溜まった未送信・送信失敗の
@@ -42,18 +49,24 @@ async function drainTable(
   let retried = 0;
   let sent = 0;
   for (const row of (rows ?? []) as OutboxRow[]) {
+    // 千ノ国パスポート Phase C-0 PR4(§8.2)。送信前に原子的claimを行う。2並列drainが
+    // 同じ行を取得しても、claimに成功するのは片方だけになり二重送信を防げる(20260809000008)。
+    const claimToken = crypto.randomUUID();
+    const claimOutcome = await claimOutboxEventForDrain(supabase, table, row.id, claimToken);
+    if (claimOutcome !== "claimed") continue;
+
     retried++;
     try {
       const succeeded = await send(row);
       if (succeeded) {
-        await markOutboxSent(supabase, table, row.id);
+        await markOutboxSentAfterClaim(supabase, table, row.id, claimToken);
         sent++;
       } else {
-        await markOutboxFailed(supabase, table, row.id, "送信が失敗を返しました", row.attempt_count);
+        await markOutboxFailedAfterClaim(supabase, table, row.id, claimToken, "送信が失敗を返しました");
       }
     } catch (sendError) {
       const message = sendError instanceof Error ? sendError.message : "unknown error";
-      await markOutboxFailed(supabase, table, row.id, message, row.attempt_count);
+      await markOutboxFailedAfterClaim(supabase, table, row.id, claimToken, message);
     }
   }
   return { retried, sent };

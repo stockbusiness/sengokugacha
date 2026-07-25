@@ -1,6 +1,6 @@
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { SupabaseIntegrationOutboxRepository } from "@/modules/integrations/infrastructure/supabase-integration-outbox-repository";
-import type { OutboxRow, OutboxTable } from "@/modules/integrations/application/ports";
+import type { OutboxDrainClaimOutcome, OutboxRow, OutboxTable } from "@/modules/integrations/application/ports";
 
 type SupabaseServerClient = ReturnType<typeof createSupabaseServerClient>;
 
@@ -39,4 +39,34 @@ export async function markOutboxFailed(
 
 export async function listPendingOrFailedOutboxEvents(supabase: SupabaseServerClient, table: OutboxTable): Promise<OutboxRow[]> {
   return new SupabaseIntegrationOutboxRepository(supabase).listPendingOrFailed(table);
+}
+
+// 千ノ国パスポート Phase C-0 PR4(§8.2)。管理画面drain専用の原子的claim(20260809000008)。
+// 2並列drainで同じ行を二重送信しないよう、送信前にこれで行をclaimする。
+export async function claimOutboxEventForDrain(
+  supabase: SupabaseServerClient,
+  table: OutboxTable,
+  id: string,
+  claimToken: string
+): Promise<OutboxDrainClaimOutcome> {
+  return new SupabaseIntegrationOutboxRepository(supabase).claimForDrain(table, id, claimToken);
+}
+
+export async function markOutboxSentAfterClaim(
+  supabase: SupabaseServerClient,
+  table: OutboxTable,
+  id: string,
+  claimToken: string
+): Promise<boolean> {
+  return new SupabaseIntegrationOutboxRepository(supabase).markDrainSent(table, id, claimToken);
+}
+
+export async function markOutboxFailedAfterClaim(
+  supabase: SupabaseServerClient,
+  table: OutboxTable,
+  id: string,
+  claimToken: string,
+  message: string
+): Promise<boolean> {
+  return new SupabaseIntegrationOutboxRepository(supabase).markDrainFailed(table, id, claimToken, message);
 }

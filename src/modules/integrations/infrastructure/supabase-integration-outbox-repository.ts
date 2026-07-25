@@ -1,5 +1,10 @@
 import { createSupabaseServerClient } from "@/lib/supabase-server";
-import type { IntegrationOutboxRepository, OutboxRow, OutboxTable } from "@/modules/integrations/application/ports";
+import type {
+  IntegrationOutboxRepository,
+  OutboxDrainClaimOutcome,
+  OutboxRow,
+  OutboxTable,
+} from "@/modules/integrations/application/ports";
 
 type SupabaseServerClient = ReturnType<typeof createSupabaseServerClient>;
 
@@ -64,5 +69,39 @@ export class SupabaseIntegrationOutboxRepository implements IntegrationOutboxRep
       .limit(200);
     if (error) throw error;
     return (data ?? []) as OutboxRow[];
+  }
+
+  private claimRpcName(table: OutboxTable): string {
+    return table === "integration_outbox_events" ? "claim_integration_outbox_event" : "claim_notification_outbox_event";
+  }
+
+  private sentRpcName(table: OutboxTable): string {
+    return table === "integration_outbox_events" ? "mark_integration_outbox_sent" : "mark_notification_outbox_sent";
+  }
+
+  private failedRpcName(table: OutboxTable): string {
+    return table === "integration_outbox_events" ? "mark_integration_outbox_failed" : "mark_notification_outbox_failed";
+  }
+
+  async claimForDrain(table: OutboxTable, id: string, claimToken: string): Promise<OutboxDrainClaimOutcome> {
+    const { data, error } = await this.supabase.rpc(this.claimRpcName(table), { p_id: id, p_claim_token: claimToken });
+    if (error) throw error;
+    return data as OutboxDrainClaimOutcome;
+  }
+
+  async markDrainSent(table: OutboxTable, id: string, claimToken: string): Promise<boolean> {
+    const { data, error } = await this.supabase.rpc(this.sentRpcName(table), { p_id: id, p_claim_token: claimToken });
+    if (error) throw error;
+    return data as boolean;
+  }
+
+  async markDrainFailed(table: OutboxTable, id: string, claimToken: string, message: string): Promise<boolean> {
+    const { data, error } = await this.supabase.rpc(this.failedRpcName(table), {
+      p_id: id,
+      p_claim_token: claimToken,
+      p_error: message,
+    });
+    if (error) throw error;
+    return data as boolean;
   }
 }
