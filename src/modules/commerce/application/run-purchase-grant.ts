@@ -125,7 +125,11 @@ async function confirmReferralForPurchase(
     input
   );
 
-  const sent = await confirmReferral(input);
+  // 千ノ国パスポート PR #147マージ前最終修正指示§4。outbox event idを安定した
+  // idempotency keyとして渡す。外部送信自体は成功したがmarkSent前にプロセスが
+  // 落ちた場合、integration-outbox/drainが同じoutboxIdで再送しても同一キーになり、
+  // sengoku-ai.com側の重複排除で二重の紹介確定・報酬計上を防げる。
+  const sent = await confirmReferral(input, `outbox:integration_outbox_events:${outboxId}`);
   if (sent) {
     await outboxGateway.markSent("integration_outbox_events", outboxId);
   } else {

@@ -91,3 +91,49 @@ down_new_functions.sql`)を導入した。`public`スキーマへの`CREATE FUNC
 ことを実地確認した。トリガー自身のハンドラ関数(`_lock_down_new_public_functions`、
 event trigger型のため直接呼び出し自体が拒否される)にも明示的なrevoke/grantを追加し、
 `public`スキーマ内でanon/authenticatedが実行可能な関数が0件であることを確認済み。
+
+## 追加検出事項: Outboxの外部送信がIdempotency-Keyを再送のたびに使い捨てていた(マージ前最終修正指示§4で発見)
+
+`src/lib/common-user-hub.ts`の`postToAgencySystem()`(sengoku-ai.comへのHMAC以前の
+既存連携、`referrals/confirm`等)は、`claim_integration_outbox_event`によるclaim
+トークンでの二重送信防止(20260809000008、Phase C-0 PR4 §8.2)とは別に、送信のたびに
+`Idempotency-Key`ヘッダーへ`randomUUID()`を新規生成して載せていた。
+
+これにより、「外部送信(sengoku-ai.comへのPOST)自体は成功したが、その直後の
+`markSent`(outbox行のstatus更新)より前にプロセスが落ちる」シナリオで、
+`integration-outbox/drain`による再送が**毎回異なるIdempotency-Keyで同じ紹介確定
+イベントを再送**していた。claimトークンは戦国パスポート側の「同じ行を2並列workerが
+同時に処理しない」ことしか保証しておらず、送信自体が成功済みかどうかをsengoku-ai.com側
+で判別する手段が無かったため、紹介確定・成果報酬が二重計上され得る状態だった
+(claimトークンとIdempotency-Keyは別の関心事: 前者は自分側の二重実行防止、
+後者は相手側の重複排除)。
+
+### 対応
+
+- `postToAgencySystem()`に`idempotencyKey`引数を追加し、呼び出し元が渡さない場合のみ
+  `randomUUID()`にフォールバックする方式に変更した。
+- `confirmReferral()`(referrals/confirm)の呼び出し元のうち、outbox経由で再送され得る
+  2箇所(`src/modules/commerce/application/run-purchase-grant.ts`の購入確定時の初回送信、
+  `src/app/api/admin/integration-outbox/drain/route.ts`の手動再送)は、いずれも
+  `outbox:integration_outbox_events:<outbox event id>`という同一の安定キーを渡すように
+  した。初回送信と再送(何度re-drainしても)で同じIdempotency-Keyになるため、
+  sengoku-ai.com側の重複排除で二重処理を防げる。
+- outbox経由でない直接呼び出し(`src/lib/passport.ts`の新規登録確定、`resolveCommonUserId`/
+  `captureReferral`)についても、それぞれ`userId`・`referral_token`から導出した安定キーに
+  変更した(ネットワーク層でのクライアント再試行によるcreate_if_missingの二重作成等を防ぐ)。
+- LINE個別push通知(`src/lib/line-push.ts`の`pushMessage`、`notification_outbox_events`
+  経由)はLINE Messaging APIにリトライキー機構が無く、残高・権利・報酬に一切影響しない
+  通知専用の経路であるため、意図的に「at-least-once、重複時は同一文面がもう一度届き得る
+  ベストエフォート」として現状のまま残すことにした(ユーザー承認済みの方針)。
+
+### 検証
+
+`src/lib/common-user-hub.test.ts`を新規作成し、以下を確認した。
+
+- 呼び出し元が渡した`idempotencyKey`がそのまま`Idempotency-Key`ヘッダーに使われること。
+- 同一outbox行に対して`confirmReferral()`を2回呼んだ場合(「送信成功後・DB更新前に
+  プロセスが落ちて再送される」シナリオを模擬)、2回とも同じ`Idempotency-Key`になること。
+- `idempotencyKey`を渡さない場合は呼び出しごとに異なるキーになること(後方互換の
+  フォールバック動作の確認)。
+- `resolveCommonUserId`/`captureReferral`が、それぞれ同一の`externalUserId`/
+  `referral_token`に対して常に同じ`Idempotency-Key`を送ること。

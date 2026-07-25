@@ -21,7 +21,10 @@ import {
 
 async function sendIntegrationOutboxEvent(row: OutboxRow): Promise<boolean> {
   if (row.event_type === "referral.confirmed") {
-    return await confirmReferral(row.payload as unknown as ConfirmReferralInput);
+    // 千ノ国パスポート PR #147マージ前最終修正指示§4。同じoutbox行(row.id)を
+    // 手動drainで何度再送しても、run-purchase-grant.tsの初回送信と同じ
+    // idempotency keyになるようoutbox event idから生成する。
+    return await confirmReferral(row.payload as unknown as ConfirmReferralInput, `outbox:integration_outbox_events:${row.id}`);
   }
   throw new Error(`未対応のevent_typeです: ${row.event_type}`);
 }
