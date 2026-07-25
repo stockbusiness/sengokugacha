@@ -1,7 +1,10 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { createTestUser, deleteTestUser, getTestSupabaseClient, hasIntegrationTestDatabase } from "./support/env";
+import { createEntitlementRollbackTestHelpers, dropEntitlementRollbackTestHelpers } from "./support/test-only-db-functions";
 
-// 千ノ国パスポート Phase C-0(§7 entitlementテスト)+ Phase C-0 PR4(§4)。
+// 千ノ国パスポート Phase C-0(§7 entitlementテスト)+ Phase C-0 PR4(§4)+
+// マージ前最終修正指示§1(revoke先行の順序逆転をrevoke再送に頼らず1回のgrant呼び出しで
+// 自動収束させる)。
 // process_entitlement_grant()/process_entitlement_revocation()の並行実行安全性、
 // grant/revokeの順序逆転への耐性、lease/fencing、rollback、dismissed除外を検証する。
 
@@ -28,6 +31,17 @@ async function insertEntitlement(
 describe.skipIf(!hasIntegrationTestDatabase())("process_entitlement_grant/revocation: 並行実行", () => {
   const createdUserIds: string[] = [];
   const createdEntitlementIds: string[] = [];
+
+  // マージ前最終修正指示§2。rollbackテスト専用のDB関数は通常migrationに含めず、
+  // このテストスイート開始時にテストDBへ動的作成し、終了時に必ずDROPする
+  // (本番/ステージングDBへテスト専用関数を残さない)。
+  beforeAll(() => {
+    createEntitlementRollbackTestHelpers();
+  });
+
+  afterAll(() => {
+    dropEntitlementRollbackTestHelpers();
+  });
 
   afterEach(async () => {
     const client = getTestSupabaseClient();
@@ -101,7 +115,7 @@ describe.skipIf(!hasIntegrationTestDatabase())("process_entitlement_grant/revoca
     expect(entitlement.reversal_attempt_count).toBe(1); // claimしたのは1件だけ
   });
 
-  it("revoke→grant→revoke再送の順序逆転でも最終的にstatus=revoked・reversal_status=reversed・残高=0に収束する", async () => {
+  it("revoke→grantだけで残高0に収束する(revoke再送を前提にしない、マージ前最終修正指示§1)", async () => {
     const client = getTestSupabaseClient();
     const userId = await createTestUser({ kokudaka: 0 });
     createdUserIds.push(userId);
@@ -115,11 +129,13 @@ describe.skipIf(!hasIntegrationTestDatabase())("process_entitlement_grant/revoca
     if (revokeError) throw revokeError;
     expect((revokeBeforeGrant as { claim_outcome: string }[])[0].claim_outcome).toBe("reversed_without_balance_change");
 
+    // 2. grant受信。revoke再送を待たず、この1回の呼び出しだけでgrant適用直後に
+    // 自動で取消(残高減算)まで完結する。
     const { data: grantData, error: grantError } = await client.rpc("process_entitlement_grant", {
       p_entitlement_row_id: entitlementRowId,
     });
     if (grantError) throw grantError;
-    expect((grantData as { claim_outcome: string }[])[0].claim_outcome).toBe("claimed");
+    expect((grantData as { claim_outcome: string }[])[0].claim_outcome).toBe("claimed_then_reversed");
 
     const { data: userAfterGrant, error: userAfterGrantError } = await client
       .from("users")
@@ -127,14 +143,84 @@ describe.skipIf(!hasIntegrationTestDatabase())("process_entitlement_grant/revoca
       .eq("id", userId)
       .single();
     if (userAfterGrantError) throw userAfterGrantError;
-    expect(userAfterGrant.kokudaka).toBe(50); // grant自体は正常に残高反映される
+    expect(userAfterGrant.kokudaka).toBe(0); // 50付与→50減算が同一呼び出し内で完結し、純増減0
 
-    // 2. revoke再送。今度はapplication_statusが'applied'になっているため、実際に残高が減算される。
+    const { data: entitlement, error: entitlementError } = await client
+      .from("entitlements")
+      .select("status, application_status, reversal_status")
+      .eq("id", entitlementRowId)
+      .single();
+    if (entitlementError) throw entitlementError;
+    expect(entitlement.status).toBe("revoked");
+    expect(entitlement.application_status).toBe("applied");
+    expect(entitlement.reversal_status).toBe("reversed");
+  });
+
+  it("revoke→grant→revoke再送でも残高0のまま(冪等)", async () => {
+    const client = getTestSupabaseClient();
+    const userId = await createTestUser({ kokudaka: 0 });
+    createdUserIds.push(userId);
+    const entitlementRowId = await insertEntitlement(client, { user_id: userId, quantity: 50 });
+    createdEntitlementIds.push(entitlementRowId);
+
+    const { error: revokeError } = await client.rpc("process_entitlement_revocation", {
+      p_entitlement_row_id: entitlementRowId,
+    });
+    if (revokeError) throw revokeError;
+
+    const { data: grantData, error: grantError } = await client.rpc("process_entitlement_grant", {
+      p_entitlement_row_id: entitlementRowId,
+    });
+    if (grantError) throw grantError;
+    expect((grantData as { claim_outcome: string }[])[0].claim_outcome).toBe("claimed_then_reversed");
+
+    // 元のrevokeイベントが再送されてきても、既にreversed済みのため冪等に無視される。
     const { data: revokeResend, error: revokeResendError } = await client.rpc("process_entitlement_revocation", {
       p_entitlement_row_id: entitlementRowId,
     });
     if (revokeResendError) throw revokeResendError;
-    expect((revokeResend as { claim_outcome: string }[])[0].claim_outcome).toBe("claimed");
+    expect((revokeResend as { claim_outcome: string }[])[0].claim_outcome).toBe("already_reversed");
+
+    const { data: user, error: userError } = await client.from("users").select("kokudaka").eq("id", userId).single();
+    if (userError) throw userError;
+    expect(user.kokudaka).toBe(0);
+  });
+
+  it("user未解決の状態でrevokeが先着し、その後userが解決すると1回のgrant呼び出しで残高0に収束する", async () => {
+    const client = getTestSupabaseClient();
+    const commonUserId = `test-common-user-unresolved-revoke-${crypto.randomUUID()}`;
+    const entitlementRowId = await insertEntitlement(client, { user_id: null, common_user_id: commonUserId, quantity: 70 });
+    createdEntitlementIds.push(entitlementRowId);
+
+    // user未解決のままrevokeが先着(残高への実効果は無いためスキップされる)。
+    const { data: revokeData, error: revokeError } = await client.rpc("process_entitlement_revocation", {
+      p_entitlement_row_id: entitlementRowId,
+    });
+    if (revokeError) throw revokeError;
+    expect((revokeData as { claim_outcome: string }[])[0].claim_outcome).toBe("reversed_without_balance_change");
+
+    const { data: entitlementAfterRevoke, error: entitlementAfterRevokeError } = await client
+      .from("entitlements")
+      .select("status, reversal_status")
+      .eq("id", entitlementRowId)
+      .single();
+    if (entitlementAfterRevokeError) throw entitlementAfterRevokeError;
+    expect(entitlementAfterRevoke.status).toBe("revoked");
+    expect(entitlementAfterRevoke.reversal_status).toBe("not_reversed");
+
+    // userが後から解決する。
+    const userId = await createTestUser({ kokudaka: 0, common_user_id: commonUserId });
+    createdUserIds.push(userId);
+
+    // grant再送(または初回受信の再試行)。user_id解決・残高付与・自動取消が1回で完結する。
+    const { data: grantData, error: grantError } = await client.rpc("process_entitlement_grant", {
+      p_entitlement_row_id: entitlementRowId,
+    });
+    if (grantError) throw grantError;
+    expect((grantData as { claim_outcome: string; resolved_user_id: string }[])[0]).toMatchObject({
+      claim_outcome: "claimed_then_reversed",
+      resolved_user_id: userId,
+    });
 
     const { data: user, error: userError } = await client.from("users").select("kokudaka").eq("id", userId).single();
     if (userError) throw userError;
@@ -142,12 +228,53 @@ describe.skipIf(!hasIntegrationTestDatabase())("process_entitlement_grant/revoca
 
     const { data: entitlement, error: entitlementError } = await client
       .from("entitlements")
-      .select("status, reversal_status")
+      .select("status, application_status, reversal_status")
       .eq("id", entitlementRowId)
       .single();
     if (entitlementError) throw entitlementError;
     expect(entitlement.status).toBe("revoked");
+    expect(entitlement.application_status).toBe("applied");
     expect(entitlement.reversal_status).toBe("reversed");
+  });
+
+  it("10並列のgrant/revoke混在呼び出しでも、最終的にstatus=revoked・残高0へ安全に収束する", async () => {
+    const client = getTestSupabaseClient();
+    const userId = await createTestUser({ kokudaka: 0 });
+    createdUserIds.push(userId);
+    const entitlementRowId = await insertEntitlement(client, { user_id: userId, quantity: 40 });
+    createdEntitlementIds.push(entitlementRowId);
+
+    // grant/revokeの受信順序は保証されないため、5並列grant+5並列revokeを同時に
+    // 発火し、どの順序で処理されても最終的に安全な状態へ収束することを確認する。
+    const calls = [
+      ...Array.from({ length: 5 }, () => client.rpc("process_entitlement_grant", { p_entitlement_row_id: entitlementRowId })),
+      ...Array.from({ length: 5 }, () =>
+        client.rpc("process_entitlement_revocation", { p_entitlement_row_id: entitlementRowId })
+      ),
+    ];
+    const results = await Promise.all(calls);
+    for (const r of results) {
+      if (r.error) throw r.error;
+    }
+
+    const { data: user, error: userError } = await client.from("users").select("kokudaka").eq("id", userId).single();
+    if (userError) throw userError;
+    // grantが先に成立していても、revokeが先に成立していても、最終的にrevoked状態に
+    // 収束する以上は純増減0になっていなければならない(2重付与・2重減算・負の残高は不可)。
+    expect(user.kokudaka).toBe(0);
+
+    const { data: entitlement, error: entitlementError } = await client
+      .from("entitlements")
+      .select("status, application_status, reversal_status, application_attempt_count, reversal_attempt_count")
+      .eq("id", entitlementRowId)
+      .single();
+    if (entitlementError) throw entitlementError;
+    expect(entitlement.status).toBe("revoked");
+    expect(entitlement.application_status).toBe("applied");
+    expect(entitlement.reversal_status).toBe("reversed");
+    // claimの原子性により、実際に残高へ効果を持つclaimはそれぞれ1回だけ成立しているはず。
+    expect(entitlement.application_attempt_count).toBe(1);
+    expect(entitlement.reversal_attempt_count).toBe(1);
   });
 
   it("user_idがnullの場合はuser_unresolvedで保留され、後からresolveすると付与される", async () => {
