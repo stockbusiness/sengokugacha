@@ -5,9 +5,15 @@ import { createTestUser, deleteTestUser, getTestSupabaseClient, hasIntegrationTe
 // execute_gacha_draw()(20260808000006、20260809000002で曖昧列参照を修正済み)を対象に、
 // rollback・国制覇(conquest_rules有無・充足/未充足)・地方コンプ10並列・日付境界・
 // 新規カード判定を検証する。美濃国・天下統一(src/lib/tenka-toitsu.ts、is_final_province=
-// trueの実データ60国を要する)およびgacha_animations取得失敗時のフェイルセーフ
-// (src/lib/gacha.tsで既にtry/catch実装済み、ソースコード実装済み区分)はこのDB関数の
-// スコープ外のためここでは対象外とする(§14完了報告書に記載)。
+// trueの実データ60国を要する)・gacha_animations取得失敗時のフェイルセーフは、合成テスト国
+// (このファイルの対象)とは別の実データ(is_final_province=true)を要するため、当初は
+// このファイルのスコープ外としていた。PR #147マージ前最終修正指示§5により、以下へ
+// 実データを使ったテストを追加済み: 美濃国制圧・天下統一(実績記録の冪等性・未所持武将
+// エラー含む)は tests/integration/tenka-toitsu.test.ts、gacha_animations取得失敗時の
+// フェイルセーフ(既にsrc/lib/gacha.tsで.catch(() => null)実装済み)は
+// tests/integration/gacha-animation-fetch-failure.test.ts。美濃国解放の「しきい値を
+// またいだ瞬間」の判定(didJustUnlockMino)自体は src/modules/gacha/domain/draw-limit.test.ts
+// が純粋関数として検証済み。
 
 const TEST_PROVINCE_ID = "00000000-0000-0000-0000-000000000001";
 const TEST_WARLORD_COMMON_ID = "00000000-0000-0000-0000-000000000011";
