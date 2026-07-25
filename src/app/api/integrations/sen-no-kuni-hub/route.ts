@@ -142,7 +142,7 @@ export async function POST(request: NextRequest) {
   if (!handler) {
     // 未対応のイベント種別は200で受理し処理対象外として無視する
     // (/api/integrations/agenciesと同じ堅牢化方針)。
-    await markInboxEventSucceeded(claim.inboxEventId);
+    await markInboxEventSucceeded(claim.inboxEventId, claim.claimToken);
     return NextResponse.json({ ok: true, event_id: eventId, status: "succeeded", processed: false });
   }
 
@@ -150,11 +150,11 @@ export async function POST(request: NextRequest) {
     await handler(body, eventId, identity.systemKey, eventVersion);
   } catch (error) {
     const message = error instanceof Error ? error.message : "unknown error";
-    await markInboxEventFailed(claim.inboxEventId, message);
+    await markInboxEventFailed(claim.inboxEventId, claim.claimToken, message);
     console.error(`[sen-no-kuni-hub] ${eventType}の処理に失敗しました`, error);
     return NextResponse.json({ ok: false, error: { code: "internal_error", message: "internal server error" } }, { status: 500 });
   }
 
-  await markInboxEventSucceeded(claim.inboxEventId);
+  await markInboxEventSucceeded(claim.inboxEventId, claim.claimToken);
   return NextResponse.json({ ok: true, event_id: eventId, status: "succeeded" });
 }

@@ -41,7 +41,7 @@ export interface IntegrationOutboxRepository {
 // --- IntegrationInboxRepository(integration_inbox_events) ---
 
 export type InboxClaimResult =
-  | { outcome: "new"; inboxEventId: string }
+  | { outcome: "new"; inboxEventId: string; claimToken: string }
   | { outcome: "duplicate"; inboxEventId: string }
   | { outcome: "conflict"; inboxEventId: string }
   | { outcome: "in_progress"; inboxEventId: string }
@@ -56,8 +56,10 @@ export interface IntegrationInboxRepository {
     payloadHash: string;
     eventVersion: string;
   }): Promise<InboxClaimResult>;
-  markSucceeded(inboxEventId: string): Promise<void>;
-  markFailed(inboxEventId: string, message: string): Promise<void>;
+  // claim_token(fencing token)が一致し、かつまだprocessing中の場合のみ更新する。
+  // falseはlease切れ後に別workerへ再claimされた古いworkerからの呼び出しを示す。
+  markSucceeded(inboxEventId: string, claimToken: string): Promise<boolean>;
+  markFailed(inboxEventId: string, claimToken: string, message: string): Promise<boolean>;
 }
 
 // --- SenNoKuniHubSettingsRepository(sen_no_kuni_hub_settings/sen_no_kuni_hub_used_nonces) ---

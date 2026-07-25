@@ -1,12 +1,14 @@
+import crypto from "node:crypto";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import type { IntegrationInboxRepository, InboxClaimResult } from "@/modules/integrations/application/ports";
 
 type SupabaseServerClient = ReturnType<typeof createSupabaseServerClient>;
 
-// IntegrationInboxRepositoryのSupabase実装。既存のsrc/lib/integration-inbox.tsに
-// 実装されていたRPC呼び出しをそのまま移設したもの。claim_integration_inbox_event()
+// IntegrationInboxRepositoryのSupabase実装。claim_integration_inbox_event()
 // (Postgres関数、INSERT ON CONFLICT + SELECT FOR UPDATEによる原子的claim)は
 // 分割せず、1メソッド呼び出しとして丸ごとラップする(最小リスク方針)。
+// claim_token(fencing token)はこのメソッド内で生成し、claim成功時のみ呼び出し元へ返す
+// (purchase_grant_steps/entitlements/stripe_webhook_eventsと同じ設計、20260809000007)。
 export class SupabaseIntegrationInboxRepository implements IntegrationInboxRepository {
   private readonly supabase: SupabaseServerClient;
 
@@ -22,6 +24,7 @@ export class SupabaseIntegrationInboxRepository implements IntegrationInboxRepos
     payloadHash: string;
     eventVersion: string;
   }): Promise<InboxClaimResult> {
+    const claimToken = crypto.randomUUID();
     const { data, error } = await this.supabase
       .rpc("claim_integration_inbox_event", {
         p_source_system_key: input.sourceSystemKey,
@@ -30,6 +33,7 @@ export class SupabaseIntegrationInboxRepository implements IntegrationInboxRepos
         p_payload: input.payload,
         p_payload_hash: input.payloadHash,
         p_event_version: input.eventVersion,
+        p_claim_token: claimToken,
       })
       .single();
     if (error) throw error;
@@ -39,7 +43,7 @@ export class SupabaseIntegrationInboxRepository implements IntegrationInboxRepos
 
     switch (result.claim_outcome) {
       case "new":
-        return { outcome: "new", inboxEventId };
+        return { outcome: "new", inboxEventId, claimToken };
       case "duplicate":
         return { outcome: "duplicate", inboxEventId };
       case "conflict":
@@ -53,14 +57,22 @@ export class SupabaseIntegrationInboxRepository implements IntegrationInboxRepos
     }
   }
 
-  async markSucceeded(inboxEventId: string): Promise<void> {
-    await this.supabase
-      .from("integration_inbox_events")
-      .update({ status: "succeeded", processed_at: new Date().toISOString() })
-      .eq("id", inboxEventId);
+  async markSucceeded(inboxEventId: string, claimToken: string): Promise<boolean> {
+    const { data, error } = await this.supabase.rpc("mark_integration_inbox_succeeded", {
+      p_event_row_id: inboxEventId,
+      p_claim_token: claimToken,
+    });
+    if (error) throw error;
+    return data as boolean;
   }
 
-  async markFailed(inboxEventId: string, message: string): Promise<void> {
-    await this.supabase.from("integration_inbox_events").update({ status: "failed", last_error: message }).eq("id", inboxEventId);
+  async markFailed(inboxEventId: string, claimToken: string, message: string): Promise<boolean> {
+    const { data, error } = await this.supabase.rpc("mark_integration_inbox_failed", {
+      p_event_row_id: inboxEventId,
+      p_claim_token: claimToken,
+      p_error: message,
+    });
+    if (error) throw error;
+    return data as boolean;
   }
 }

@@ -25,10 +25,16 @@ export async function claimInboxEvent(input: {
   return new SupabaseIntegrationInboxRepository().claimEvent(input);
 }
 
-export async function markInboxEventSucceeded(inboxEventId: string): Promise<void> {
-  await new SupabaseIntegrationInboxRepository().markSucceeded(inboxEventId);
+export async function markInboxEventSucceeded(inboxEventId: string, claimToken: string): Promise<void> {
+  const ok = await new SupabaseIntegrationInboxRepository().markSucceeded(inboxEventId, claimToken);
+  if (!ok) {
+    console.error(`integration_inbox_events(${inboxEventId})の完了記録がclaim_token不一致で失敗しました(横取りされた可能性)`);
+  }
 }
 
-export async function markInboxEventFailed(inboxEventId: string, message: string): Promise<void> {
-  await new SupabaseIntegrationInboxRepository().markFailed(inboxEventId, message);
+export async function markInboxEventFailed(inboxEventId: string, claimToken: string, message: string): Promise<void> {
+  const ok = await new SupabaseIntegrationInboxRepository().markFailed(inboxEventId, claimToken, message);
+  if (!ok) {
+    console.error(`integration_inbox_events(${inboxEventId})の失敗記録がclaim_token不一致で失敗しました(横取りされた可能性)`);
+  }
 }
