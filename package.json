@@ -13,6 +13,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:contracts": "vitest run --config vitest.contracts.config.ts",
     "test:migrations": "bash scripts/test-migrations.sh",
+    "test:concurrency": "bash scripts/test-concurrency.sh",
     "ci": "npm run lint && npx tsc --noEmit && npm run test:unit && npm run test:architecture && npm run build"
   },
   "dependencies": {
