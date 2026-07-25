@@ -7,6 +7,11 @@ import {
   getTestSupabaseClient,
   hasIntegrationTestDatabase,
 } from "./support/env";
+import {
+  checkFutureFunctionExecutePrivilege,
+  createFutureFunctionForDefaultPrivilegesCheck,
+  dropFutureFunctionForDefaultPrivilegesCheck,
+} from "./support/test-only-db-functions";
 
 // 千ノ国パスポート Phase C-0(§15 RLS・権限テスト)。Phase C-0 PR4(§12)で
 // anon/authenticatedのINSERT/DELETE、authenticatedロール自体、service role、
@@ -262,5 +267,18 @@ describe.skipIf(!hasIntegrationTestDatabase())("RLS: 重要なRPC関数はanon/a
     // ダミーの存在しないID等を渡しているため業務エラー(該当行なし等)にはなり得るが、
     // 権限エラー(42501/permission denied for function)にだけはならないことを確認する。
     expect(isPermissionDeniedError(error)).toBe(false);
+  });
+});
+
+describe.skipIf(!hasIntegrationTestDatabase())("RLS: 今後追加される関数にもdefault privilegesが自動適用される(マージ前最終修正指示§6)", () => {
+  it("明示的なGRANT/REVOKEを一切行わない新規関数でも、anon/authenticatedはEXECUTEできずservice_roleのみEXECUTEできる", async () => {
+    createFutureFunctionForDefaultPrivilegesCheck();
+    try {
+      expect(checkFutureFunctionExecutePrivilege("anon")).toBe(false);
+      expect(checkFutureFunctionExecutePrivilege("authenticated")).toBe(false);
+      expect(checkFutureFunctionExecutePrivilege("service_role")).toBe(true);
+    } finally {
+      dropFutureFunctionForDefaultPrivilegesCheck();
+    }
   });
 });

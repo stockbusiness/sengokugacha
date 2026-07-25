@@ -72,3 +72,31 @@ export function createEntitlementRollbackTestHelpers(): void {
 export function dropEntitlementRollbackTestHelpers(): void {
   runPsql(DROP_SQL);
 }
+
+// マージ前最終修正指示§6。20260809000009で設定したdefault privileges
+// (`alter default privileges in schema public revoke/grant execute on functions ...`)
+// が、既存関数だけでなく「今後追加される関数」にも自動的に適用されることを確認する。
+// 新規関数を動的に1つ作成し、明示的なGRANT/REVOKEを一切行わずにhas_function_privilege()
+// を確認した上で、必ずDROPして後始末する。
+const FUTURE_FUNCTION_NAME = "_test_only_future_function_default_privileges_check";
+
+function runPsqlQuery(sql: string): string {
+  const url = getLocalDatabaseUrl();
+  const out = execFileSync("psql", [url, "-v", "ON_ERROR_STOP=1", "-t", "-A", "-c", sql], { stdio: ["ignore", "pipe", "pipe"] });
+  return out.toString("utf-8").trim();
+}
+
+export function createFutureFunctionForDefaultPrivilegesCheck(): void {
+  runPsql(`create or replace function ${FUTURE_FUNCTION_NAME}() returns void as $$ begin end; $$ language plpgsql;`);
+}
+
+export function dropFutureFunctionForDefaultPrivilegesCheck(): void {
+  runPsql(`drop function if exists ${FUTURE_FUNCTION_NAME}();`);
+}
+
+export function checkFutureFunctionExecutePrivilege(role: "anon" | "authenticated" | "service_role"): boolean {
+  const result = runPsqlQuery(
+    `select has_function_privilege('${role}', '${FUTURE_FUNCTION_NAME}()', 'EXECUTE');`
+  );
+  return result === "t";
+}
