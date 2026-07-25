@@ -5,33 +5,156 @@ on:
     branches: [main]
   pull_request:
 
+env:
+  SESSION_SECRET: dummy
+  NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
+  SUPABASE_SERVICE_ROLE_KEY: dummy
+  ADMIN_PASSWORD: dummy
+
 jobs:
-  verify:
+  typecheck:
     runs-on: ubuntu-latest
-    env:
-      SESSION_SECRET: dummy
-      NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
-      SUPABASE_SERVICE_ROLE_KEY: dummy
-      ADMIN_PASSWORD: dummy
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+      - run: npm ci
+      - run: npx tsc --noEmit
 
-      - name: Install dependencies
-        run: npm ci
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
 
-      - name: Lint
-        run: npm run lint
+  unit-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:unit
 
-      - name: Type check
-        run: npx tsc --noEmit
+  architecture-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run test:architecture
 
-      - name: Unit tests
-        run: npm test
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
 
-      - name: Build
-        run: npm run build
+  # 千ノ国パスポート Phase C-0(§16)。以下3ジョブはSupabase local(Docker)を要する。
+  # GitHub Actions(ubuntu-latest)はDockerレジストリへフルアクセス可能なため、
+  # 開発用サンドボックス環境(Dockerレジストリへのアクセスが制限されておりsupabase
+  # startを実行できない)とは異なり、ここでは実際に起動できる想定である。
+  # ただし本セッションではこのジョブ自体の実行結果を確認できていない(7. 未確認、
+  # docs/CI_PIPELINE.md参照)。
+  migration-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Start Supabase local
+        run: supabase start
+      - name: Export local connection settings
+        run: |
+          supabase status -o env \
+            --override-name api.url=SUPABASE_TEST_URL \
+            --override-name auth.anon_key=SUPABASE_TEST_ANON_KEY \
+            --override-name auth.service_role_key=SUPABASE_TEST_SERVICE_ROLE_KEY \
+            --override-name db.url=DATABASE_TEST_URL \
+            >> "$GITHUB_ENV"
+      - name: Run migration tests (§5)
+        run: npm run test:migrations
+      - name: Stop Supabase local
+        if: always()
+        run: supabase stop
+
+  integration-test:
+    runs-on: ubuntu-latest
+    needs: [unit-test, architecture-test]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Start Supabase local (applies all migrations + seed.sql)
+        run: supabase start
+      - name: Export local connection settings
+        run: |
+          supabase status -o env \
+            --override-name api.url=SUPABASE_TEST_URL \
+            --override-name auth.anon_key=SUPABASE_TEST_ANON_KEY \
+            --override-name auth.service_role_key=SUPABASE_TEST_SERVICE_ROLE_KEY \
+            --override-name db.url=DATABASE_TEST_URL \
+            >> "$GITHUB_ENV"
+      - name: Run integration tests (§6-9, §11, §15)
+        run: npm run test:integration
+      - name: Stop Supabase local
+        if: always()
+        run: supabase stop
+
+  contract-test:
+    runs-on: ubuntu-latest
+    needs: [unit-test, build]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Start Supabase local
+        run: supabase start
+      - name: Export local connection settings
+        run: |
+          supabase status -o env \
+            --override-name api.url=SUPABASE_TEST_URL \
+            --override-name auth.anon_key=SUPABASE_TEST_ANON_KEY \
+            --override-name auth.service_role_key=SUPABASE_TEST_SERVICE_ROLE_KEY \
+            --override-name db.url=DATABASE_TEST_URL \
+            >> "$GITHUB_ENV"
+      - name: Run API contract tests (§14)
+        run: npm run test:contracts
+      - name: Stop Supabase local
+        if: always()
+        run: supabase stop
