@@ -94,7 +94,7 @@ jobs:
             --override-name auth.anon_key=SUPABASE_TEST_ANON_KEY \
             --override-name auth.service_role_key=SUPABASE_TEST_SERVICE_ROLE_KEY \
             --override-name db.url=DATABASE_TEST_URL \
-            >> "$GITHUB_ENV"
+            | sed 's/"//g' >> "$GITHUB_ENV"
       - name: Run migration tests (§5)
         run: npm run test:migrations
       - name: Stop Supabase local
@@ -123,7 +123,7 @@ jobs:
             --override-name auth.anon_key=SUPABASE_TEST_ANON_KEY \
             --override-name auth.service_role_key=SUPABASE_TEST_SERVICE_ROLE_KEY \
             --override-name db.url=DATABASE_TEST_URL \
-            >> "$GITHUB_ENV"
+            | sed 's/"//g' >> "$GITHUB_ENV"
       - name: Run integration tests (§6-9, §11, §15)
         run: npm run test:integration
       - name: Stop Supabase local
@@ -152,7 +152,7 @@ jobs:
             --override-name auth.anon_key=SUPABASE_TEST_ANON_KEY \
             --override-name auth.service_role_key=SUPABASE_TEST_SERVICE_ROLE_KEY \
             --override-name db.url=DATABASE_TEST_URL \
-            >> "$GITHUB_ENV"
+            | sed 's/"//g' >> "$GITHUB_ENV"
       - name: Run API contract tests (§14)
         run: npm run test:contracts
       - name: Stop Supabase local
