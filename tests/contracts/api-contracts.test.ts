@@ -1,4 +1,5 @@
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createClient } from "@supabase/supabase-js";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { adminCookieHeader, signAdminSessionToken } from "./support/admin-jwt";
 import { startTestServer, type TestServer } from "./support/server";
 
@@ -90,6 +91,34 @@ describe("POST /api/integrations/agencies", () => {
 });
 
 describe.skipIf(!hasTestDatabase)("POST /api/stripe/webhook(DB接続あり)", () => {
+  // getPaymentSettings()がpayment_settingsに1行も無い場合はnullを返し、ルートは
+  // stripe-signatureヘッダーの有無を見る前に503(Stripe未設定)を返してしまう。
+  // このテストはヘッダー欠落時の400を検証したいので、テスト用のダミー鍵を持つ行を
+  // 用意してからルートを呼ぶ(実際にStripeへ到達する経路には入らない)。
+  let paymentSettingsId: string | undefined;
+
+  beforeEach(async () => {
+    const supabase = createClient(process.env.SUPABASE_TEST_URL!, process.env.SUPABASE_TEST_SERVICE_ROLE_KEY!);
+    const { data, error } = await supabase
+      .from("payment_settings")
+      .insert({
+        stripe_publishable_key: "pk_test_contract-test-dummy",
+        stripe_secret_key: "sk_test_contract-test-dummy",
+        stripe_webhook_secret: "whsec_contract-test-dummy",
+      })
+      .select("id")
+      .single();
+    if (error) throw error;
+    paymentSettingsId = data.id as string;
+  });
+
+  afterEach(async () => {
+    if (!paymentSettingsId) return;
+    const supabase = createClient(process.env.SUPABASE_TEST_URL!, process.env.SUPABASE_TEST_SERVICE_ROLE_KEY!);
+    await supabase.from("payment_settings").delete().eq("id", paymentSettingsId);
+    paymentSettingsId = undefined;
+  });
+
   it("stripe-signatureヘッダー欠落は400 missing signature", async () => {
     const res = await fetch(`${server.baseUrl}/api/stripe/webhook`, {
       method: "POST",
