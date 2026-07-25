@@ -13,5 +13,10 @@ export default defineConfig({
     include: ["tests/contracts/**/*.test.ts"],
     testTimeout: 30000,
     hookTimeout: 30000,
+    // 各テストファイルがnext devを子プロセスとして起動する(tests/contracts/support/server.ts)。
+    // 複数ファイルを並列実行すると、同一プロジェクトディレクトリ(同じ.nextキャッシュ)に対して
+    // 複数のnext devが同時に起動しようとして競合し、起動待ちがタイムアウトする
+    // (PR #147でファイルを追加した際に実地確認)。ファイル間は直列実行にする。
+    fileParallelism: false,
   },
 });
