@@ -58,6 +58,7 @@ contract-test
 
 ## 未対応事項の総括(再掲)
 
-- branch protection(Required status checks)の実設定変更 — 要管理者操作。
+- branch protection(Required status checksの8ジョブ+PR必須・up-to-date必須・会話解決必須・force-push禁止・削除禁止の5項目)の実設定変更 — 要管理者操作。PR #147マージ前最終修正指示§7で追加要求された5項目も含め、`docs/CI_PIPELINE.md`に必要な設定を明記済み。
 - 本番Supabaseプロジェクトに対する`scripts/production-migration-preflight.sql`の実行、および§12修正の本番適用後の権限確認 — 要本番接続、本セッションでは意図的に未実施。
-- §7.4(美濃国・天下統一)・§7.7(動画演出フェイルセーフ)の実データを使ったE2E再現 — スコープ外と判断(理由は`IMPLEMENTATION_STATUS_PHASE_C0_PR4.md`参照)。
+- 人間レビュアーによる承認(PR #147マージ前最終修正指示§9) — 要管理者操作。レビュアーのアサインは完了、承認自体は未取得。
+- ~~§7.4(美濃国・天下統一)・§7.7(動画演出フェイルセーフ)の実データを使ったE2E再現~~ → PR #147マージ前最終修正指示§5で対応済み(`tests/integration/tenka-toitsu.test.ts`・`tests/integration/gacha-animation-fetch-failure.test.ts`、詳細は`IMPLEMENTATION_STATUS_PHASE_C0_PR4.md`参照)。

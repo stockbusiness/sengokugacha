@@ -35,10 +35,10 @@
 
 ## §7区分該当項目
 
-- **§7.4(美濃国・天下統一)・§7.7(動画演出フェイルセーフ)**: `execute_gacha_draw`本体のテスト対象からは意図的に除外した。前者はアプリ層の別モジュール(`src/lib/tenka-toitsu.ts`相当)で実装されており、実際の60ヶ国データを使った再現は今回のテスト基盤の範囲を超える。後者は動画URLの配信失敗時のフォールバックであり、既存の`gacha-animations.test.ts`等の既存unit testで別途カバーされている。
+- **§7.4(美濃国・天下統一)・§7.7(動画演出フェイルセーフ)**: `execute_gacha_draw`本体のテスト対象からは意図的に除外していたが、PR #147マージ前最終修正指示§5により、実データ(20260707000002_seed_initial_master_data.sqlが投入する実際の美濃国・織田信長等)を使った`tests/integration/tenka-toitsu.test.ts`(美濃国未解放・最終国制圧・天下統一実績記録)、および`tests/integration/gacha-animation-fetch-failure.test.ts`(`selectAnimationForDraw()`失敗時もガチャ自体は成功しanimationがnullになること)を追加し、この項目は解消済み。
 - **branch protectionの実設定**: 上記の通りツール上の制約により未対応。
 
 ## 未対応事項(今回のPR4スコープに含めなかったもの)
 
-- branch protectionの実設定変更(§13、要管理者操作)。
-- §7.4/§7.7の実データ・実動画URLを使ったE2E的な再現テスト(前述の理由によりスコープ外と判断)。
+- branch protectionの実設定変更(§13、要管理者操作。PR #147マージ前最終修正指示§7でも同様に指摘され、`docs/CI_PIPELINE.md`に必要な設定を追記済み)。
+- ~~§7.4/§7.7の実データ・実動画URLを使ったE2E的な再現テスト~~ → PR #147マージ前最終修正指示§5で対応済み(上記参照)。
