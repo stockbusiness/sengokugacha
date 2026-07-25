@@ -51,6 +51,18 @@ on conflict (name) do nothing;
 -- 各国: 1体目=コモン枠(足軽級・出やすい)/2体目=中間枠(武将級)/3体目=レア枠(その国の顔)
 -- ============================================================
 
+-- 後続の20260708000013で追加される制約をここで先取りして作成する。
+-- (このINSERTのON CONFLICTがこの制約に依存するため、フレッシュ環境でのマイグレーション
+-- 適用順序上、この時点で存在している必要がある)
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint where conname = 'warlords_province_id_slot_type_key'
+  ) then
+    alter table warlords add constraint warlords_province_id_slot_type_key unique (province_id, slot_type);
+  end if;
+end $$;
+
 insert into warlords (province_id, name, rarity, slot_type, stats_json, lore) values
   -- 陸奥
   ((select id from provinces where name = '陸奥'), '陸奥国の足軽(仮)', '足軽級', 'common', '{"統率":30,"知略":25,"勇猛":32}'::jsonb, '奥州の地を守る名もなき足軽。'),
