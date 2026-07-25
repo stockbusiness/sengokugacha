@@ -49,4 +49,10 @@ psql "$DATABASE_TEST_URL" -v ON_ERROR_STOP=1 -f tests/migrations/duplicate-check
 echo "[test-migrations] Running the existing-data-equivalent migration preflight (§11, tests/migrations/run-preflight.sh)..."
 bash tests/migrations/run-preflight.sh
 
+# 千ノ国パスポート PR #147マージ前最終修正指示§3。上記はいずれも「空DBへ全マイグレーション
+# を適用する」経路のみを検証しており、「既存の(PR #147以前の)DBへPR #147の新規
+# マイグレーションだけを追加適用する」実際のアップグレード経路は未検証だった。
+echo "[test-migrations] Running the real upgrade migration test (§3, tests/migrations/run-upgrade-test.sh)..."
+bash tests/migrations/run-upgrade-test.sh
+
 echo "[test-migrations] OK"
