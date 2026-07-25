@@ -58,3 +58,36 @@ alter default privileges in schema public grant execute on functions to service_
 
 - **1. ソースコード上で実装済み** かつ **3. DB統合テスト確認済み**(開発用サンドボックスでの実地確認、CIの`integration-test`での実地確認の両方)。
 - 本番環境への適用・確認は未実施(**7. 未対応**、`docs/IMPLEMENTATION_STATUS_PHASE_C0_PR4.md`参照)。本番Supabaseプロジェクトに対しても同じ`has_function_privilege`チェックで現状を確認し、本マイグレーション適用後に同様の検証を行うことを推奨する。
+
+## 追加検出事項: default privilegesは新規関数へのPUBLIC自動付与を防げない(マージ前最終修正指示§6で発見)
+
+`20260809000009`のコメントは「今後追加される関数にも同じ方針が自動的に適用される」と
+記述していたが、これは`alter default privileges`の実際の挙動の誤解に基づく記述だった。
+
+開発用サンドボックスに独立した複数のクリーンなPostgreSQL 16データベースを用意し、
+`alter default privileges in schema public revoke execute on functions from public;`
+`alter default privileges in schema public grant execute on functions to service_role;`
+のみを実行した状態で新規に`create function`した結果、生成された関数の実際のACL
+(`pg_proc.proacl`)には`revoke`したはずのPUBLICへのEXECUTEが依然として含まれており、
+`has_function_privilege('anon', ...)`が`true`を返すことを複数回再現した。
+
+一方、**既存の関数を`create or replace function`で再定義した場合は、PostgreSQLの仕様
+によりACLがそのまま保持される**ため、`20260809000009`で一度EXECUTEを剥奪した関数
+(`process_entitlement_grant`等)が、その後のマイグレーション(`20260810000001`)で
+再定義されても、剥奪状態が失われないことも確認済み。影響を受けるのは「これまで一度も
+存在しなかった、完全に新規の関数」が今後追加される場合のみである。
+
+### 修正
+
+`default privileges`に代えて、イベントトリガー(`20260810000002_event_trigger_locks_
+down_new_functions.sql`)を導入した。`public`スキーマへの`CREATE FUNCTION`
+(`CREATE OR REPLACE FUNCTION`を含む、コマンドタグはいずれも`'CREATE FUNCTION'`)完了時に
+自動発火し、対象関数から明示的にPUBLICのEXECUTEを剥奪、service_roleへEXECUTEを付与する。
+`auth`/`storage`/`extensions`等の他スキーマの関数(Supabase自身の内部機構が依存する
+可能性がある)には影響しないよう、`schema_name = 'public'`の関数のみを対象にした。
+
+開発用サンドボックスで、空DBから全マイグレーション(本追加分含む)を適用した状態で
+新規関数を作成し、`anon`/`authenticated`が`false`、`service_role`が`true`になる
+ことを実地確認した。トリガー自身のハンドラ関数(`_lock_down_new_public_functions`、
+event trigger型のため直接呼び出し自体が拒否される)にも明示的なrevoke/grantを追加し、
+`public`スキーマ内でanon/authenticatedが実行可能な関数が0件であることを確認済み。
