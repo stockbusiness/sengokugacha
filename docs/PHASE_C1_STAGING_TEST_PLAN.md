@@ -2,29 +2,138 @@
 
 「千ノ国パスポート Phase C-1: ステージングDB適用・外部接続・運用復旧試験指示書」(以下「指示書」)への対応計画。基準コミット `a20375808818888188b26b9a2283ca9c9e5c9f4c`(PR #147マージ後の`main`)。
 
-## 0. 前提条件の確認結果(最重要)
+## 0. 前提条件の確認結果(最重要・更新版)
 
-このリポジトリには、ステージング環境(Supabaseプロジェクト・Vercelデプロイ先・Stripe test mode鍵・HMACステージング秘密鍵)が**まだ存在しない**ことを確認済み(`.env.example`は単一のSupabase設定のみ、`.github/workflows/`にstaging関連のワークフローなし、READMEにもstaging構築手順の記載なし)。
+ユーザーより「現在のSupabase・Vercelはまだ実稼働していないため、新規環境は作らずこれをステージングとして使う」との指示を受けた。実際、リポジトリの`.env.local`に現行のSupabase接続情報(`NEXT_PUBLIC_SUPABASE_URL=https://vutnjxswfamluicsxwwi.supabase.co`・`SUPABASE_SERVICE_ROLE_KEY`)が存在することを確認した。
 
-また、このセッション(コーディングエージェント)には、Supabase管理コンソール・Vercel管理コンソール・Stripeダッシュボードへのアクセス権限が一切付与されていない。そのため、指示書§3の実施順序のうち「ステージングDBバックアップ」〜「ステージングアプリデプロイ」までは、**リポジトリ管理者(`stockbusiness`)による事前のステージング環境構築が完了して初めて着手可能**である。
+しかし、この接続情報を使って実際に接続を試みたところ、**このコーディングセッションのネットワークegressプロキシにより`403 Forbidden: Host not in allowlist`で拒否される**ことを確認した(`vutnjxswfamluicsxwwi.supabase.co`が組織のegress許可リストに含まれていない)。さらに、プロキシの制約文書(`/root/.ccr/README.md`)には「raw-TCP databases」への接続はプロキシ経由でサポートされないと明記されており、これは**migration適用・`production-migration-preflight.sql`の実行に必須の生Postgres接続(psql)が、このセッションからは(allowlist許可の有無に関わらず)原理的に不可能**であることを意味する。
 
-本書では、(a)ステージング環境構築チェックリスト、(b)構築後に実際の試験で使う既存資産(スクリプト・テストファイル)のマッピング、の2点を提出する。
+このため、指示書の10ステップのうち、実際の外部接続・DB接続を要する作業(migration履歴取得・preflight実行・migration適用・RPC権限のSQLでの直接確認・Vercelデプロイ確認・LINE/ガチャ/Stripe/HMAC/entitlement/outboxの実環境接続試験)は、**このセッションから直接実行することができない**。
 
-## 1. ステージング環境構築チェックリスト(要管理者操作)
+これを踏まえ、ユーザーの了承のもと、以下の方針で進める。
 
-以下はいずれもこのセッションから実行できない、Supabase/Vercel/Stripe/LINEの管理コンソール操作。
+- 生SQL(psql)を要する手順(migration履歴取得・preflight実行・migration適用)は、**`stockbusiness`が手元またはSupabase SQL Editor等、実際にネットワーク到達可能な環境で実行するための実行手順書(本書2章)を提供**し、実行結果をこのセッションへ共有してもらう。
+- HTTPS接続で完結する外部接続試験(§6〜§13相当)は、既存の`tests/contracts/*.test.ts`・`tests/integration/*.test.ts`を、現行Supabase/Vercelの接続情報に向けて`stockbusiness`の環境で実行してもらうことで代替する(このセッションでは同様に`Host not in allowlist`で実行できない)。
+- 実行結果(psqlの出力・テスト結果)を共有いただければ、このセッション側で`docs/PHASE_C1_MIGRATION_RESULTS.md`等の5文書を実測結果として更新する。
 
-| # | 項目 | 内容 |
-|---|---|---|
-| 1 | Supabaseステージングプロジェクト作成 | 本番プロジェクトとは完全に別の新規Supabaseプロジェクトを作成する。プロジェクトURL・`anon` key・`service_role` keyを控える。 |
-| 2 | Vercelステージング環境作成 | `main`とは別の永続的なデプロイ環境(例: `staging`ブランチに紐づくカスタム環境、またはVercelの「Preview環境の固定URL」機能)を用意する。 |
-| 3 | Vercel環境変数設定(ステージング環境のみ) | `NEXT_PUBLIC_SUPABASE_URL`/`SUPABASE_SERVICE_ROLE_KEY`をステージングSupabaseの値に設定。`SESSION_SECRET`はステージング専用の値を新規生成(本番と共有しない)。`ADMIN_PASSWORD`/`ADMIN_PASSWORD_OPERATOR`もステージング専用の値にする。 |
-| 4 | Stripe test mode鍵取得・設定 | StripeダッシュボードのTest mode側から`sk_test_...`/`pk_test_...`とWebhook署名シークレット(`whsec_...`)を取得し、Vercelステージング環境変数に設定する。**本番キー(`sk_live_...`)は絶対に設定しないこと**(指示書§8)。 |
-| 5 | HMAC v1/v2ステージング秘密鍵の登録 | `sen_no_kuni_hub_settings`テーブル(ステージングDB)に、ステージング専用の`key_id`/`hmac_secret`ペアを登録する(本番の鍵とは別の値)。 |
-| 6 | LINEチャネル(開発用) | LINEログイン・LIFF・Messaging APIの動作確認用に、開発用チャネル(既存のものがあれば流用、無ければ新規作成)のチャネルID・シークレット・アクセストークンを、管理画面(`/admin/line-settings`)からステージングDBへ設定する。 |
-| 7 | ステージングDBバックアップ取得 | 上記構築が完了し、まだmigrationを適用していない状態(=移行元の状態)でSupabaseのバックアップ機能によりバックアップを取得する(指示書§3の最初のステップ)。 |
+## 1. ステージング(現行Supabase/Vercel)実行手順書 — `stockbusiness`実施用
 
-上記が完了した時点で、ステージングSupabaseの接続情報(URL・service_role key)と、ステージングアプリのURLをこのセッション(または後続セッション)へ共有いただければ、指示書§4以降の実施に進める。
+### 1.1 準備
+
+```bash
+# Supabase CLIのインストール(未導入の場合)
+npm install -g supabase
+
+# プロジェクトのDB接続文字列を取得
+# Supabaseダッシュボード → 対象プロジェクト → Settings → Database → Connection string
+# 「Session pooler」または「Direct connection」のURIをコピーする(以下 $STAGING_DATABASE_URL とする)
+```
+
+### 1.2 手順1: 現在のmigration履歴を取得
+
+```bash
+psql "$STAGING_DATABASE_URL" -c "select version, name from supabase_migrations.schema_migrations order by version;"
+```
+
+このリポジトリの`supabase/migrations/`と突き合わせ、未適用のファイルを特定する(想定では`20260809000004`以降の7ファイルが未適用のはず)。
+
+### 1.3 手順2: DBバックアップ手順
+
+Supabaseダッシュボード → 対象プロジェクト → Database → Backups から、手動バックアップ(Point-in-time recoveryが有効なプランならスナップショット地点の確認のみでも可)を取得する。無料プランでダッシュボードからの手動バックアップが無い場合は、`pg_dump`で代替する。
+
+```bash
+pg_dump "$STAGING_DATABASE_URL" -Fc -f "backup_$(date +%Y%m%d_%H%M%S).dump"
+```
+
+### 1.4 手順3: preflightを読み取り専用で実行
+
+```bash
+psql "$STAGING_DATABASE_URL" -f scripts/production-migration-preflight.sql | tee preflight_result.txt
+```
+
+**1件でも異常(重複行・orphan・null不整合・10分以上processing・anon/authenticatedが実行可能な関数)があれば、migrationを適用せずこの時点で結果を共有してほしい。**
+
+### 1.5 手順4: 未適用migrationの確認
+
+```bash
+ls supabase/migrations/*.sql | xargs -n1 basename | sort
+# 1.2で取得した既適用一覧と比較し、未適用ファイルを特定
+```
+
+### 1.6 手順5: migration適用
+
+```bash
+# 方法A: Supabase CLI(推奨、migration履歴テーブルも自動更新される)
+supabase link --project-ref vutnjxswfamluicsxwwi
+supabase db push
+
+# 方法B: psqlで手動適用(7ファイルをtimestamp順に)
+for f in 20260809000004_fix_entitlement_revocation_premature_reversed.sql \
+         20260809000005_entitlement_grant_respects_dismissal.sql \
+         20260809000007_integration_inbox_atomic_claim_fencing.sql \
+         20260809000008_outbox_atomic_claim_fencing.sql \
+         20260809000009_revoke_public_execute_on_functions.sql \
+         20260810000001_entitlement_grant_auto_reverses_when_already_revoked.sql \
+         20260810000002_event_trigger_locks_down_new_functions.sql; do
+  psql "$STAGING_DATABASE_URL" -v ON_ERROR_STOP=1 -f "supabase/migrations/$f"
+done
+```
+
+適用は`postgres`ユーザー(接続文字列に含まれるロール)で行う。
+
+### 1.7 手順6: RPC権限確認
+
+```bash
+psql "$STAGING_DATABASE_URL" -c "
+select p.proname, r.rolname, has_function_privilege(r.rolname, p.oid, 'EXECUTE') as can_execute
+from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+cross join (values ('anon'), ('authenticated'), ('service_role')) as r(rolname)
+where n.nspname = 'public'
+order by 1, 2;
+"
+```
+
+anon/authenticatedが全関数で`false`、service_roleが`true`であることを確認する。
+
+### 1.8 手順7: Vercel最新デプロイの確認
+
+```bash
+# Vercel CLI未導入の場合
+npm install -g vercel
+vercel login
+vercel ls   # プロジェクト一覧からデプロイ状況を確認
+vercel inspect <deployment-url>  # 最新デプロイの詳細
+```
+
+または、Vercelダッシュボードで対象プロジェクトの最新デプロイが`main`の最新コミット(`a20375808818888188b26b9a2283ca9c9e5c9f4c`以降)に対応していることを確認する。
+
+### 1.9 手順8: LINE・ガチャ・Stripe・HMAC・entitlement・outbox試験
+
+既存のcontract/integrationテストを、現行Supabase/Vercelの接続情報に向けて実行する。**実データが作成・削除されるため、実行前に必ずバックアップ(1.3)を取得済みであることを確認すること。**
+
+```bash
+# .env.localの現行値をそのまま使う(NEXT_PUBLIC_SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY)
+# 加えて、テストが参照する以下を現行環境向けに設定する
+export SUPABASE_TEST_URL="https://vutnjxswfamluicsxwwi.supabase.co"
+export SUPABASE_TEST_SERVICE_ROLE_KEY="<.env.localのSUPABASE_SERVICE_ROLE_KEY>"
+export SUPABASE_TEST_ANON_KEY="<Supabaseダッシュボードから取得したanon key>"
+export DATABASE_TEST_URL="$STAGING_DATABASE_URL"
+
+npm run test:integration   # §7(ガチャ)・§10(entitlement)・§11(outbox)相当
+npm run test:contracts     # §8(Stripe、test mode前提)・§9(HMAC v1/v2)・§13(管理画面)相当
+```
+
+**注意**: `tests/integration/support/env.ts`の`requireLocalTestUrl()`は`localhost`/`127.0.0.1`以外への接続を拒否するガードが入っている(誤って本番へ接続することを防ぐ安全装置)。現行Supabaseはこのガードに引っかかるため、ステージング実行時は一時的にこのガードを外す必要がある。**この変更は実行後に必ず元に戻し、コミットしないこと**(安全装置を恒久的に外さない)。
+
+LINEログイン(§6)は自動テスト化できないため、LIFF実機での手動QAが別途必要(`docs/PHASE_C1_CONNECTION_RESULTS.md`のチェックリスト参照)。Stripeは必ずtest mode鍵(`sk_test_...`)を使用し、本番キーは絶対に使用しないこと。
+
+### 1.10 手順9: rollback試験
+
+`docs/PHASE_C1_ROLLBACK_RESULTS.md`の「ステージングでの実施」章の4項目(Vercel Instant Rollback・processingデータ検知・event trigger無効化/再有効化・outbox処理中の切り戻し)を、上記1.6でmigration適用したステージング環境に対して実施する。
+
+### 1.11 結果の共有
+
+上記1.2〜1.10の実行結果(psqlの出力・テスト結果・Vercelデプロイ確認結果)を、このセッションへ共有してほしい。共有いただき次第、`docs/PHASE_C1_MIGRATION_RESULTS.md`・`PHASE_C1_CONNECTION_RESULTS.md`・`PHASE_C1_SECURITY_RESULTS.md`・`PHASE_C1_ROLLBACK_RESULTS.md`・`PHASE_C1_COMPLETION_REPORT.md`を実測結果で更新する。
 
 ## 2. 指示書 各セクションと既存資産のマッピング
 
@@ -51,31 +160,33 @@ Phase C-0/PR #147マージ前最終修正指示の対応で、指示書§4〜§1
 ## 3. 実施順序(指示書§3、現状の到達点)
 
 ```text
-ステージングDBバックアップ          … 未着手(環境未構築)
+ステージングDBバックアップ          … 実行手順書(1.3)提供済み、実行は`stockbusiness`
 ↓
-読み取り専用preflight              … スクリプト整備済み(§4)、実行は環境構築後
+読み取り専用preflight              … スクリプト整備済み(§4)、実行手順書(1.4)提供済み、実行は`stockbusiness`
 ↓
-現在のmigration履歴取得             … スクリプトに追加済み(§4の一部)
+現在のmigration履歴取得             … スクリプトに追加済み(§4の一部)、実行手順書(1.2)提供済み、実行は`stockbusiness`
 ↓
-migration適用                      … 手順は既存(tests/migrations/run-upgrade-test.sh相当)、実行は環境構築後
+migration適用                      … 手順は既存(tests/migrations/run-upgrade-test.sh相当)+実行手順書(1.6)提供済み、実行は`stockbusiness`
 ↓
-DB権限・関数確認                    … 既存テストで手順確立済み、実行は環境構築後
+DB権限・関数確認                    … 既存テストで手順確立済み、実行手順書(1.7)提供済み、実行は`stockbusiness`
 ↓
-ステージングアプリデプロイ           … 未着手(環境未構築)
+ステージングアプリデプロイ           … 現行Vercelプロジェクトが既に対応(手順書1.8で最新デプロイを確認)
 ↓
-接続試験                           … 既存contract testで手順確立済み、実行は環境構築後
+接続試験                           … 既存contract/integration testで手順確立済み、実行手順書(1.9)提供済み、実行は`stockbusiness`
 ↓
-復旧・rollback試験                  … 手順書のみ整備済み、実機演習は未実施
+復旧・rollback試験                  … 手順書(1.10)提供済み、実行は`stockbusiness`
 ↓
 本番移行判定                       … Phase C-1完了報告の承認待ち(§18)
 ```
 
+**このセッションからの直接実行が不可能な理由**: セッションのネットワークegressプロキシが`vutnjxswfamluicsxwwi.supabase.co`をallowlistしておらず(`403 Forbidden`)、かつプロキシの仕様上raw-TCPのデータベース接続(psql)自体がサポート対象外であるため。詳細は本書0章参照。
+
 ## 4. 本番環境への影響について
 
-このセッションは本番Supabase・本番Vercel・本番Stripe・本番HMAC設定のいずれにも一切接続・変更していない。指示書§18の通り、Phase C-1完了報告が承認されるまで本番migration・本番Stripe・本番HMAC接続は実行しない。
+このセッションは本番Supabase・本番Vercel・本番Stripe・本番HMAC設定のいずれにも一切接続・変更していない(接続を試みたのは現行=ステージング環境のみで、それすらネットワーク制約により到達できなかった)。指示書§18の通り、Phase C-1完了報告が承認されるまで本番migration・本番Stripe・本番HMAC接続は実行しない。
 
 ## 5. 次のアクション
 
-1. 上記1章のステージング環境構築チェックリストを`stockbusiness`が実施
-2. 構築後、ステージングSupabase接続情報(`SUPABASE_TEST_URL`相当の値、ただしステージング用)とステージングアプリURLをこのセッションへ共有
-3. 共有後、本セッションが§4(preflight実行)〜§14(rollback試験)を順に実施し、`docs/PHASE_C1_MIGRATION_RESULTS.md`等の残り5文書を実測結果で更新する
+1. 本書1章の実行手順書に従い、`stockbusiness`が現行Supabase/Vercel(=ステージング)に対して手順1.2〜1.10を実施する
+2. 実行結果(psqlの出力・テスト結果・Vercelデプロイ確認結果)をこのセッションへ共有する
+3. 共有後、本セッションが`docs/PHASE_C1_MIGRATION_RESULTS.md`等の残り5文書を実測結果で更新する

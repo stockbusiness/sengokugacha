@@ -4,12 +4,15 @@
 
 ## 総括
 
-Phase C-1指示書は、Phase C-0でローカル/CIにより確認した内容を、実際のステージングSupabase・Vercel・外部サービスに対して確認することを目的としている。しかし本セッションで確認した通り、**ステージング環境(Supabaseプロジェクト・Vercelデプロイ先・Stripe test mode鍵・HMACステージング秘密鍵)がまだ構築されていない**。この状態では、指示書§4以降の実際の接続試験・migration適用試験を実施することができない。
+Phase C-1指示書は、Phase C-0でローカル/CIにより確認した内容を、実際のステージングSupabase・Vercel・外部サービスに対して確認することを目的としている。当初はステージング環境自体が存在しないと判断していたが、ユーザーより「現行のSupabase・Vercel(まだ実稼働していない)をステージングとして使う」との明確な方針を受け、`.env.local`にある実際の接続情報で接続を試みた。
 
-本セッションで実施したのは以下の2点である。
+しかし、**このコーディングセッションのネットワークegressプロキシが当該Supabaseホスト(`vutnjxswfamluicsxwwi.supabase.co`)をallowlistしておらず、`403 Forbidden: Host not in allowlist`で接続を拒否される**ことを確認した。さらに、プロキシの仕様上「raw-TCPのデータベース接続」自体がサポート対象外と明記されており、これはallowlistの許可有無に関わらず、migration適用・preflight SQL実行(psql接続)が本セッションからは原理的に実行不可能であることを意味する。この事実はユーザーと共有し、了承のもと以下の方針で進めることとした。
 
-1. ステージング環境が存在しない前提でも進められる範囲の対応(preflightスクリプトの拡張、既存資産のマッピング整理、文書化)
-2. ステージング環境構築後にすぐ実施できるよう、必要な手順・チェックリストの明文化
+本セッションで実施したのは以下の3点である。
+
+1. `scripts/production-migration-preflight.sql`の拡張(§4の追加確認項目)とローカル使い捨てPostgreSQLでの動作確認
+2. 既存テスト資産(`tests/integration/*`・`tests/contracts/*`)と指示書各セクションのマッピング整理・文書化
+3. **ネットワーク制約により本セッションから直接実行できない手順(migration履歴取得・preflight実行・migration適用・RPC権限確認・接続試験・rollback試験)について、`stockbusiness`が現行のSupabase/Vercelに対して実行するための詳細な実行手順書**(`docs/PHASE_C1_STAGING_TEST_PLAN.md`1章)
 
 ## 提出物一覧(指示書§17)
 
@@ -26,8 +29,8 @@ Phase C-1指示書は、Phase C-0でローカル/CIにより確認した内容�
 
 | 受入条件 | 状況 |
 |---|---|
-| ステージングmigration成功 | 未対応(環境未構築) |
-| 全外部接続成功 | 未対応(環境未構築)。ただしローカル/CIでの契約テスト(HMAC v1/v2・Stripe署名検証)は全て成功済み |
+| ステージングmigration成功 | 未対応(このセッションのネットワーク制約により未実行。実行手順書は`docs/PHASE_C1_STAGING_TEST_PLAN.md`1.6に整備済み) |
+| 全外部接続成功 | 未対応(同上、1.9に整備済み)。ただしローカル/CIでの契約テスト(HMAC v1/v2・Stripe署名検証)は全て成功済み |
 | 二重付与なし | ローカル/CIで確認済み(entitlement 10並列grant、outbox claim fencing等)。ステージング実データでの確認は未対応 |
 | 二重取消なし | 同上(entitlement 10並列revoke) |
 | ガチャ券消失なし | ローカル/CIで確認済み(gacha並行実行テスト) |
@@ -44,12 +47,6 @@ Phase C-1指示書は、Phase C-0でローカル/CIにより確認した内容�
 
 ## 次のアクション(要`stockbusiness`対応)
 
-`docs/PHASE_C1_STAGING_TEST_PLAN.md`の1章「ステージング環境構築チェックリスト」に従い、以下を実施いただきたい。
+`docs/PHASE_C1_STAGING_TEST_PLAN.md`の1章「ステージング(現行Supabase/Vercel)実行手順書」に従い、`stockbusiness`が現行環境に対して手順1.2〜1.10(migration履歴取得・バックアップ・preflight実行・migration適用・RPC権限確認・Vercelデプロイ確認・接続試験・rollback試験)を実施し、実行結果を共有いただきたい。
 
-1. ステージング用Supabaseプロジェクトの新規作成
-2. ステージング用Vercel環境の作成・環境変数設定(Supabase接続情報・Stripe test mode鍵・ステージング専用SESSION_SECRET等)
-3. HMAC v1/v2ステージング秘密鍵の`sen_no_kuni_hub_settings`への登録
-4. LINE開発用チャネルの設定
-5. ステージングDBのバックアップ取得(migration適用前)
-
-完了後、ステージング接続情報を共有いただければ、本セッション(または後続セッション)が指示書§4〜§14を順次実施し、5文書(MIGRATION_RESULTS/CONNECTION_RESULTS/SECURITY_RESULTS/ROLLBACK_RESULTS/本文書)を実測結果で更新する。
+共有後、本セッション(または後続セッション)が5文書(MIGRATION_RESULTS/CONNECTION_RESULTS/SECURITY_RESULTS/ROLLBACK_RESULTS/本文書)を実測結果で更新する。

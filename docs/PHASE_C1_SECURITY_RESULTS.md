@@ -17,7 +17,7 @@
 
 **本セッションでの直接確認**: `scripts/production-migration-preflight.sql`(本Phase C-1 §4で拡張)のRPC実行権限チェックを、開発用サンドボックスの一時PostgreSQL 16クラスタ(全マイグレーション適用済み)に対して実行し、`anon`/`authenticated`が実行可能な関数が0件であることを直接確認した。
 
-**ステージングでの実施(未着手、区分3)**: ステージング環境構築後、以下を実施する。
+**ステージングでの実施(未着手、区分3)**: `docs/PHASE_C1_STAGING_TEST_PLAN.md`の実行手順書に従い`stockbusiness`が現行環境に対して以下を実施する。
 
 1. `scripts/production-migration-preflight.sql`のRPC実行権限チェックをステージングDBに対して実行し、0件であることを確認
 2. 一時的なテスト用関数をステージングDBへ作成し、event triggerにより自動でPUBLIC権限が剥奪されることを実データで確認(確認後は必ずDROPする、指示書§12の明記通り)
@@ -33,4 +33,4 @@
 - event version改ざん → 401
 - raw body改ざん(署名計算後にbodyを書き換え) → 401(署名検証はraw bodyに対して行うため、JSON再シリアライズによる改ざんも検出できることを確認済み)
 
-ステージングでの実施(未着手、区分3)は、同一テストスイートをステージングURL・ステージング専用のHMAC鍵に向けて再実行することで達成する。
+ステージングでの実施(未着手、区分3)は、同一テストスイートを現行環境URL・現行のHMAC鍵に向けて`stockbusiness`が再実行することで達成する(`docs/PHASE_C1_STAGING_TEST_PLAN.md`1.9参照)。

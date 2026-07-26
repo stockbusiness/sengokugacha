@@ -19,7 +19,7 @@
 
 **検証方法**: 開発用サンドボックスに一時PostgreSQL 16クラスタを起動し、`supabase/migrations/`の全ファイルを適用した空DBに対して本スクリプトを実行。全クエリが構文エラー無く実行され、重複・orphan・null不整合・10分超processing・failed/dead件数がいずれも0件、RPC実行権限チェックも0件(=anon/authenticatedが実行可能な関数が無い、§12の修正が正しく機能している証跡)であることを確認した。migration履歴クエリのみ、Supabase CLI管理下でない生DBのため`relation does not exist`で失敗したが、`-v ON_ERROR_STOP=1`を付けない通常実行では後続処理を止めずに完了した(実際のSupabaseプロジェクトでは該当スキーマが存在するため問題にならない)。
 
-**ステージングでの実施(未着手)**: ステージングSupabaseプロジェクトが構築され次第、`psql "$STAGING_DATABASE_URL" -f scripts/production-migration-preflight.sql`を実行し、実データに対する結果を本セクションに追記する。1件でも異常が見つかった場合はmigrationを適用せず報告する(指示書§4の方針通り)。
+**ステージングでの実施(未着手)**: `docs/PHASE_C1_STAGING_TEST_PLAN.md`の実行手順書に従い`stockbusiness`が現行環境に対して実行し次第、`psql "$STAGING_DATABASE_URL" -f scripts/production-migration-preflight.sql`を実行し、実データに対する結果を本セクションに追記する。1件でも異常が見つかった場合はmigrationを適用せず報告する(指示書§4の方針通り)。
 
 ## §5 Migration適用
 
@@ -55,4 +55,4 @@
 | PUBLIC EXECUTE剥奪 | `tests/integration/rls-policies.test.ts` | 2 |
 | event trigger作成 | `tests/integration/rls-policies.test.ts`(新規関数への自動適用テスト)+ `select * from pg_event_trigger where evtname = 'lock_down_new_public_functions'`を直接確認 | 2 |
 
-**ステージングでの実施(未着手)**: ステージング環境構築後、`psql "$STAGING_DATABASE_URL"`で7ファイルを`postgres`ユーザーにより順次適用し、上記確認項目を実データに対して再実施する。実施後、本セクションを実測結果で更新する。
+**ステージングでの実施(未着手)**: `docs/PHASE_C1_STAGING_TEST_PLAN.md`の実行手順書(1.6)に従い`stockbusiness`が`psql`で7ファイルを`postgres`ユーザーにより順次適用し、上記確認項目を実データに対して再実施する。実施後、本セクションを実測結果で更新する。
