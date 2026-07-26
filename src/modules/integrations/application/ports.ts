@@ -24,6 +24,15 @@ export type OutboxRow = {
   sent_at: string | null;
 };
 
+export type OutboxDrainClaimOutcome =
+  | "claimed"
+  | "in_progress"
+  | "dead"
+  | "already_sent"
+  | "not_found"
+  | "not_eligible"
+  | "not_due";
+
 export interface IntegrationOutboxRepository {
   enqueueEvent(
     table: OutboxTable,
@@ -36,12 +45,19 @@ export interface IntegrationOutboxRepository {
   markSent(table: OutboxTable, id: string): Promise<void>;
   markFailed(table: OutboxTable, id: string, message: string, previousAttemptCount: number): Promise<void>;
   listPendingOrFailed(table: OutboxTable): Promise<OutboxRow[]>;
+  // 千ノ国パスポート Phase C-0 PR4(§8.2)。管理画面drain専用の原子的claim(fencing token)。
+  // 2並列drainで同じ行を二重送信しないようにするため、送信前にこれで行をclaimする
+  // (20260809000008)。enqueueEvent直後の即時送信フロー(confirmReferralForPurchase等)は
+  // 既存のmarkSent/markFailedをそのまま使い続け、このclaim経路は使わない。
+  claimForDrain(table: OutboxTable, id: string, claimToken: string): Promise<OutboxDrainClaimOutcome>;
+  markDrainSent(table: OutboxTable, id: string, claimToken: string): Promise<boolean>;
+  markDrainFailed(table: OutboxTable, id: string, claimToken: string, message: string): Promise<boolean>;
 }
 
 // --- IntegrationInboxRepository(integration_inbox_events) ---
 
 export type InboxClaimResult =
-  | { outcome: "new"; inboxEventId: string }
+  | { outcome: "new"; inboxEventId: string; claimToken: string }
   | { outcome: "duplicate"; inboxEventId: string }
   | { outcome: "conflict"; inboxEventId: string }
   | { outcome: "in_progress"; inboxEventId: string }
@@ -56,8 +72,10 @@ export interface IntegrationInboxRepository {
     payloadHash: string;
     eventVersion: string;
   }): Promise<InboxClaimResult>;
-  markSucceeded(inboxEventId: string): Promise<void>;
-  markFailed(inboxEventId: string, message: string): Promise<void>;
+  // claim_token(fencing token)が一致し、かつまだprocessing中の場合のみ更新する。
+  // falseはlease切れ後に別workerへ再claimされた古いworkerからの呼び出しを示す。
+  markSucceeded(inboxEventId: string, claimToken: string): Promise<boolean>;
+  markFailed(inboxEventId: string, claimToken: string, message: string): Promise<boolean>;
 }
 
 // --- SenNoKuniHubSettingsRepository(sen_no_kuni_hub_settings/sen_no_kuni_hub_used_nonces) ---

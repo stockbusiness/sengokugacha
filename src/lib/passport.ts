@@ -114,11 +114,17 @@ export async function syncCommonUserHub(userId: string, displayName: string | nu
   }
 
   if (isNewUser && user.referral_session_key) {
-    await confirmReferral({
-      referralSessionKey: user.referral_session_key,
-      externalUserId: userId,
-      referralSource: "registration",
-    });
+    // 千ノ国パスポート PR #147マージ前最終修正指示§4。isNewUserの新規登録確定は
+    // ユーザーごとに一度きりのイベントのため、userIdから安定したidempotency keyを渡す
+    // (ログインAPIがネットワーク再試行された場合でも同じキーになる)。
+    await confirmReferral(
+      {
+        referralSessionKey: user.referral_session_key,
+        externalUserId: userId,
+        referralSource: "registration",
+      },
+      `registration-referral-confirm:${userId}`
+    );
   }
 }
 

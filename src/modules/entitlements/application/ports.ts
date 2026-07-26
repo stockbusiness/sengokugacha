@@ -12,7 +12,23 @@
 export type EntitlementRow = { id: string };
 
 export type ProcessEntitlementGrantResult = {
-  claim_outcome: "claimed" | "already_applied" | "already_revoked" | "user_unresolved" | "in_progress" | "dead" | "not_found";
+  claim_outcome:
+    | "claimed"
+    // grant受信時点で既にstatus='revoked'だった(revoke先行の順序逆転)場合、
+    // 同一トランザクション内でgrant適用直後にrevokeまで自動適用したことを示す
+    // (マージ前最終修正指示§1)。
+    | "claimed_then_reversed"
+    // grant自体(残高付与)は成功したが、同一トランザクション内で試みた自動取消が
+    // 完了しなかった(通常は発生しない防御的な分岐)。revoke再送での収束に委ねる。
+    | "claimed_reversal_pending"
+    | "already_applied"
+    | "already_revoked"
+    | "user_unresolved"
+    | "in_progress"
+    | "dead"
+    | "not_found"
+    // 管理者が「再解決を試みても解消しない」と却下済み(resolution_dismissed_at設定済み)。
+    | "dismissed";
   resolved_user_id: string | null;
 };
 

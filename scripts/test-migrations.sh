@@ -40,10 +40,19 @@ else
   exit 0
 fi
 
-echo "[test-migrations] Running duplicate-check queries (§5.2, tests/migrations/duplicate-checks.sql)..."
-echo "[test-migrations] NOTE: an empty database will trivially report zero duplicates. Run this script"
-echo "[test-migrations]       against a database seeded with existing-data-equivalent fixtures to get a"
-echo "[test-migrations]       meaningful pre-migration duplicate report (see docs/MIGRATION_PREFLIGHT_RESULTS.md)."
+echo "[test-migrations] Running duplicate-check queries against the empty database (§5.2)..."
 psql "$DATABASE_TEST_URL" -v ON_ERROR_STOP=1 -f tests/migrations/duplicate-checks.sql
+
+# 千ノ国パスポート Phase C-0 PR4(§11)。上記は空DBに対する実行のため重複0件が自明にしか
+# ならない。既存データ相当のフィクスチャを投入した上での意味のある実行はrun-preflight.shへ
+# 委譲する(§5.1のsupabase db resetで作られた、いま適用済みのスキーマに追記する形で行う)。
+echo "[test-migrations] Running the existing-data-equivalent migration preflight (§11, tests/migrations/run-preflight.sh)..."
+bash tests/migrations/run-preflight.sh
+
+# 千ノ国パスポート PR #147マージ前最終修正指示§3。上記はいずれも「空DBへ全マイグレーション
+# を適用する」経路のみを検証しており、「既存の(PR #147以前の)DBへPR #147の新規
+# マイグレーションだけを追加適用する」実際のアップグレード経路は未検証だった。
+echo "[test-migrations] Running the real upgrade migration test (§3, tests/migrations/run-upgrade-test.sh)..."
+bash tests/migrations/run-upgrade-test.sh
 
 echo "[test-migrations] OK"
