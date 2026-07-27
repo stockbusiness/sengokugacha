@@ -39,6 +39,18 @@ type UnresolvedEntitlement = {
   granted_at: string;
 };
 
+type UnresolvedCommonUser = {
+  userId: string;
+  lineUserIdMasked: string;
+  displayName: string | null;
+  createdAt: string;
+  lastAttemptAt: string | null;
+  attemptCount: number;
+  lastError: string | null;
+  referringAgentId: string | null;
+  assignedAgentId: string | null;
+};
+
 type OutboxEvent = {
   id: string;
   source_type: string;
@@ -67,6 +79,7 @@ export default function IntegrationRecoveryPage() {
   const [unresolvedMerges, setUnresolvedMerges] = useState<UnresolvedCommonUserMerge[]>([]);
   const [outboxEvents, setOutboxEvents] = useState<OutboxEvent[]>([]);
   const [unresolvedEntitlements, setUnresolvedEntitlements] = useState<UnresolvedEntitlement[]>([]);
+  const [unresolvedCommonUsers, setUnresolvedCommonUsers] = useState<UnresolvedCommonUser[]>([]);
   const [message, setMessage] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
 
@@ -77,9 +90,17 @@ export default function IntegrationRecoveryPage() {
       fetch("/api/admin/integrations/sen-no-kuni-hub/unresolved-common-user-merges"),
       fetch("/api/admin/integration-outbox"),
       fetch("/api/admin/entitlements/unresolved"),
+      fetch("/api/admin/common-users/unresolved"),
     ])
-      .then(([conflictsRes, unresolvedRes, unresolvedMergesRes, outboxRes, unresolvedEntitlementsRes]) => {
-        if (!conflictsRes.ok || !unresolvedRes.ok || !unresolvedMergesRes.ok || !outboxRes.ok || !unresolvedEntitlementsRes.ok) {
+      .then(([conflictsRes, unresolvedRes, unresolvedMergesRes, outboxRes, unresolvedEntitlementsRes, unresolvedCommonUsersRes]) => {
+        if (
+          !conflictsRes.ok ||
+          !unresolvedRes.ok ||
+          !unresolvedMergesRes.ok ||
+          !outboxRes.ok ||
+          !unresolvedEntitlementsRes.ok ||
+          !unresolvedCommonUsersRes.ok
+        ) {
           throw new Error("読み込みに失敗しました");
         }
         return Promise.all([
@@ -88,14 +109,16 @@ export default function IntegrationRecoveryPage() {
           unresolvedMergesRes.json(),
           outboxRes.json(),
           unresolvedEntitlementsRes.json(),
+          unresolvedCommonUsersRes.json(),
         ]);
       })
-      .then(([conflicts, unresolved, unresolvedMergesData, outboxData, unresolvedEntitlementsData]) => {
+      .then(([conflicts, unresolved, unresolvedMergesData, outboxData, unresolvedEntitlementsData, unresolvedCommonUsersData]) => {
         setMergeConflicts(conflicts);
         setUnresolvedAssignments(unresolved);
         setUnresolvedMerges(unresolvedMergesData);
         setOutboxEvents([...outboxData.integrationEvents, ...outboxData.notificationEvents]);
         setUnresolvedEntitlements(unresolvedEntitlementsData);
+        setUnresolvedCommonUsers(unresolvedCommonUsersData);
         setStatus("ready");
       })
       .catch(() => setStatus("error"));
@@ -211,6 +234,38 @@ export default function IntegrationRecoveryPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "再解決に失敗しました");
       setMessage(`${data.retriedCount}件を再試行し、${data.resolvedCount}件解決しました。`);
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "再解決に失敗しました。");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleRetryAllUnresolvedCommonUsers() {
+    setMessage("");
+    setBusyId("retry-common-users-all");
+    try {
+      const res = await fetch("/api/admin/common-users/retry-resolve", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "再解決に失敗しました");
+      setMessage(`${data.retriedCount}件を再試行し、${data.resolvedCount}件解決しました。`);
+      await load();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "再解決に失敗しました。");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  async function handleRetryOneUnresolvedCommonUser(userId: string) {
+    setMessage("");
+    setBusyId(userId);
+    try {
+      const res = await fetch(`/api/admin/common-users/${userId}/retry-resolve`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "再解決に失敗しました");
+      setMessage(`再解決結果: ${data.outcome}`);
       await load();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "再解決に失敗しました。");
@@ -465,6 +520,57 @@ export default function IntegrationRecoveryPage() {
                   className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-semibold text-zinc-700 hover:border-zinc-400 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300"
                 >
                   却下
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">common_user_id未解決ユーザー</h2>
+          <button
+            onClick={handleRetryAllUnresolvedCommonUsers}
+            disabled={busyId === "retry-common-users-all" || unresolvedCommonUsers.length === 0}
+            className="rounded-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white hover:bg-zinc-700 disabled:opacity-50 dark:bg-zinc-100 dark:text-zinc-900"
+          >
+            全件再解決を試行
+          </button>
+        </div>
+        <p className="text-sm text-zinc-500 dark:text-zinc-400">
+          LINEログイン時にsengoku-ai.com側のcommon_user_id解決が失敗し、未解決のまま残っているユーザーです。「全件再解決を試行」または個別の「再解決」で再処理できます(同時実行は自動的に排他制御されます)。
+        </p>
+        {status === "loading" && <p className="text-sm text-zinc-500 dark:text-zinc-400">読み込み中...</p>}
+        {status === "error" && <p className="text-sm text-red-700 dark:text-red-400">読み込みに失敗しました。</p>}
+        {status === "ready" && unresolvedCommonUsers.length === 0 && (
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">未解決のユーザーはいません。</p>
+        )}
+        {status === "ready" && unresolvedCommonUsers.length > 0 && (
+          <div className="space-y-2">
+            {unresolvedCommonUsers.map((u) => (
+              <div
+                key={u.userId}
+                className="flex items-center justify-between rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950"
+              >
+                <div className="text-xs text-zinc-600 dark:text-zinc-400">
+                  <p>
+                    {u.displayName ?? "(表示名未設定)"} / line_user_id: {u.lineUserIdMasked} / 登録: {new Date(u.createdAt).toLocaleString("ja-JP")}
+                  </p>
+                  <p>
+                    試行回数: {u.attemptCount}
+                    {u.lastAttemptAt && ` / 直近試行: ${new Date(u.lastAttemptAt).toLocaleString("ja-JP")}`}
+                    {u.referringAgentId && ` / 紹介代理店: ${u.referringAgentId}`}
+                    {u.assignedAgentId && ` / 担当代理店: ${u.assignedAgentId}`}
+                  </p>
+                  {u.lastError && <p className="text-red-700 dark:text-red-400">直近エラー: {u.lastError}</p>}
+                </div>
+                <button
+                  onClick={() => handleRetryOneUnresolvedCommonUser(u.userId)}
+                  disabled={busyId === u.userId}
+                  className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-semibold text-zinc-700 hover:border-zinc-400 disabled:opacity-50 dark:border-zinc-700 dark:text-zinc-300"
+                >
+                  再解決
                 </button>
               </div>
             ))}
