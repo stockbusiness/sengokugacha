@@ -56,6 +56,29 @@ describe("POST /api/admin/entitlements/retry-resolve", () => {
   });
 });
 
+describe("GET /api/admin/common-users/unresolved", () => {
+  it("認証Cookie無しは401 unauthorized", async () => {
+    const res = await fetch(`${server.baseUrl}/api/admin/common-users/unresolved`);
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("POST /api/admin/common-users/retry-resolve", () => {
+  it("認証Cookie無しは401 unauthorized", async () => {
+    const res = await fetch(`${server.baseUrl}/api/admin/common-users/retry-resolve`, { method: "POST" });
+    expect(res.status).toBe(401);
+  });
+
+  it("operatorロールは403(外部連携を伴う操作はmanager限定)", async () => {
+    const token = await signAdminSessionToken("operator");
+    const res = await fetch(`${server.baseUrl}/api/admin/common-users/retry-resolve`, {
+      method: "POST",
+      headers: { Cookie: adminCookieHeader(token) },
+    });
+    expect(res.status).toBe(403);
+  });
+});
+
 describe("POST /api/admin/integration-outbox/drain", () => {
   it("認証Cookie無しは401 unauthorized", async () => {
     const res = await fetch(`${server.baseUrl}/api/admin/integration-outbox/drain`, { method: "POST" });
