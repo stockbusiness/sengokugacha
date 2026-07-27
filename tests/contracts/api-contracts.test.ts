@@ -87,6 +87,60 @@ describe("POST /api/admin/integration-outbox/drain", () => {
   });
 });
 
+describe("GET/POST /api/internal/cron/integration-outbox", () => {
+  // Stripe取得待ち期間対応指示書§6.1。CRON_SECRET未設定のテスト環境では常に401になる
+  // (安全側のデフォルト、本番運用ではVercelの環境変数にCRON_SECRETを設定して使う)。
+  it("Authorizationヘッダー無しは401 unauthorized(GET)", async () => {
+    const res = await fetch(`${server.baseUrl}/api/internal/cron/integration-outbox`);
+    expect(res.status).toBe(401);
+  });
+
+  it("誤ったBearerトークンでも401 unauthorized(POST)", async () => {
+    const res = await fetch(`${server.baseUrl}/api/internal/cron/integration-outbox`, {
+      method: "POST",
+      headers: { authorization: "Bearer wrong-token" },
+    });
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("GET/POST /api/internal/cron/notification-outbox", () => {
+  it("Authorizationヘッダー無しは401 unauthorized(GET)", async () => {
+    const res = await fetch(`${server.baseUrl}/api/internal/cron/notification-outbox`);
+    expect(res.status).toBe(401);
+  });
+
+  it("誤ったBearerトークンでも401 unauthorized(POST)", async () => {
+    const res = await fetch(`${server.baseUrl}/api/internal/cron/notification-outbox`, {
+      method: "POST",
+      headers: { authorization: "Bearer wrong-token" },
+    });
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("GET/POST /api/internal/cron/reconciliation", () => {
+  it("Authorizationヘッダー無しは401 unauthorized(GET)", async () => {
+    const res = await fetch(`${server.baseUrl}/api/internal/cron/reconciliation`);
+    expect(res.status).toBe(401);
+  });
+
+  it("誤ったBearerトークンでも401 unauthorized(POST)", async () => {
+    const res = await fetch(`${server.baseUrl}/api/internal/cron/reconciliation`, {
+      method: "POST",
+      headers: { authorization: "Bearer wrong-token" },
+    });
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("GET /api/admin/operations-health", () => {
+  it("認証Cookie無しは401 unauthorized", async () => {
+    const res = await fetch(`${server.baseUrl}/api/admin/operations-health`);
+    expect(res.status).toBe(401);
+  });
+});
+
 describe("POST /api/integrations/sen-no-kuni-hub", () => {
   it("必須ヘッダー欠落は401 missing_headers", async () => {
     const res = await fetch(`${server.baseUrl}/api/integrations/sen-no-kuni-hub`, {
