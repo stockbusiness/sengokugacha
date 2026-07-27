@@ -19,11 +19,15 @@
 
 **検証方法**: 開発用サンドボックスに一時PostgreSQL 16クラスタを起動し、`supabase/migrations/`の全ファイルを適用した空DBに対して本スクリプトを実行。全クエリが構文エラー無く実行され、重複・orphan・null不整合・10分超processing・failed/dead件数がいずれも0件、RPC実行権限チェックも0件(=anon/authenticatedが実行可能な関数が無い、§12の修正が正しく機能している証跡)であることを確認した。migration履歴クエリのみ、Supabase CLI管理下でない生DBのため`relation does not exist`で失敗したが、`-v ON_ERROR_STOP=1`を付けない通常実行では後続処理を止めずに完了した(実際のSupabaseプロジェクトでは該当スキーマが存在するため問題にならない)。
 
-**ステージングでの実施(未着手)**: `docs/PHASE_C1_STAGING_TEST_PLAN.md`の実行手順書に従い`stockbusiness`が現行環境に対して実行し次第、`psql "$STAGING_DATABASE_URL" -f scripts/production-migration-preflight.sql`を実行し、実データに対する結果を本セクションに追記する。1件でも異常が見つかった場合はmigrationを適用せず報告する(指示書§4の方針通り)。
+**ステージングでの実施(区分3、完了)**: `stockbusiness`が実際のSupabaseステージングDBに対し、`information_schema.tables`のフルダンプおよび本スクリプト相当の監査クエリを段階的に実行した。
 
-## §5 Migration適用
+**重大な想定外の発見**: 事前の想定(指示書§5の「直近7ファイルのみ未適用」)に反し、実際には`20260709000005_rich_menu_panels`(孤立した1件)と`20260802000001`以降の32ファイル、計33ファイルが未適用であることが判明した。このDBはSupabase CLIの`supabase_migrations.schema_migrations`による管理下になく(同テーブル自体が存在しない)、過去に手動/ad hocなSQL適用で運用されていたため、想定より広い範囲・かつ非連続な適用漏れが生じていた。
 
-対象7ファイル(timestamp順)は以下の通りで、いずれもPR #147で新規追加されたもの:
+対応として、全74migrationファイルの内容を突き合わせる監査クエリ(`to_regclass`/`information_schema.columns`/`pg_constraint`をマーカーとした存在確認)を作成・実行し、未適用ファイルの範囲を正確に特定した上で、該当ファイルを`timestamp`順に1本ずつ適用した(下記参照)。
+
+## §5 Migration適用(当初想定7ファイル→実際は36ファイル)
+
+**当初、指示書§5が列挙していた対象7ファイル**(PR #147で新規追加されたもの):
 
 ```
 20260809000004_fix_entitlement_revocation_premature_reversed.sql
@@ -34,6 +38,47 @@
 20260810000001_entitlement_grant_auto_reverses_when_already_revoked.sql
 20260810000002_event_trigger_locks_down_new_functions.sql
 ```
+
+**実際にステージングDBへ適用した36ファイル**(上記7本を含む、`20260709000005`の孤立分・`20260802000001`以降の主要ギャップ32本・本Phase C-1で新規発見した是正1本):
+
+```
+20260709000005_rich_menu_panels.sql
+20260802000001_common_user_hub.sql
+20260803000001_stripe_safety_p0.sql
+20260804000001_assigned_agent.sql          (※既に手動適用済みでスキップ、下記参照)
+20260805000001_sen_no_kuni_hub_basis.sql
+20260806000001_entitlements.sql
+20260807000001_shopping_order_events.sql
+20260807000002_purchase_grant_steps.sql
+20260807000003_entitlements_reentrant.sql
+20260807000004_integration_inbox_atomic_claim.sql
+20260807000005_event_version.sql
+20260807000006_shopping_order_events_source_key.sql
+20260807000007_agency_event_recovery.sql
+20260808000001_purchase_grant_step_atomic_claim.sql
+20260808000002_purchase_balance_grant_transactional.sql
+20260808000003_entitlement_atomic_claim.sql
+20260808000004_stripe_webhook_event_atomic_claim.sql
+20260808000005_sen_no_kuni_hub_signature_v2.sql
+20260808000006_gacha_draw_atomic.sql
+20260808000007_integration_recovery_soft_resolve.sql
+20260808000008_unresolved_common_user_merges.sql
+20260808000009_purchase_outbox.sql
+20260808000010_unresolved_entitlements_dismissal.sql
+20260809000001_grant_service_role_privileges.sql
+20260809000002_fix_execute_gacha_draw_ambiguous_columns.sql
+20260809000003_fix_entitlement_grant_premature_revoked_block.sql
+20260809000004_fix_entitlement_revocation_premature_reversed.sql
+20260809000005_entitlement_grant_respects_dismissal.sql
+20260809000007_integration_inbox_atomic_claim_fencing.sql
+20260809000008_outbox_atomic_claim_fencing.sql
+20260809000009_revoke_public_execute_on_functions.sql
+20260810000001_entitlement_grant_auto_reverses_when_already_revoked.sql
+20260810000002_event_trigger_locks_down_new_functions.sql
+20260810000003_revoke_anon_authenticated_function_execute.sql  (※本Phase C-1で新規作成、下記参照)
+```
+
+`20260804000001_assigned_agent.sql`(`users.assigned_agent_id`列追加)のみ、適用時点で対象列が既に存在していた(過去の何らかの経緯で個別に反映済みと推測される。他のどのmigrationファイルにも重複定義が無いことを確認済み)。型(`uuid`)が期待通りであることを確認の上、このファイルのみスキップして残りを適用した。
 
 **local確認済み(区分2)**: `tests/migrations/run-upgrade-test.sh`(PR #147 §3で作成)が、まさにこの「既存DB(f76b373時点の67マイグレーション適用済み)へ、この7ファイルだけを追加適用する」経路そのものを検証している。開発用サンドボックスの一時PostgreSQL 16クラスタで実行し、以下を確認済み:
 
@@ -55,4 +100,8 @@
 | PUBLIC EXECUTE剥奪 | `tests/integration/rls-policies.test.ts` | 2 |
 | event trigger作成 | `tests/integration/rls-policies.test.ts`(新規関数への自動適用テスト)+ `select * from pg_event_trigger where evtname = 'lock_down_new_public_functions'`を直接確認 | 2 |
 
-**ステージングでの実施(未着手)**: `docs/PHASE_C1_STAGING_TEST_PLAN.md`の実行手順書(1.6)に従い`stockbusiness`が`psql`で7ファイルを`postgres`ユーザーにより順次適用し、上記確認項目を実データに対して再実施する。実施後、本セクションを実測結果で更新する。
+**ステージングでの実施(区分3、完了)**: `stockbusiness`がSupabaseダッシュボードのSQL Editorから36ファイルを`postgres`ロールで順次適用した。
+
+**PUBLIC EXECUTE剥奪に関する追加発見と是正**: `20260809000009`・`20260810000002`適用直後のRPC実行権限チェックで、`adjust_user_balance`等27関数が依然として`anon`/`authenticated`から実行可能であることが判明した(Supabaseプロジェクト自体が`public`スキーマに`anon`/`authenticated`への既定EXECUTE付与ルールを持つため、`PUBLIC`ロールからの剥奪だけでは効果が無かった)。詳細は`docs/SECURITY_FINDINGS_PHASE_C0_PR4.md`および`docs/PHASE_C1_SECURITY_RESULTS.md`を参照。新規migration`20260810000003_revoke_anon_authenticated_function_execute.sql`を作成・適用し、再チェックで0件になったことを確認した。
+
+適用後の確認項目のうち、integration inbox/outbox claim_token・lease_expires_at・next_retry_at・entitlement自動取消・event trigger作成については、テーブル定義・関数定義がエラー無く適用されたことをもってスキーマレベルでの適用成功を確認した(実データでの動作確認は§7〜§11の接続試験で別途実施)。

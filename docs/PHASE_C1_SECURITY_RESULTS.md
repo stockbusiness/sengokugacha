@@ -17,11 +17,20 @@
 
 **本セッションでの直接確認**: `scripts/production-migration-preflight.sql`(本Phase C-1 §4で拡張)のRPC実行権限チェックを、開発用サンドボックスの一時PostgreSQL 16クラスタ(全マイグレーション適用済み)に対して実行し、`anon`/`authenticated`が実行可能な関数が0件であることを直接確認した。
 
-**ステージングでの実施(未着手、区分3)**: `docs/PHASE_C1_STAGING_TEST_PLAN.md`の実行手順書に従い`stockbusiness`が現行環境に対して以下を実施する。
+**ステージングでの実施(区分3、完了)**: `stockbusiness`が現行のSupabase環境(プロジェクト`vutnjxswfamluicsxwwi`)に対し、`scripts/production-migration-preflight.sql`相当のRPC実行権限チェックを実行した。
 
-1. `scripts/production-migration-preflight.sql`のRPC実行権限チェックをステージングDBに対して実行し、0件であることを確認
-2. 一時的なテスト用関数をステージングDBへ作成し、event triggerにより自動でPUBLIC権限が剥奪されることを実データで確認(確認後は必ずDROPする、指示書§12の明記通り)
-3. 実際のステージング用`anon`/`authenticated`キー(Supabaseダッシュボードから取得)を使い、`supabase-js`クライアント経由で重要RPC(`adjust_user_balance`等)を呼び出し、`permission denied for function`エラーになることを外形的に確認
+**重大な追加発見**: `20260809000009`・`20260810000002`(PUBLICからのEXECUTE剥奪+event trigger)を適用した直後の1回目のチェックで、`adjust_user_balance`・`execute_gacha_draw`・`process_entitlement_grant`等27関数が依然として`anon`/`authenticated`から実行可能であることが判明した。原因はSupabaseプロジェクト自体が`public`スキーマに対し`alter default privileges ... grant all on functions to anon, authenticated, service_role`という独自のブートストラップ権限を持っており、これは`PUBLIC`ロールとは別に`anon`/`authenticated`を名指しした独立したACLエントリのため、「PUBLICから剥奪」では一切剥奪できないことによる。ローカル検証(Phase C-0・本Phase C-1双方)はこのSupabase固有のブートストラップを持たない素のPostgreSQL 16コンテナで実施していたため、これまで見逃されていた(詳細: `docs/SECURITY_FINDINGS_PHASE_C0_PR4.md`の追加検出事項)。
+
+新規migration `20260810000003_revoke_anon_authenticated_function_execute.sql`(`anon`/`authenticated`を名指しで剥奪、event trigger本体も同様に修正)を作成・ステージングDBへ適用し、再度チェックを実行した結果、該当関数が0件になったことを確認した。
+
+| 確認項目 | 結果 |
+|---|---|
+| anon: EXECUTE不可(修正前) | **NG**。27関数が実行可能(anon/authenticated双方) |
+| anon: EXECUTE不可(`20260810000003`適用後) | OK。0関数 |
+| authenticated: EXECUTE不可(`20260810000003`適用後) | OK。0関数 |
+| event trigger有効性 | `select evtenabled from pg_event_trigger where evtname = 'lock_down_new_public_functions'` → `'O'`(有効)を確認 |
+
+**未着手(区分5)**: 実際のステージング用`anon`/`authenticated`キー(Supabaseダッシュボードから取得)を使い、`supabase-js`クライアント経由で重要RPCを呼び出し、`permission denied for function`エラーになることを外形的に確認する手順(`docs/PHASE_C1_STAGING_TEST_PLAN.md`参照)。
 
 ## §9(セキュリティ観点): HMAC改ざん系の拒否
 
