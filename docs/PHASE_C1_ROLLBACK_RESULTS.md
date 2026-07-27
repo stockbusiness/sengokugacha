@@ -25,11 +25,16 @@
 
 指示書の方針通り、down処理(マイグレーションの取り消しSQL)は用意していない。PR #147の7 migrationはいずれも追加的な変更(列追加・関数置換・trigger追加)であり、forward fix(問題があれば新しいmigrationで修正する)の方が安全という既存方針(`docs/ROLLBACK_PHASE_C0_PR4.md`)を踏襲する。
 
-## ステージングでの実施(未着手、区分5)
+## ステージングでの実施(区分3、項目3のみ完了)
 
-`docs/PHASE_C1_STAGING_TEST_PLAN.md`の実行手順書(1.10)に従い`stockbusiness`が現行環境に対して以下の実機演習を行い、本文書を更新する:
+`stockbusiness`が実際のステージングDBに対し、上記4項目のうち3番目(event triggerの無効化・再有効化)を実施した。
 
-1. ステージングへPR #147相当のコードをデプロイ→migration適用→旧バージョンのデプロイへVercel上でInstant Rollback→アプリが致命的エラーを起こさないことを確認
-2. ステージングDBでprocessingデータを意図的に作り出し(テスト用のoutbox行等)、preflightスクリプトで検出→切り戻し判断のシミュレーション
-3. event triggerを`disable`→新規関数を作成(PUBLIC実行可能になることを確認)→`enable`→再度新規関数を作成(PUBLICが自動剥奪されることを確認)
-4. outbox処理中(claim済み・lease未失効)の状態でアプリケーションを切り戻し、再起動後にlease切れ後の再claimが正常に行われることを確認
+**実施内容と結果**:
+
+1. `alter event trigger lock_down_new_public_functions disable;`でトリガーを無効化
+2. 無効化中に新規テスト関数`phase_c1_rollback_test_disabled()`を作成 → `has_function_privilege('anon', ..., 'EXECUTE')`が`true`(=保護されない)ことを確認。これにより、event trigger自体が何らかの理由で無効化された場合の実際のリスクを実データで再現できた
+3. `alter event trigger lock_down_new_public_functions enable;`でトリガーを再有効化
+4. 再有効化後に新規テスト関数`phase_c1_rollback_test_enabled()`を作成 → 今度は`anon_can_execute = false`・`service_role_can_execute = true`となり、保護が正しく自動復帰することを確認
+5. テスト用の2関数は`drop function`で削除済み
+
+**未実施(区分5)**: 上記1・2・4番目(Vercel Instant Rollback演習、processingデータ検出シミュレーション、outbox処理中の切り戻し演習)は、`docs/PHASE_C1_STAGING_TEST_PLAN.md`の実行手順書(1.10)に従い別途`stockbusiness`が実施する。

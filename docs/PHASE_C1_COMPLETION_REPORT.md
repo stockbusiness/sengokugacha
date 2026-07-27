@@ -4,15 +4,16 @@
 
 ## 総括
 
-Phase C-1指示書は、Phase C-0でローカル/CIにより確認した内容を、実際のステージングSupabase・Vercel・外部サービスに対して確認することを目的としている。当初はステージング環境自体が存在しないと判断していたが、ユーザーより「現行のSupabase・Vercel(まだ実稼働していない)をステージングとして使う」との明確な方針を受け、`.env.local`にある実際の接続情報で接続を試みた。
+Phase C-1指示書は、Phase C-0でローカル/CIにより確認した内容を、実際のステージングSupabase・Vercel・外部サービスに対して確認することを目的としている。ユーザーより「現行のSupabase・Vercel(まだ実稼働していない)をステージングとして使う」との明確な方針を受けて実施した。
 
-しかし、**このコーディングセッションのネットワークegressプロキシが当該Supabaseホスト(`vutnjxswfamluicsxwwi.supabase.co`)をallowlistしておらず、`403 Forbidden: Host not in allowlist`で接続を拒否される**ことを確認した。さらに、プロキシの仕様上「raw-TCPのデータベース接続」自体がサポート対象外と明記されており、これはallowlistの許可有無に関わらず、migration適用・preflight SQL実行(psql接続)が本セッションからは原理的に実行不可能であることを意味する。この事実はユーザーと共有し、了承のもと以下の方針で進めることとした。
+このコーディングセッションのネットワークegressプロキシは当該Supabaseホストへ直接接続できない(raw-TCPのDB接続が原理的にサポート対象外)ため、`stockbusiness`がSupabaseダッシュボード(SQL Editor)・Vercelダッシュボード・LINEアプリを操作し、本セッションが提示するSQL/確認手順を1つずつ実行して結果を報告する「フォンリレー」形式で、migration適用から接続試験・rollback試験まで一通り実施した。
 
-本セッションで実施したのは以下の3点である。
+**実施内容の要約**:
 
-1. `scripts/production-migration-preflight.sql`の拡張(§4の追加確認項目)とローカル使い捨てPostgreSQLでの動作確認
-2. 既存テスト資産(`tests/integration/*`・`tests/contracts/*`)と指示書各セクションのマッピング整理・文書化
-3. **ネットワーク制約により本セッションから直接実行できない手順(migration履歴取得・preflight実行・migration適用・RPC権限確認・接続試験・rollback試験)について、`stockbusiness`が現行のSupabase/Vercelに対して実行するための詳細な実行手順書**(`docs/PHASE_C1_STAGING_TEST_PLAN.md`1章)
+1. migration履歴の実地調査により、指示書§5が想定していた7ファイルではなく、`20260709000005`(孤立)・`20260802000001`以降32ファイルの計33ファイルが未適用であることを発見。全74migrationファイルを突き合わせる監査クエリで正確な範囲を特定し、33ファイルを`timestamp`順に適用した
+2. **適用中に新たな重大発見**: Supabaseプロジェクトが`public`スキーマに独自の`anon`/`authenticated`向け既定EXECUTE権限を持つため、既存の「PUBLICロールから剥奪」方式(`20260809000009`・`20260810000002`)では実際には保護されていないことが判明。是正migration`20260810000003`を新規作成・適用し、`anon`/`authenticated`が実行可能な関数が27件→0件になったことを確認
+3. §7(ガチャ)・§10(Entitlement)・§11(Outbox)は使い捨てテストデータでの実地確認、§6(LINE)・§13(管理画面)は実際のログイン・ブラウザ操作で確認、§14(Rollback)はevent triggerの無効化→再有効化演習を実施、いずれも区分3(staging確認済み)に到達
+4. §8(Stripe)・§9(HMAC)は、Stripe設定未完了・HMAC試験に必要なcurl実行環境が無いため未実施(区分5)
 
 ## 提出物一覧(指示書§17)
 
@@ -29,24 +30,29 @@ Phase C-1指示書は、Phase C-0でローカル/CIにより確認した内容�
 
 | 受入条件 | 状況 |
 |---|---|
-| ステージングmigration成功 | 未対応(このセッションのネットワーク制約により未実行。実行手順書は`docs/PHASE_C1_STAGING_TEST_PLAN.md`1.6に整備済み) |
-| 全外部接続成功 | 未対応(同上、1.9に整備済み)。ただしローカル/CIでの契約テスト(HMAC v1/v2・Stripe署名検証)は全て成功済み |
-| 二重付与なし | ローカル/CIで確認済み(entitlement 10並列grant、outbox claim fencing等)。ステージング実データでの確認は未対応 |
-| 二重取消なし | 同上(entitlement 10並列revoke) |
-| ガチャ券消失なし | ローカル/CIで確認済み(gacha並行実行テスト) |
-| HMAC改ざん拒否 | ローカル/CIで確認済み(6パターン全て401/409で拒否) |
-| anon RPC拒否 | ローカル/CIで確認済み(全関数でfalse)。ステージング実測は未対応 |
-| outbox二重業務処理なし | ローカル/CIで確認済み(claim_token fencing、安定Idempotency-Key) |
-| rollback手順確認 | 手順書レベルでは整備済み。実機演習は未対応 |
+| ステージングmigration成功 | **達成**。33ファイル+是正1ファイル(計34)をステージングDBへ適用し、preflight系チェック(RPC権限)を実測 |
+| 全外部接続成功 | 一部達成。LINE(区分3)は達成。Stripe・HMAC(区分5)は環境未整備のため未実施 |
+| 二重付与なし | **達成**。ステージング実データでentitlement grant→取消済みへの再grantが`already_revoked`でブロックされ残高が変化しないことを実測。ローカル/CIでも確認済み(10並列grant等) |
+| 二重取消なし | ローカル/CIで確認済み(entitlement 10並列revoke)。ステージングでは単発の取消動作のみ実測 |
+| ガチャ券消失なし | **達成**。ステージング実データで有料ガチャのticket消費・冪等リプレイ(同一request_idでの二重加算なし)を実測。ローカル/CIでも確認済み |
+| HMAC改ざん拒否 | ローカル/CIで確認済み(6パターン全て401/409で拒否)。ステージング実測は未対応(区分5) |
+| anon RPC拒否 | **達成**。ステージング実データで27関数がanon/authenticatedから実行可能だった重大な抜けを発見・是正migrationで0件まで削減したことを実測(`docs/PHASE_C1_SECURITY_RESULTS.md`参照) |
+| outbox二重業務処理なし | **達成**。ステージング実データでclaim_token fencing(二重claim拒否・誤token拒否)を実測。ローカル/CIでも確認済み |
+| rollback手順確認 | event trigger無効化→再有効化の演習(区分3)は完了。Vercel Instant Rollback・outbox処理中の切り戻し演習は未実施(区分5) |
 | branch protection設定 | **完了**(PR #147で`main`へ設定済み、`docs/CI_PIPELINE.md`参照) |
-| 本番環境を変更していない | **達成**。本セッションは本番Supabase・本番Vercel・本番Stripe・本番HMAC設定のいずれにも一切接続・変更していない |
+| 本番環境を変更していない | **達成**。本番Supabase・本番Vercel・本番Stripe・本番HMAC設定のいずれにも一切接続・変更していない |
 
 ## §18 本番移行条件について
 
 指示書§18の通り、Phase C-1完了報告が承認されるまで、本番migration・本番Stripe・本番HMAC接続は実行していない。この方針は今後も維持する。
 
+**本番移行の前提として追記**: 今回ステージングで発見した「PUBLICからの剥奪だけではanon/authenticatedへのSupabase既定権限に効かない」問題(`20260810000003`で是正)は、本番環境が新規Supabaseプロジェクトとして構築される場合にも同様に発生する。本番移行時は、必ず`20260810000003`適用後に§12のRPC権限チェックを実行し、0件であることを確認してから移行完了とすること。
+
 ## 次のアクション(要`stockbusiness`対応)
 
-`docs/PHASE_C1_STAGING_TEST_PLAN.md`の1章「ステージング(現行Supabase/Vercel)実行手順書」に従い、`stockbusiness`が現行環境に対して手順1.2〜1.10(migration履歴取得・バックアップ・preflight実行・migration適用・RPC権限確認・Vercelデプロイ確認・接続試験・rollback試験)を実施し、実行結果を共有いただきたい。
+1. Stripe設定(test mode)完了後、§8の接続試験(Checkout Session作成→実ブラウザ決済→Webhook受信確認)を実施
+2. PCが使える環境で、§9のHMAC v1/v2試験(`tests/contracts/sen-no-kuni-hub-hmac.test.ts`をステージングURL・ステージング鍵に向けて再実行、またはcurlでの手動確認)を実施
+3. `docs/PHASE_C1_STAGING_TEST_PLAN.md`1.10に記載の残りのrollback演習(Vercel Instant Rollback、outbox処理中の切り戻し)を実施
+4. 本セッションで追加した`20260810000003`を含む`claude/sengoku-economy-os-j0d2nl`ブランチを、任意のタイミングで`main`へマージするかどうかご判断いただきたい(ステージングDBへは直接SQLで既に適用済みのため、マージ自体は将来の新規環境構築・本番移行の際に必要になる)
 
-共有後、本セッション(または後続セッション)が5文書(MIGRATION_RESULTS/CONNECTION_RESULTS/SECURITY_RESULTS/ROLLBACK_RESULTS/本文書)を実測結果で更新する。
+上記が完了し次第、本文書および該当セクションを実測結果で更新する。
