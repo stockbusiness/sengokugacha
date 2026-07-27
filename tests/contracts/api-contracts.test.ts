@@ -56,11 +56,88 @@ describe("POST /api/admin/entitlements/retry-resolve", () => {
   });
 });
 
+describe("GET /api/admin/common-users/unresolved", () => {
+  it("認証Cookie無しは401 unauthorized", async () => {
+    const res = await fetch(`${server.baseUrl}/api/admin/common-users/unresolved`);
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("POST /api/admin/common-users/retry-resolve", () => {
+  it("認証Cookie無しは401 unauthorized", async () => {
+    const res = await fetch(`${server.baseUrl}/api/admin/common-users/retry-resolve`, { method: "POST" });
+    expect(res.status).toBe(401);
+  });
+
+  it("operatorロールは403(外部連携を伴う操作はmanager限定)", async () => {
+    const token = await signAdminSessionToken("operator");
+    const res = await fetch(`${server.baseUrl}/api/admin/common-users/retry-resolve`, {
+      method: "POST",
+      headers: { Cookie: adminCookieHeader(token) },
+    });
+    expect(res.status).toBe(403);
+  });
+});
+
 describe("POST /api/admin/integration-outbox/drain", () => {
   it("認証Cookie無しは401 unauthorized", async () => {
     const res = await fetch(`${server.baseUrl}/api/admin/integration-outbox/drain`, { method: "POST" });
     expect(res.status).toBe(401);
     expect(await res.json()).toEqual({ error: "unauthorized" });
+  });
+});
+
+describe("GET/POST /api/internal/cron/integration-outbox", () => {
+  // Stripe取得待ち期間対応指示書§6.1。CRON_SECRET未設定のテスト環境では常に401になる
+  // (安全側のデフォルト、本番運用ではVercelの環境変数にCRON_SECRETを設定して使う)。
+  it("Authorizationヘッダー無しは401 unauthorized(GET)", async () => {
+    const res = await fetch(`${server.baseUrl}/api/internal/cron/integration-outbox`);
+    expect(res.status).toBe(401);
+  });
+
+  it("誤ったBearerトークンでも401 unauthorized(POST)", async () => {
+    const res = await fetch(`${server.baseUrl}/api/internal/cron/integration-outbox`, {
+      method: "POST",
+      headers: { authorization: "Bearer wrong-token" },
+    });
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("GET/POST /api/internal/cron/notification-outbox", () => {
+  it("Authorizationヘッダー無しは401 unauthorized(GET)", async () => {
+    const res = await fetch(`${server.baseUrl}/api/internal/cron/notification-outbox`);
+    expect(res.status).toBe(401);
+  });
+
+  it("誤ったBearerトークンでも401 unauthorized(POST)", async () => {
+    const res = await fetch(`${server.baseUrl}/api/internal/cron/notification-outbox`, {
+      method: "POST",
+      headers: { authorization: "Bearer wrong-token" },
+    });
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("GET/POST /api/internal/cron/reconciliation", () => {
+  it("Authorizationヘッダー無しは401 unauthorized(GET)", async () => {
+    const res = await fetch(`${server.baseUrl}/api/internal/cron/reconciliation`);
+    expect(res.status).toBe(401);
+  });
+
+  it("誤ったBearerトークンでも401 unauthorized(POST)", async () => {
+    const res = await fetch(`${server.baseUrl}/api/internal/cron/reconciliation`, {
+      method: "POST",
+      headers: { authorization: "Bearer wrong-token" },
+    });
+    expect(res.status).toBe(401);
+  });
+});
+
+describe("GET /api/admin/operations-health", () => {
+  it("認証Cookie無しは401 unauthorized", async () => {
+    const res = await fetch(`${server.baseUrl}/api/admin/operations-health`);
+    expect(res.status).toBe(401);
   });
 });
 
