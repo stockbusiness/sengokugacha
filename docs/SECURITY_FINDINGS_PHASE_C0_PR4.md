@@ -92,6 +92,54 @@ down_new_functions.sql`)を導入した。`public`スキーマへの`CREATE FUNC
 event trigger型のため直接呼び出し自体が拒否される)にも明示的なrevoke/grantを追加し、
 `public`スキーマ内でanon/authenticatedが実行可能な関数が0件であることを確認済み。
 
+## 追加検出事項: PUBLICからの剥奪はSupabase実環境のanon/authenticated個別付与には効かない(Phase C-1ステージング適用中に発見)
+
+`20260809000009`・`20260810000002`はいずれも「`PUBLIC`ロールからEXECUTE剥奪」のみを
+行っていた。ローカル検証(本ドキュメントの上記2件を含む)は、いずれもSupabase独自の
+ブートストラップ権限設定を持たない素のPostgreSQL 16コンテナで実施しており、その環境では
+「PUBLICから剥奪」だけで`has_function_privilege('anon', ...)`が`false`になることを
+確認できていた。
+
+しかし実際のSupabaseプロジェクトへこれらのマイグレーションを適用した結果、
+`adjust_user_balance`・`execute_gacha_draw`・`process_entitlement_grant`等、
+ほぼ全ての新規関数が`anon`/`authenticated`から引き続き実行可能なままであることが
+判明した(§12のRPC実行権限チェックで検出)。
+
+原因は、Supabaseプロジェクトが初期設定として`public`スキーマに対し
+
+```sql
+alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
+```
+
+というSupabase自身のブートストラップ権限ルール(PostgRESTが素の関数呼び出しを行える
+前提の既定設計)を持つことだった。これは`PUBLIC`ロールとは独立した、`anon`/`authenticated`
+を名指ししたACLエントリであるため、`PUBLIC`からの剥奪は一切ここに効かない。素の
+PostgreSQL 16コンテナにはこのSupabase固有のブートストラップが存在しないため、
+これまでのローカル検証では再現されず見逃されていた。
+
+### 修正
+
+`20260810000003_revoke_anon_authenticated_function_execute.sql`で、`anon`/
+`authenticated`を`PUBLIC`と併記して明示的に対象へ追加した。
+
+```sql
+revoke execute on all functions in schema public from anon, authenticated, public;
+grant execute on all functions in schema public to service_role;
+
+alter default privileges in schema public revoke execute on functions from anon, authenticated, public;
+alter default privileges in schema public grant execute on functions to service_role;
+```
+
+event trigger本体(`_lock_down_new_public_functions`)も同じ抜けを持っていたため、
+`revoke execute on function %s from anon, authenticated, public`に修正した。
+
+### 検証
+
+実際のSupabaseステージングプロジェクトに対して、`20260810000003`適用前後で
+§12のRPC実行権限チェック(`has_function_privilege('anon'/'authenticated', ..., 'EXECUTE')`
+が`true`になる`public`スキーマの関数を列挙するクエリ)を実行し、適用前は27関数が
+該当・適用後は0関数に減少したことを確認した(`docs/PHASE_C1_SECURITY_RESULTS.md`参照)。
+
 ## 追加検出事項: Outboxの外部送信がIdempotency-Keyを再送のたびに使い捨てていた(マージ前最終修正指示§4で発見)
 
 `src/lib/common-user-hub.ts`の`postToAgencySystem()`(sengoku-ai.comへのHMAC以前の
