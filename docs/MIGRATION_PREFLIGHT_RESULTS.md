@@ -57,3 +57,20 @@
 - 現時点の`supabase/migrations/`に含まれるunique制約は、既存データ相当の(複数行・複数キーが混在する)データセットに対しても誤検知せず、かつ実際の重複を正しく検出できることを確認した。
 - 本番DBへの適用前には、`scripts/production-migration-preflight.sql`(読み取り専用)を実際の本番相当DBに対して実行し、同様に0件であることを確認すること。1件でも重複が見つかった場合は、件数・原因・正とする行の決定方法・統合方針・ロールバック方法・既存機能への影響を本ドキュメントへ追記してから対応すること(自動での削除・統合は行わない)。
 - 本番での事前確認はこのセッションでは実施できていない(本番DBへの接続手段が無い、指示書の方針により意図的に接続しない)。**7. 未対応**(`docs/IMPLEMENTATION_STATUS_PHASE_C0_PR4.md`の区分)。本部担当者による実施が必要。
+
+## 実行結果4: ステージング実機での完全preflight(§5.3、2026-07-28)
+
+Stripe取得待ち期間対応指示書§5.3に基づき、`scripts/production-migration-preflight.sql`をベースに(psql専用の`\echo`を除去し、Supabase Dashboard SQL Editorで実行可能な8ブロックへ分割して)`stockbusiness`がステージングDB(プロジェクト`vutnjxswfamluicsxwwi`)へ実際に実行した。
+
+| # | チェック内容 | 結果 | 区分 |
+|---|---|---|---|
+| 1 | 一意制約重複(5テーブル統合) | 0 rows | 3 |
+| 2 | 孤立FK参照(4項目統合) | 0 rows | 3 |
+| 3 | 各statusカラムの値分布 | 0 rows(purchases/entitlements/integration系のテーブルが現状すべて空。Stripe未接続・HMAC実測未実施のため想定通り、異常ではない) | 3 |
+| 4 | fencing未経由のprocessing異常 | 0 rows | 3 |
+| 5 | 10分以上processing放置 | 0 rows | 3 |
+| 6 | failed/dead件数(15項目) | 全項目0 | 3 |
+| 7 | RPC実行権限(anon/authenticated) | 0 rows(`20260810000003`のセキュリティ修正が正しく効いていることを再確認) | 3 |
+| 8 | migration履歴件数 | `total=77, latest_version=20260811000002`(§5.1のmigration履歴正規化結果と一致) | 3 |
+
+**結論**: 全8項目で異常無し。ステージングDBは現時点でデータ整合性・権限設定ともに健全な状態にある。項目3・6で購入/entitlement/integration系テーブルが空であることが判明したため、これらの機能(Stripe決済・HMAC連携イベント処理)についてはまだ実データでの動作実績が無い点に注意(§5.5 HMAC実測・Stripe接続後の決済試験で初めて実データが入る見込み)。
