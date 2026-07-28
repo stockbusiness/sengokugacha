@@ -85,4 +85,4 @@ having count(*) > 1;
 ## 現時点の評価
 
 - 上記はすべてソースコードの確認に基づく整理であり、実際のStripeテストモードでの動作確認はStripeアカウント取得後に行う。
-- `payment_settings`テーブルは現在ステージングに1行も存在しない可能性が高い(§5.3のstatusカラム分布確認で`purchases`等が空だったことから推測、`payment_settings`自体は未確認)。Stripeアカウント取得後、最初に`/admin/payment-settings`で公開可能キー・秘密キー・Webhookシークレットを設定する必要がある。
+- `stockbusiness`が`/admin/payment-settings`で確認済み: **未設定**(2026-07-28確認)。Stripeアカウント取得後、最初にこの画面で公開可能キー・秘密キー・Webhookシークレットを設定する必要がある。
