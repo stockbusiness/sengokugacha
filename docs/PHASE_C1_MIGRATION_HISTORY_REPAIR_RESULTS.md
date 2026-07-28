@@ -1,10 +1,10 @@
 # 千ノ国パスポート Migration履歴正規化 実施結果(§5.1)
 
-区分: 1.ソースコード確認済み / 2.local確認済み / 3.staging確認済み / 4.production未確認 / 5.未対応 / 6.問題あり / 7.管理者操作待ち / 8.Stripeアカウント待ち
+区分: 1.ソースコード確認済み / 2.local確認済み / **3.staging確認済み** / 4.production未確認 / 5.未対応 / 6.問題あり / 7.管理者操作待ち / 8.Stripeアカウント待ち
 
-`docs/PHASE_C1_MIGRATION_HISTORY_REPAIR_PLAN.md`の手順を、実際に`stockbusiness`がステージングDBのSupabase Dashboard SQL Editorから実行する。
+`docs/PHASE_C1_MIGRATION_HISTORY_REPAIR_PLAN.md`の手順を、2026-07-28に`stockbusiness`が実際にステージングDBのSupabase Dashboard SQL Editorから実行した。PR-A(#148)・PR-B(#149)・PR-C(#150)がいずれも`main`へマージ済みのため、`supabase/migrations/`配下の全77ファイルを対象とする(実行前に、本ドキュメント作成時点で未適用だった`20260811000001`・`20260811000002`の2件をステージングDBへ実際に適用済み)。
 
-## 実行するSQL(スマホ/PCでそのままコピペ可能)
+## 実行したSQL
 
 ### STEP 1: テーブル作成
 
@@ -18,9 +18,7 @@ create table if not exists supabase_migrations.schema_migrations (
 );
 ```
 
-### STEP 2: 全76ファイル分の履歴行をINSERT
-
-このリストは、2つの未マージブランチ(`claude/sengoku-economy-os-j0d2nl`にのみ存在する`20260810000003`、および本ブランチで新規追加した`20260811000001`)を突き合わせて生成した、**現時点でステージングDBへ実際に適用済みの全76ファイルの正確な一覧**である(`main`マージ後は両方とも`supabase/migrations/`に存在するようになる)。
+### STEP 2: 全77ファイル分の履歴行をINSERT
 
 ```sql
 insert into supabase_migrations.schema_migrations (version, name) values
@@ -99,11 +97,10 @@ insert into supabase_migrations.schema_migrations (version, name) values
   ('20260810000001', 'entitlement_grant_auto_reverses_when_already_revoked'),
   ('20260810000002', 'event_trigger_locks_down_new_functions'),
   ('20260810000003', 'revoke_anon_authenticated_function_execute'),
-  ('20260811000001', 'common_user_resolution_attempts')
+  ('20260811000001', 'common_user_resolution_attempts'),
+  ('20260811000002', 'reconciliation_snapshot')
 on conflict (version) do nothing;
 ```
-
-**注意**: `20260811000001`はPR #149(ドラフト)がまだ`main`へマージされていない。この行は、PR #149のmigrationをステージングDBへ実際に適用した後にINSERTすること(適用前に履歴だけ先に記録すると、「履歴上は適用済みなのに実オブジェクトが無い」という逆向きの不整合を生む)。
 
 ### STEP 3: 検証
 
@@ -111,12 +108,17 @@ on conflict (version) do nothing;
 select count(*) from supabase_migrations.schema_migrations;
 ```
 
-## 実施結果(実行後にここを更新)
+## 実施結果
 
 | 項目 | 結果 | 区分 |
 |---|---|---|
-| STEP 1(テーブル作成) | 未実施 | 5 |
-| STEP 2(全履歴行INSERT) | 未実施 | 5 |
-| STEP 3(件数検証) | 未実施 | 5 |
+| STEP 1(テーブル作成) | 成功 | 3 |
+| STEP 2(全77件のINSERT) | 成功 | 3 |
+| STEP 3(件数検証) | `77`(期待通り) | 3 |
 
-`stockbusiness`が実行後、本セクションを実測結果で更新する。
+前提として、`20260811000001`(common_user_resolution_attempts)・`20260811000002`(reconciliation_snapshot)の2件をSTEP1実行前に先にステージングDBへ適用し、`reconciliation_snapshot()`を実行して正常動作(17項目中16項目が0件、`common_user_id_null`のみ実データとして9件検出、誤検知・見逃し無し)を確認済み。以後、ステージングDBの`supabase_migrations.schema_migrations`テーブルが実際の適用済みmigrationの正本として機能する。
+
+**今後の運用ルール**(`docs/PHASE_C1_MIGRATION_HISTORY_REPAIR_PLAN.md`より再掲):
+1. 新規migrationファイルを追加した際は、ステージングへ適用した後に必ず`insert into supabase_migrations.schema_migrations (version, name) values (...)`を対で実行する
+2. `statements`列は使用しない(このプロジェクトはCLI経由の`supabase db push`を使わないため)
+3. 過去のmigrationファイルのタイムスタンプ変更・書き換えは行わない
