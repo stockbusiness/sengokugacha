@@ -19,6 +19,8 @@ type Castle = {
   historical_lord_summary: string | null;
   unlock_level: CastleUnlockLevel;
   historical_review_status: CastleHistoricalReviewStatus;
+  // 空欄(null)なら「城主プラン設定」の全城共通の金額を使う。
+  lord_plan_price_yen: number | null;
   primary_province_id: string | null;
 };
 
@@ -84,6 +86,7 @@ export default function CastleEditPage() {
           status: castle.status,
           unlock_level: castle.unlock_level,
           historical_review_status: castle.historical_review_status,
+          lord_plan_price_yen: castle.lord_plan_price_yen,
         }),
       });
       const data = await res.json();
@@ -160,6 +163,30 @@ export default function CastleEditPage() {
           「城主募集中」にすると、この城の城主枠を販売中として一般ユーザーの城一覧・城詳細に表示します
           (城主プラン料金・契約期間・初期販売枠は「城主プラン設定」の値を使用)。
           既に有効な城主契約がある城は、この設定に関わらず募集中とは表示しません。
+        </span>
+      </label>
+
+      <label className="block">
+        <span className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+          城主プラン料金(この城のみ、円)
+        </span>
+        <input
+          type="number"
+          min={0}
+          step={1}
+          value={castle.lord_plan_price_yen ?? ""}
+          onChange={(e) =>
+            setCastle({
+              ...castle,
+              // 空欄は「共通設定を使う」の意味なのでnullに戻す(0円とは区別する)。
+              lord_plan_price_yen: e.target.value === "" ? null : Number(e.target.value),
+            })
+          }
+          placeholder="空欄なら共通設定の金額を使用"
+          className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+        />
+        <span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">
+          この城だけ城主プランの金額を変えたい場合に入力します。空欄のままなら「城主プラン設定」の全城共通の金額を使います。
         </span>
       </label>
 

@@ -37,7 +37,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   const planSettings = isRecruitingLord ? await getCastleLordPlanSettings() : null;
   const lordRecruitment = planSettings
     ? {
-        planPriceYen: planSettings.plan_price_yen,
+        // 城ごとの上書きがあればそれを、無ければ全城共通の設定値を使う。
+        planPriceYen: castle.lord_plan_price_yen ?? planSettings.plan_price_yen,
         contractTermMonths: planSettings.contract_term_months,
         initialPlotCapacity: planSettings.initial_plot_capacity,
       }
