@@ -1,7 +1,9 @@
 import { logAdminAction } from "@/lib/admin-audit-log";
+import { getPlotSalesSummaryByCastle } from "@/lib/castle-plots";
 import { isCastleUnlocked, type CastleUnlockLevel } from "@/lib/castle-unlock";
 import { regionCompleteAchievementType } from "@/lib/regions";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import type { PlotScarcitySummary } from "@/modules/castle/domain/plot-presentation";
 
 export type CastleStatus = "draft" | "recruiting" | "published" | "hidden";
 export type CastleHistoricalReviewStatus = "unreviewed" | "reviewed";
@@ -55,7 +57,12 @@ export async function getCastleById(castleId: string): Promise<Castle | null> {
   return data ?? null;
 }
 
-export type CastleWithUnlockStatus = Castle & { unlocked: boolean };
+// plotSalesはunlocked=falseの城では常にnull(解放前は区画情報自体を見せない、
+// 城詳細の /api/castles/[id]/plots が空配列を返すのと同じ方針)。
+export type CastleWithUnlockStatus = Castle & {
+  unlocked: boolean;
+  plotSales: PlotScarcitySummary | null;
+};
 
 // 一般公開する城一覧+ユーザーごとの解放状態(実装指示書v1.0 6-6)。
 // N+1を避けるため、関連テーブルをまとめて取得してからJS側で突き合わせる。
@@ -108,15 +115,18 @@ export async function getPublishedCastlesForUser(userId: string): Promise<Castle
   if (achievementsError) throw achievementsError;
   const conqueredRegionTypes = new Set((achievements ?? []).map((a) => a.achievement_type as string));
 
+  const plotSalesByCastleId = await getPlotSalesSummaryByCastle(castleIds);
+
   return castles.map((c) => {
-    const provinceId = provinceIdByCastleId.get(c.id as string) ?? null;
+    const castleId = c.id as string;
+    const provinceId = provinceIdByCastleId.get(castleId) ?? null;
     const region = provinceId ? regionByProvinceId.get(provinceId) : undefined;
     const unlocked = isCastleUnlocked(c.unlock_level as CastleUnlockLevel, {
       hasPrimaryProvince: !!provinceId,
       provinceConquered: provinceId ? conqueredProvinceIds.has(provinceId) : false,
       regionConquered: region ? conqueredRegionTypes.has(regionCompleteAchievementType(region)) : false,
     });
-    return { ...c, unlocked };
+    return { ...c, unlocked, plotSales: unlocked ? (plotSalesByCastleId.get(castleId) ?? null) : null };
   });
 }
 
