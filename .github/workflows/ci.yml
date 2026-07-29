@@ -10,6 +10,10 @@ env:
   NEXT_PUBLIC_SUPABASE_URL: https://example.supabase.co
   SUPABASE_SERVICE_ROLE_KEY: dummy
   ADMIN_PASSWORD: dummy
+  # version: latest にすると setup-cli が毎回 GitHub API へ最新版を問い合わせるため、
+  # レート制限("API rate limit exceeded")でCIが落ちることが繰り返し発生していた。
+  # 番号で固定すればこの問い合わせ自体が無くなる。更新はこの1行を書き換えるだけでよい。
+  SUPABASE_CLI_VERSION: "2.110.0"
 
 jobs:
   typecheck:
@@ -84,7 +88,7 @@ jobs:
       - run: npm ci
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: ${{ env.SUPABASE_CLI_VERSION }}
       - name: Start Supabase local
         run: supabase start
       - name: Export local connection settings
@@ -113,7 +117,7 @@ jobs:
       - run: npm ci
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: ${{ env.SUPABASE_CLI_VERSION }}
       - name: Start Supabase local (applies all migrations + seed.sql)
         run: supabase start
       - name: Export local connection settings
@@ -142,7 +146,7 @@ jobs:
       - run: npm ci
       - uses: supabase/setup-cli@v1
         with:
-          version: latest
+          version: ${{ env.SUPABASE_CLI_VERSION }}
       - name: Start Supabase local
         run: supabase start
       - name: Export local connection settings
