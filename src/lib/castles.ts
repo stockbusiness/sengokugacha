@@ -20,6 +20,8 @@ export type Castle = {
   historical_lord_summary: string | null;
   unlock_level: CastleUnlockLevel;
   historical_review_status: CastleHistoricalReviewStatus;
+  // 城主プラン料金の城単位の上書き。nullなら castle_lord_plan_settings の全城共通値を使う。
+  lord_plan_price_yen: number | null;
   created_at: string;
   updated_at: string;
 };

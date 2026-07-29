@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { getCastleLordPlanSettings } from "@/lib/castle-lord-plan-settings";
 import { getCastleUnlockStatus } from "@/lib/castle-unlock";
 import { getCastleById, getOfficialLordPartner } from "@/lib/castles";
 import { getSession } from "@/lib/session";
@@ -29,5 +30,19 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
   const officialLordPartner = await getOfficialLordPartner(id);
 
-  return NextResponse.json({ ...castle, unlocked: true, officialLordPartner });
+  // 城主枠の販売中(城主募集中)表示。管理画面で城の公開状態を'recruiting'にすると出る。
+  // 既に有効な城主契約がある城は、管理画面側の状態変更が漏れていても募集中とは表示しない
+  // (「募集中なのに公式城主がいる」という矛盾した見え方を防ぐ)。
+  const isRecruitingLord = castle.status === "recruiting" && !officialLordPartner;
+  const planSettings = isRecruitingLord ? await getCastleLordPlanSettings() : null;
+  const lordRecruitment = planSettings
+    ? {
+        // 城ごとの上書きがあればそれを、無ければ全城共通の設定値を使う。
+        planPriceYen: castle.lord_plan_price_yen ?? planSettings.plan_price_yen,
+        contractTermMonths: planSettings.contract_term_months,
+        initialPlotCapacity: planSettings.initial_plot_capacity,
+      }
+    : null;
+
+  return NextResponse.json({ ...castle, unlocked: true, officialLordPartner, lordRecruitment });
 }

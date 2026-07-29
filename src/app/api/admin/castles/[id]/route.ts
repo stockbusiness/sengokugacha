@@ -35,6 +35,17 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (typeof body.status === "string" && ["draft", "recruiting", "published", "hidden"].includes(body.status)) {
     fields.status = body.status;
   }
+  // 空欄(null)は「全城共通の城主プラン料金を使う」の意味なので、0との区別が必要。
+  if ("lord_plan_price_yen" in body) {
+    const raw = body.lord_plan_price_yen;
+    if (raw === null || raw === "") {
+      fields.lord_plan_price_yen = null;
+    } else if (Number.isFinite(Number(raw)) && Number(raw) >= 0) {
+      fields.lord_plan_price_yen = Math.trunc(Number(raw));
+    } else {
+      return NextResponse.json({ error: "lord_plan_price_yen must be a non-negative number or null" }, { status: 400 });
+    }
+  }
 
   const supabase = createSupabaseServerClient();
   const { data, error } = await supabase.from("castles").update(fields).eq("id", id).select("*").single();
