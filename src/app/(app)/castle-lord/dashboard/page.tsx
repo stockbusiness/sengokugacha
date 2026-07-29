@@ -1,14 +1,29 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { Card } from "@/components/ui/Card";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TextLink } from "@/components/ui/Button";
+import { PlotCardMedia } from "@/components/castle/PlotCard";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
+import { toDisplayUrl } from "@/lib/image-url";
+import { getPlotStatusPresentation } from "@/modules/castle/domain/plot-presentation";
+
+type LordDashboardPlot = {
+  id: string;
+  plot_code: string;
+  name: string;
+  price_yen: number;
+  sold_price_yen: number | null;
+  status: string;
+  main_image_url: string | null;
+};
 
 type LordDashboardSummary = {
-  contract: { id: string; status: string; castleName: string | null } | null;
+  contract: { id: string; status: string; castleId: string | null; castleName: string | null } | null;
+  plots: LordDashboardPlot[];
   plotCapacity: number;
   plotsSold: number;
   plotsAvailable: number;
@@ -30,6 +45,36 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 type Status = "loading" | "ready" | "error";
+
+// 一般ユーザー向けのPlotCardと同じ見た目にしつつ、城主にだけ必要な成約価格を足す。
+// 担当城が未確定(castleIdがnull)の契約では遷移先が無いのでリンクにしない。
+function LordPlotCard({ plot, castleId }: { plot: LordDashboardPlot; castleId: string | null }) {
+  const { dimmed } = getPlotStatusPresentation(plot.status);
+
+  const body = (
+    <div
+      className={`overflow-hidden rounded-2xl border border-gold/15 bg-ink-raised/80 shadow-lg shadow-black/30 ${
+        dimmed ? "opacity-55" : ""
+      }`}
+    >
+      <PlotCardMedia imageUrl={toDisplayUrl(plot.main_image_url)} priceYen={plot.price_yen} status={plot.status} />
+      <div className="px-3 py-2">
+        <p className="truncate text-sm font-semibold text-parchment">{plot.name}</p>
+        <p className="mt-0.5 text-xs text-parchment-dim">{plot.plot_code}</p>
+        {plot.status === "sold" && plot.sold_price_yen !== null && (
+          <p className="mt-1 text-xs text-gold-soft">成約 {plot.sold_price_yen.toLocaleString()}円</p>
+        )}
+      </div>
+    </div>
+  );
+
+  if (!castleId) return body;
+  return (
+    <Link href={`/castles/${castleId}/plots/${plot.id}`} className="block transition hover:opacity-90">
+      {body}
+    </Link>
+  );
+}
 
 export default function CastleLordDashboardPage() {
   const [status, setStatus] = useState<Status>("loading");
@@ -133,6 +178,23 @@ export default function CastleLordDashboardPage() {
                   </div>
                 </div>
               </Card>
+
+              {/* 件数だけでは自分がいま何を売っているのか分からないため、担当城の区画そのものを並べる。
+                  下書き区画はサーバー側で除外済み(まだ販売枠に紐づいていない内部管理用のため)。 */}
+              <div className="space-y-2">
+                <h2 className="text-sm font-semibold text-gold-soft">担当城の区画</h2>
+                {summary.plots.length === 0 ? (
+                  <Card className="text-center text-sm text-parchment-dim">
+                    公開中の区画がありません。契約が有効になると販売枠の分だけ区画が販売可能になります。
+                  </Card>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    {summary.plots.map((plot) => (
+                      <LordPlotCard key={plot.id} plot={plot} castleId={summary.contract?.castleId ?? null} />
+                    ))}
+                  </div>
+                )}
+              </div>
             </>
           )}
 

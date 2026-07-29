@@ -1,8 +1,21 @@
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
+// 城主が自分の担当城の区画を一覧で確認するための最小限の情報。
+// 下書き(draft)はまだ販売枠に紐づいていない内部管理用の区画なので含めない。
+export type LordDashboardPlot = {
+  id: string;
+  plot_code: string;
+  name: string;
+  price_yen: number;
+  sold_price_yen: number | null;
+  status: string;
+  main_image_url: string | null;
+};
+
 // 要件書13章「城主ダッシュボード」(Phase1スコープの項目のみ)。
 export type LordDashboardSummary = {
-  contract: { id: string; status: string; castleName: string | null } | null;
+  contract: { id: string; status: string; castleId: string | null; castleName: string | null } | null;
+  plots: LordDashboardPlot[];
   plotCapacity: number;
   plotsSold: number;
   plotsAvailable: number;
@@ -27,6 +40,7 @@ export async function getLordDashboardSummary(userId: string): Promise<LordDashb
   if (!contract) {
     return {
       contract: null,
+      plots: [],
       plotCapacity: 0,
       plotsSold: 0,
       plotsAvailable: 0,
@@ -40,8 +54,22 @@ export async function getLordDashboardSummary(userId: string): Promise<LordDashb
   const [{ data: allocations }, { data: plots }, { data: commissionLines }] = await Promise.all([
     supabase.from("plot_allocations").select("granted_capacity").eq("contract_id", contract.id).eq("status", "active"),
     contract.castle_id
-      ? supabase.from("castle_plots").select("status, sold_price_yen").eq("castle_id", contract.castle_id)
-      : Promise.resolve({ data: [] as { status: string; sold_price_yen: number | null }[] }),
+      ? supabase
+          .from("castle_plots")
+          .select("id, plot_code, name, price_yen, sold_price_yen, status, main_image_url")
+          .eq("castle_id", contract.castle_id)
+          .order("display_order", { ascending: true })
+      : Promise.resolve({
+          data: [] as {
+            id: string;
+            plot_code: string;
+            name: string;
+            price_yen: number;
+            sold_price_yen: number | null;
+            status: string;
+            main_image_url: string | null;
+          }[],
+        }),
     supabase
       .from("commission_ledger")
       .select("amount_yen, status")
@@ -64,8 +92,10 @@ export async function getLordDashboardSummary(userId: string): Promise<LordDashb
     contract: {
       id: contract.id as string,
       status: contract.status as string,
+      castleId: (contract.castle_id as string | null) ?? null,
       castleName: (contract.castles as unknown as { name: string } | null)?.name ?? null,
     },
+    plots: (plots ?? []).filter((p) => p.status !== "draft"),
     plotCapacity,
     plotsSold: soldPlots.length,
     plotsAvailable: (plots ?? []).filter((p) => p.status === "available").length,

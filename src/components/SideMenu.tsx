@@ -12,8 +12,11 @@ const MENU_ITEMS: MenuItem[] = [
   { href: "/", icon: "📝", label: "本日の任務" },
   { href: null, icon: "🎁", label: "プレゼント" },
   { href: "/ranking", icon: "🏆", label: "国家ランキング" },
+  // 城一覧への入口はホーム画面のカードだけで、メニューから辿り着けなかった。
+  // 販売中の区画・城主募集中の城を見る主要導線なのでここにも置く。
+  { href: "/castles", icon: "🏯", label: "全国お城プロジェクト" },
   { href: "/my-land", icon: "🏞️", label: "所有区画" },
-  { href: "/castle-lord/dashboard", icon: "🏯", label: "城主ダッシュボード" },
+  { href: "/castle-lord/dashboard", icon: "📜", label: "城主ダッシュボード" },
   { href: "/guide", icon: "❓", label: "遊び方・ヘルプ" },
   { href: "/legal/support", icon: "✉️", label: "お問い合わせ" },
 ];
