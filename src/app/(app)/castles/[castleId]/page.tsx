@@ -1,14 +1,16 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TextLink } from "@/components/ui/Button";
+import { PlotCard, type PlotCardData } from "@/components/castle/PlotCard";
+import { PlotScarcityPanel } from "@/components/castle/PlotScarcityPanel";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
 import { toDisplayUrl } from "@/lib/image-url";
+import { groupPlotsByBlock, summarizePlotScarcity } from "@/modules/castle/domain/plot-presentation";
 
 type OfficialLordPartner = {
   contactName: string | null;
@@ -28,23 +30,8 @@ type CastleDetail = {
   unlocked: boolean;
 };
 
-type Plot = {
-  id: string;
-  plot_code: string;
-  name: string;
-  price_yen: number;
-  status: string;
-  main_image_url: string | null;
-};
-
-const PLOT_STATUS_LABEL: Record<string, string> = {
-  available: "販売可能",
-  reserved: "予約中",
-  application_pending: "申込審査中",
-  payment_pending: "入金待ち",
-  sold: "販売済み",
-  cancelled: "取消",
-  suspended: "一時停止",
+type Plot = PlotCardData & {
+  block_label: string | null;
 };
 
 type Status = "loading" | "ready" | "error";
@@ -55,6 +42,9 @@ export default function CastleDetailPage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [castle, setCastle] = useState<CastleDetail | null>(null);
   const [plots, setPlots] = useState<Plot[]>([]);
+
+  const scarcity = useMemo(() => summarizePlotScarcity(plots), [plots]);
+  const blockGroups = useMemo(() => groupPlotsByBlock(plots), [plots]);
 
   useEffect(() => {
     let cancelled = false;
@@ -142,26 +132,21 @@ export default function CastleDetailPage() {
           )}
 
           {castle.unlocked && (
-            <div>
-              <h2 className="mb-2 text-sm font-semibold text-gold-soft">区画一覧({plots.length}件)</h2>
-              <div className="space-y-2">
-                {plots.map((plot) => (
-                  <Link key={plot.id} href={`/castles/${castle.id}/plots/${plot.id}`} className="block">
-                    <Card className="transition hover:border-gold/50 hover:bg-ink-raised">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-semibold text-parchment">{plot.name}</p>
-                          <p className="text-xs text-parchment-dim">{plot.plot_code}</p>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm font-bold text-gold-soft">{plot.price_yen.toLocaleString()}円</p>
-                          <span className="text-xs text-parchment-dim">
-                            {PLOT_STATUS_LABEL[plot.status] ?? plot.status}
-                          </span>
-                        </div>
-                      </div>
-                    </Card>
-                  </Link>
+            <div className="space-y-4">
+              <PlotScarcityPanel summary={scarcity} />
+
+              <div className="space-y-4">
+                {blockGroups.map((group) => (
+                  <div key={group.blockLabel ?? "__all__"}>
+                    {group.blockLabel && (
+                      <h2 className="mb-2 text-sm font-semibold text-gold-soft">{group.blockLabel}</h2>
+                    )}
+                    <div className="grid grid-cols-2 gap-3">
+                      {group.plots.map((plot) => (
+                        <PlotCard key={plot.id} plot={plot} href={`/castles/${castle.id}/plots/${plot.id}`} />
+                      ))}
+                    </div>
+                  </div>
                 ))}
                 {plots.length === 0 && (
                   <p className="text-center text-sm text-parchment-dim">現在公開中の区画はありません。</p>

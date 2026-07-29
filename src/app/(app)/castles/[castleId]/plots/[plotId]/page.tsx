@@ -6,8 +6,10 @@ import { Card } from "@/components/ui/Card";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { LinkButton, TextLink } from "@/components/ui/Button";
+import { PlotStatusBadge } from "@/components/castle/PlotStatusBadge";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
 import { toDisplayUrl } from "@/lib/image-url";
+import { getPlotStatusPresentation } from "@/modules/castle/domain/plot-presentation";
 
 type PlotDetail = {
   id: string;
@@ -20,16 +22,6 @@ type PlotDetail = {
   price_yen: number;
   status: string;
   castleName: string;
-};
-
-const PLOT_STATUS_LABEL: Record<string, string> = {
-  available: "販売可能",
-  reserved: "予約中",
-  application_pending: "申込審査中",
-  payment_pending: "入金待ち",
-  sold: "販売済み",
-  cancelled: "取消",
-  suspended: "一時停止",
 };
 
 type Status = "loading" | "ready" | "error";
@@ -87,27 +79,33 @@ function PlotDetailPageInner() {
         <div className="space-y-4">
           <PageHeader title={plot.name} subtitle={`${plot.castleName} / ${plot.plot_code}`} />
 
-          {plot.main_image_url && (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img
-              src={toDisplayUrl(plot.main_image_url) ?? undefined}
-              alt={plot.name}
-              className="w-full rounded-2xl border border-gold/15 object-cover shadow-lg shadow-black/30"
-            />
-          )}
+          {/* ヒーロー画像。画像が無い区画でも枠が崩れないようプレースホルダを置く */}
+          <div className="relative aspect-[4/3] w-full overflow-hidden rounded-2xl border border-gold/15 bg-ink shadow-lg shadow-black/30">
+            {toDisplayUrl(plot.main_image_url) ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={toDisplayUrl(plot.main_image_url) ?? undefined}
+                alt={plot.name}
+                className="h-full w-full object-cover"
+              />
+            ) : (
+              <div className="flex h-full w-full items-center justify-center text-6xl opacity-40">🏞️</div>
+            )}
+            <div className="absolute left-3 top-3">
+              <PlotStatusBadge status={plot.status} />
+            </div>
+          </div>
 
-          <Card>
-            <div className="flex items-center justify-between">
-              <span className="text-sm text-parchment-dim">価格</span>
-              <span className="text-xl font-bold text-gold-soft">{plot.price_yen.toLocaleString()}円</span>
-            </div>
-            <div className="mt-2 flex items-center justify-between">
-              <span className="text-sm text-parchment-dim">状態</span>
-              <span className="text-sm text-parchment">{PLOT_STATUS_LABEL[plot.status] ?? plot.status}</span>
-            </div>
+          {/* 価格を最も強い要素として見せる(従来は表組みの1行で埋もれていた) */}
+          <Card highlight={getPlotStatusPresentation(plot.status).tone === "available"}>
+            <p className="text-xs text-parchment-dim">価格</p>
+            <p className="mt-0.5 text-3xl font-bold text-gold-soft">
+              {plot.price_yen.toLocaleString()}
+              <span className="ml-1 text-base font-normal text-parchment-dim">円</span>
+            </p>
             {plot.block_label && (
-              <div className="mt-2 flex items-center justify-between">
-                <span className="text-sm text-parchment-dim">街区</span>
+              <div className="mt-3 flex items-center justify-between border-t border-gold/10 pt-2">
+                <span className="text-xs text-parchment-dim">街区</span>
                 <span className="text-sm text-parchment">{plot.block_label}</span>
               </div>
             )}
@@ -126,7 +124,7 @@ function PlotDetailPageInner() {
             </Card>
           ) : (
             <Card className="text-xs leading-relaxed text-parchment-dim">
-              現在この区画は{PLOT_STATUS_LABEL[plot.status] ?? plot.status}のため、お申込みいただけません。
+              現在この区画は{getPlotStatusPresentation(plot.status).label}のため、お申込みいただけません。
             </Card>
           )}
 
