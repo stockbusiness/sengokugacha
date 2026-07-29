@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { TextLink } from "@/components/ui/Button";
+import { LordRecruitmentCard, type LordRecruitment } from "@/components/castle/LordRecruitmentCard";
 import { PlotCard, type PlotCardData } from "@/components/castle/PlotCard";
 import { PlotScarcityPanel } from "@/components/castle/PlotScarcityPanel";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
@@ -27,6 +28,7 @@ type CastleDetail = {
   main_image_url?: string | null;
   historical_lord_summary?: string | null;
   officialLordPartner?: OfficialLordPartner | null;
+  lordRecruitment?: LordRecruitment | null;
   unlocked: boolean;
 };
 
@@ -107,6 +109,11 @@ export default function CastleDetailPage() {
 
           {castle.unlocked && castle.description && (
             <Card className="text-sm leading-relaxed text-parchment-dim">{castle.description}</Card>
+          )}
+
+          {/* 城主枠の販売は区画販売とは別商材のため、区画一覧より前に独立したカードで出す */}
+          {castle.unlocked && castle.lordRecruitment && (
+            <LordRecruitmentCard recruitment={castle.lordRecruitment} />
           )}
 
           {castle.unlocked && (castle.historical_lord_summary || castle.officialLordPartner) && (

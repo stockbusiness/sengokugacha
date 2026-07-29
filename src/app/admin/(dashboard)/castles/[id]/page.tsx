@@ -156,6 +156,11 @@ export default function CastleEditPage() {
             </option>
           ))}
         </select>
+        <span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">
+          「城主募集中」にすると、この城の城主枠を販売中として一般ユーザーの城一覧・城詳細に表示します
+          (城主プラン料金・契約期間・初期販売枠は「城主プラン設定」の値を使用)。
+          既に有効な城主契約がある城は、この設定に関わらず募集中とは表示しません。
+        </span>
       </label>
 
       <div className="flex gap-3">

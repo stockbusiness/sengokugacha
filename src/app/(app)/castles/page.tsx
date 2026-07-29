@@ -34,6 +34,64 @@ const STATUS_LABEL: Record<string, string> = {
 
 type Status = "loading" | "ready" | "error";
 
+// 未解放の城は解放状態を伏せる方針(実装指示書v1.0 6-6)のため、募集中でも通常の並びに置く。
+function isRecruitingLord(castle: Castle): boolean {
+  return castle.unlocked && castle.status === "recruiting";
+}
+
+function CastleListItem({ castle }: { castle: Castle }) {
+  return (
+    <Link href={`/castles/${castle.id}`} className="block">
+      <Card className={`transition hover:border-gold/50 hover:bg-ink-raised ${castle.unlocked ? "" : "opacity-60"}`}>
+        <div className="flex items-center gap-3">
+          {castle.unlocked && castle.main_image_url ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={toDisplayUrl(castle.main_image_url) ?? undefined}
+              alt=""
+              className="h-16 w-16 rounded-lg object-cover"
+            />
+          ) : (
+            <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-ink-raised text-2xl">
+              {castle.unlocked ? "🏯" : "🔒"}
+            </div>
+          )}
+          <div className="flex-1">
+            <div className="flex items-center gap-1.5">
+              <p className="text-sm font-semibold text-parchment">{castle.name}</p>
+              {castle.unlocked ? (
+                <span className="rounded-full bg-crimson/70 px-1.5 py-0.5 text-[10px] font-bold text-parchment">
+                  {STATUS_LABEL[castle.status] ?? castle.status}
+                </span>
+              ) : (
+                <span className="rounded-full bg-ink px-1.5 py-0.5 text-[10px] font-bold text-parchment-dim">
+                  未解放
+                </span>
+              )}
+            </div>
+            <p className="mt-0.5 text-xs text-parchment-dim">{castle.prefecture ?? castle.region ?? ""}</p>
+            {/* 一覧の段階で「どの城に買える区画が何件あるか」を出し、
+                詳細を開かなくても回遊先を選べるようにする */}
+            {castle.plotSales && castle.plotSales.availableCount > 0 && (
+              <p className="mt-1 flex items-baseline gap-1.5 text-xs">
+                <span className={castle.plotSales.isLowStock ? "font-bold text-gold-soft" : "text-gold-soft"}>
+                  {castle.plotSales.isLowStock && "🔥 "}
+                  販売中 {castle.plotSales.availableCount}区画
+                </span>
+                {castle.plotSales.minAvailablePriceYen !== null && (
+                  <span className="text-parchment-dim">
+                    {castle.plotSales.minAvailablePriceYen.toLocaleString()}円〜
+                  </span>
+                )}
+              </p>
+            )}
+          </div>
+        </div>
+      </Card>
+    </Link>
+  );
+}
+
 export default function CastlesPage() {
   const [status, setStatus] = useState<Status>("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -67,6 +125,9 @@ export default function CastlesPage() {
     };
   }, []);
 
+  const recruitingCastles = castles.filter(isRecruitingLord);
+  const otherCastles = castles.filter((castle) => !isRecruitingLord(castle));
+
   return (
     <div className="mx-auto w-full max-w-md px-4 py-10">
       <PageHeader title="全国のお城一覧" subtitle="城主が担当する城・地域と、販売中の区画を紹介します。" />
@@ -77,57 +138,34 @@ export default function CastlesPage() {
       )}
 
       {status === "ready" && (
-        <div className="space-y-3">
-          {castles.map((castle) => (
-            <Link key={castle.id} href={`/castles/${castle.id}`} className="block">
-              <Card className={`transition hover:border-gold/50 hover:bg-ink-raised ${castle.unlocked ? "" : "opacity-60"}`}>
-                <div className="flex items-center gap-3">
-                  {castle.unlocked && castle.main_image_url ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={toDisplayUrl(castle.main_image_url) ?? undefined}
-                      alt=""
-                      className="h-16 w-16 rounded-lg object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-16 w-16 items-center justify-center rounded-lg bg-ink-raised text-2xl">
-                      {castle.unlocked ? "🏯" : "🔒"}
-                    </div>
-                  )}
-                  <div className="flex-1">
-                    <div className="flex items-center gap-1.5">
-                      <p className="text-sm font-semibold text-parchment">{castle.name}</p>
-                      {castle.unlocked ? (
-                        <span className="rounded-full bg-crimson/70 px-1.5 py-0.5 text-[10px] font-bold text-parchment">
-                          {STATUS_LABEL[castle.status] ?? castle.status}
-                        </span>
-                      ) : (
-                        <span className="rounded-full bg-ink px-1.5 py-0.5 text-[10px] font-bold text-parchment-dim">
-                          未解放
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-0.5 text-xs text-parchment-dim">{castle.prefecture ?? castle.region ?? ""}</p>
-                    {/* 一覧の段階で「どの城に買える区画が何件あるか」を出し、
-                        詳細を開かなくても回遊先を選べるようにする */}
-                    {castle.plotSales && castle.plotSales.availableCount > 0 && (
-                      <p className="mt-1 flex items-baseline gap-1.5 text-xs">
-                        <span className={castle.plotSales.isLowStock ? "font-bold text-gold-soft" : "text-gold-soft"}>
-                          {castle.plotSales.isLowStock && "🔥 "}
-                          販売中 {castle.plotSales.availableCount}区画
-                        </span>
-                        {castle.plotSales.minAvailablePriceYen !== null && (
-                          <span className="text-parchment-dim">
-                            {castle.plotSales.minAvailablePriceYen.toLocaleString()}円〜
-                          </span>
-                        )}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </Card>
-            </Link>
-          ))}
+        <div className="space-y-6">
+          {/* 城主枠の販売(城主募集)と区画の販売は別商材なので、募集中の城は先頭にまとめて
+              「今なら城主になれる城」が一目で分かるようにする */}
+          {recruitingCastles.length > 0 && (
+            <div className="space-y-2">
+              <h2 className="text-sm font-bold text-gold-soft">🏯 城主募集中のお城</h2>
+              <p className="text-xs leading-relaxed text-parchment-dim">
+                城主になると城の運営に参加でき、区画を販売するための販売枠が付与されます。詳しくは代理店にお問い合わせください。
+              </p>
+              <div className="space-y-3 pt-1">
+                {recruitingCastles.map((castle) => (
+                  <CastleListItem key={castle.id} castle={castle} />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {otherCastles.length > 0 && (
+            <div className="space-y-2">
+              {recruitingCastles.length > 0 && <h2 className="text-sm font-bold text-parchment-dim">その他のお城</h2>}
+              <div className="space-y-3 pt-1">
+                {otherCastles.map((castle) => (
+                  <CastleListItem key={castle.id} castle={castle} />
+                ))}
+              </div>
+            </div>
+          )}
+
           {castles.length === 0 && <p className="text-center text-sm text-parchment-dim">まだ公開中の城がありません。</p>}
 
           <div className="pt-4 text-center">

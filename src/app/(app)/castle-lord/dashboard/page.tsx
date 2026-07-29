@@ -76,8 +76,11 @@ export default function CastleLordDashboardPage() {
       {status === "ready" && summary && (
         <div className="space-y-4">
           {!summary.contract ? (
-            <Card className="text-center text-sm text-parchment-dim">
-              城主契約がありません。城主プランへのお申込みは運営にお問い合わせください。
+            <Card className="space-y-2 text-center text-sm text-parchment-dim">
+              <p>城主契約がありません。</p>
+              {/* 城主プランの申込はアプリ内では完結せず代理店経由で手続きする運用のため、
+                  ここでは問い合わせ先の案内にとどめる */}
+              <p>城主プランのお申込みについて詳しくは代理店にお問い合わせください。</p>
             </Card>
           ) : (
             <>
