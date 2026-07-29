@@ -9,6 +9,12 @@ import { TextLink } from "@/components/ui/Button";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
 import { toDisplayUrl } from "@/lib/image-url";
 
+type PlotSales = {
+  availableCount: number;
+  minAvailablePriceYen: number | null;
+  isLowStock: boolean;
+};
+
 type Castle = {
   id: string;
   name: string;
@@ -18,6 +24,7 @@ type Castle = {
   description: string | null;
   main_image_url: string | null;
   unlocked: boolean;
+  plotSales: PlotSales | null;
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -101,6 +108,21 @@ export default function CastlesPage() {
                       )}
                     </div>
                     <p className="mt-0.5 text-xs text-parchment-dim">{castle.prefecture ?? castle.region ?? ""}</p>
+                    {/* 一覧の段階で「どの城に買える区画が何件あるか」を出し、
+                        詳細を開かなくても回遊先を選べるようにする */}
+                    {castle.plotSales && castle.plotSales.availableCount > 0 && (
+                      <p className="mt-1 flex items-baseline gap-1.5 text-xs">
+                        <span className={castle.plotSales.isLowStock ? "font-bold text-gold-soft" : "text-gold-soft"}>
+                          {castle.plotSales.isLowStock && "🔥 "}
+                          販売中 {castle.plotSales.availableCount}区画
+                        </span>
+                        {castle.plotSales.minAvailablePriceYen !== null && (
+                          <span className="text-parchment-dim">
+                            {castle.plotSales.minAvailablePriceYen.toLocaleString()}円〜
+                          </span>
+                        )}
+                      </p>
+                    )}
                   </div>
                 </div>
               </Card>

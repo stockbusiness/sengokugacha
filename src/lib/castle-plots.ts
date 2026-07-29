@@ -1,4 +1,5 @@
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { summarizePlotScarcity, type PlotScarcitySummary } from "@/modules/castle/domain/plot-presentation";
 
 export type PlotStatus =
   | "draft"
@@ -35,6 +36,38 @@ export async function getPlotsForCastle(castleId: string): Promise<CastlePlot[]>
     .order("display_order", { ascending: true });
   if (error) throw error;
   return data ?? [];
+}
+
+// 城一覧で「販売中◯区画・◯円〜」を出すための集計。城ごとに問い合わせるとN+1になるため、
+// 対象の城の公開区画をまとめて1回で取得し、JS側で城ごとに集計する
+// (getPublishedCastlesForUserの既存方針と同じ)。
+export async function getPlotSalesSummaryByCastle(castleIds: string[]): Promise<Map<string, PlotScarcitySummary>> {
+  if (castleIds.length === 0) return new Map();
+
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("castle_plots")
+    .select("castle_id, price_yen, status")
+    .in("castle_id", castleIds)
+    .neq("status", "draft");
+  if (error) throw error;
+
+  const plotsByCastleId = new Map<string, { price_yen: number; status: string }[]>();
+  for (const row of data ?? []) {
+    const castleId = row.castle_id as string;
+    const plots = plotsByCastleId.get(castleId);
+    if (plots) {
+      plots.push(row);
+    } else {
+      plotsByCastleId.set(castleId, [row]);
+    }
+  }
+
+  const summaries = new Map<string, PlotScarcitySummary>();
+  for (const [castleId, plots] of plotsByCastleId) {
+    summaries.set(castleId, summarizePlotScarcity(plots));
+  }
+  return summaries;
 }
 
 // 販売可能な区画のみ(要件書11.1/12「全国代理店向け販売可能区画一覧」用)。
