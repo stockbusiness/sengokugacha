@@ -17,7 +17,7 @@
     "ci": "npm run lint && npx tsc --noEmit && npm run test:unit && npm run test:architecture && npm run build"
   },
   "dependencies": {
-    "@line/liff": "^2.29.1",
+    "@line/liff": "^2.29.2",
     "@sentry/nextjs": "^10.64.0",
     "@supabase/supabase-js": "^2.110.0",
     "@vercel/blob": "^2.6.1",
