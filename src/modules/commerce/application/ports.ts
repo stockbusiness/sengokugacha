@@ -107,5 +107,7 @@ export interface PurchaseOutboxGateway {
 // UserRepositoryはidentityモジュールのPhase B-1対応(別PR)で導入する予定のため、
 // 現時点ではcommerceが必要とする1メソッドのみを定義する。
 export interface UserRepository {
-  findReferralSessionKey(userId: string): Promise<string | null>;
+  // session_keyとreferral_tokenの両方を返す。captureが失敗した利用者では
+  // session_keyがnullでtokenだけが残るため(先方回答 2026-08-03 Q4)。
+  findReferralAttribution(userId: string): Promise<{ sessionKey: string | null; token: string | null }>;
 }

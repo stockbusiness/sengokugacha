@@ -6,13 +6,16 @@ import { getAgencyIntegrationSettings } from "@/lib/agents";
 // (sengoku-ai.com側からの回答で「system_keyは将来にわたって固定する前提」と確認済み)。
 export const COMMON_HUB_SYSTEM_KEY = "sengoku-passport";
 
-type OutboundConfig = { baseUrl: string; apiKey: string };
+type OutboundConfig = { baseUrl: string; apiKey: string; projectKey: string | null };
 
 async function getOutboundConfig(): Promise<OutboundConfig | null> {
   const settings = await getAgencyIntegrationSettings();
   if (!settings.outbound_api_key) return null;
   const baseUrl = (settings.sso_issuer_url || "https://sengoku-ai.com").replace(/\/$/, "");
-  return { baseUrl, apiKey: settings.outbound_api_key };
+  // 未設定なら送らない。先方回答(2026-08-03 Q3)により project_key は任意で、
+  // 送らない場合は referral_token に紐づく案件へ記録される。
+  const projectKey = settings.default_project_key?.trim() || null;
+  return { baseUrl, apiKey: settings.outbound_api_key, projectKey };
 }
 
 // 共通顧客HUB系APIはsengoku-ai.com側でも機能フラグ(common_hub_enabled等)次第の状態と
@@ -103,6 +106,7 @@ export async function captureReferral(referralToken: string): Promise<string | n
       referral_token: referralToken,
       system_key: COMMON_HUB_SYSTEM_KEY,
       event_type: "capture",
+      project_key: config.projectKey ?? undefined,
     },
     `referral-capture:${referralToken}`
   );
@@ -111,8 +115,14 @@ export async function captureReferral(referralToken: string): Promise<string | n
   return typeof sessionKey === "string" && sessionKey.length > 0 ? sessionKey : null;
 }
 
+// session_key と referral_token はどちらか一方があればよい。
+// 先方回答(2026-08-03 Q4)により、capture を経由せず confirm へ referral_token を
+// 直接渡す経路が正式にサポートされている。captureは fail-open のため失敗しうるが、
+// その場合に紹介確定まで諦めてしまうと代理店への成果紐づけが永久に失われるため、
+// session_key が無いときは生のトークンで確定できるようにしている。
 export type ConfirmReferralInput = {
-  referralSessionKey: string;
+  referralSessionKey?: string | null;
+  referralToken?: string | null;
   externalUserId: string;
   email?: string | null;
   referralSource: "registration" | "purchase";
@@ -134,17 +144,24 @@ export async function confirmReferral(input: ConfirmReferralInput, idempotencyKe
   const config = await getOutboundConfig();
   if (!config) return false;
 
+  // どちらも無ければ紐づけ先を特定できないので、送らずに失敗として返す。
+  if (!input.referralSessionKey && !input.referralToken) return false;
+
   const result = await postToAgencySystem(
     config,
     "/api/referrals/confirm",
     {
-      session_key: input.referralSessionKey,
+      // session_keyがあるときはそちらを優先する(capture時点の流入情報に紐づくため、
+      // トークン直渡しより多くの文脈が先方に残る)。
+      session_key: input.referralSessionKey ?? undefined,
+      referral_token: input.referralSessionKey ? undefined : (input.referralToken ?? undefined),
       system_key: COMMON_HUB_SYSTEM_KEY,
       external_user_id: input.externalUserId,
       email: input.email ?? undefined,
       relation_type: "referral",
       referral_source: input.referralSource,
       locked: true,
+      project_key: config.projectKey ?? undefined,
       metadata: input.metadata ?? undefined,
     },
     idempotencyKey

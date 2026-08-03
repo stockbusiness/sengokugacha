@@ -13,6 +13,7 @@ type Settings = {
   sso_issuer_url: string;
   sso_jwks_url: string;
   sso_audience: string;
+  default_project_key: string | null;
   inbound_api_key_last4: string | null;
 };
 
@@ -57,6 +58,7 @@ export default function AgencyIntegrationPage() {
           sso_issuer_url: settings.sso_issuer_url,
           sso_jwks_url: settings.sso_jwks_url,
           sso_audience: settings.sso_audience,
+          default_project_key: settings.default_project_key,
         }),
       });
       if (!res.ok) throw new Error();
@@ -186,6 +188,28 @@ export default function AgencyIntegrationPage() {
           </button>
           {syncMessage && <span className="text-xs text-zinc-500 dark:text-zinc-400">{syncMessage}</span>}
         </div>
+      </div>
+
+      <div className="space-y-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
+        <h2 className="text-sm font-semibold text-zinc-700 dark:text-zinc-300">案件識別子(project_key)</h2>
+        <label className="block">
+          <span className="mb-1 block text-xs font-medium text-zinc-600 dark:text-zinc-400">
+            紹介API(capture / confirm)に添える project_key
+          </span>
+          <input
+            type="text"
+            value={settings.default_project_key ?? ""}
+            onChange={(e) => setSettings({ ...settings, default_project_key: e.target.value || null })}
+            placeholder="例: sengoku-influencer(空欄なら送信しない)"
+            className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+          />
+          <span className="mt-1 block text-xs text-zinc-500 dark:text-zinc-400">
+            sengoku-ai.com側の案件識別子(projects[].slug と同じ値)です。任意項目のため、
+            空欄のままなら送信せず、紹介トークンに紐づく案件へ記録されます。
+            流入元が戦国インフルエンサー案件なら <code>sengoku-influencer</code>、
+            戦国パスポートを独立した案件として登録済みならその値を入力してください。
+          </span>
+        </label>
       </div>
 
       <div className="space-y-4 rounded-xl border border-zinc-200 bg-white p-5 dark:border-zinc-800 dark:bg-zinc-950">
