@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { CsvPanel } from "@/components/admin/CsvPanel";
 
 type CastleStatus = "draft" | "recruiting" | "published" | "hidden";
 
@@ -82,6 +83,13 @@ export default function CastlesPage() {
           城主プランの対象となる城を登録します。詳細な情報(説明・画像)や区画・城主契約は各城の編集画面で管理します。
         </p>
       </div>
+
+      <CsvPanel
+        endpoint="/api/admin/castles/csv"
+        title="CSVで一括登録・更新"
+        description="城を数十件まとめて登録したり、公開状態や城主プラン料金をまとめて書き換えたいときに使います。ダウンロードしたCSVをExcelで編集して取り込み直せます。"
+        onImported={reload}
+      />
 
       <form
         onSubmit={handleCreate}

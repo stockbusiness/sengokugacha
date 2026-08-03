@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CsvPanel } from "@/components/admin/CsvPanel";
 import { useParams } from "next/navigation";
 
 type CastleStatus = "draft" | "recruiting" | "published" | "hidden";
@@ -443,6 +444,13 @@ function CastlePlotsSection({ castleId }: { castleId: string }) {
           区画の購入手続きはアプリ内では行わず、外部ショップシステムで代理店が成約します。成約したら「販売済みにする(外部成約)」で反映してください。
         </p>
       </div>
+
+      <CsvPanel
+        endpoint={`/api/admin/castles/${castleId}/plots/csv`}
+        title="区画をCSVで一括登録・更新"
+        description="下の一括作成は連番と同一価格しか作れません。実測量データのように区画ごとに名称・街区・価格が異なる場合はCSVを使ってください。予約・入金待ち・販売済みの区画はCSVからは変更できません。"
+        onImported={fetchPlots}
+      />
 
       <form
         onSubmit={handleBulkCreate}

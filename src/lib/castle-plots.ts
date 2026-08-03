@@ -1,4 +1,6 @@
+import { logAdminAction } from "@/lib/admin-audit-log";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { PLOT_CSV_ASSIGNABLE_STATUSES, type PlotCsvRow } from "@/modules/castle/domain/castle-csv";
 import { summarizePlotScarcity, type PlotScarcitySummary } from "@/modules/castle/domain/plot-presentation";
 
 export type PlotStatus =
@@ -240,4 +242,105 @@ export async function revokePlotAllocation(
     .eq("allocation_id", allocationId)
     .eq("status", "available");
   if (plotsError) throw plotsError;
+}
+
+// ============================================================
+// CSV取り込み(管理画面)
+// ============================================================
+
+export class PlotCsvImportRejectedError extends Error {}
+
+export type PlotImportResult = { created: number; updated: number };
+
+// 区画CSVの取り込み。行の検証は parsePlotCsvRecords で済ませてある前提で、ここでは
+// 「この城に属さないidを混ぜていないか」「進行中・成約済みの区画を書き換えようと
+// していないか」を追加で確認する。後者は、CSVで status を安全な値にしていても
+// 既存行が sold や payment_pending なら上書きさせない、という趣旨のチェック。
+//
+// castles側と同じくトランザクションは張れないため、更新はN文に分かれる。
+export async function importPlotsFromCsv(
+  castleId: string,
+  rows: PlotCsvRow[],
+  actorName: string | null
+): Promise<PlotImportResult> {
+  if (rows.length === 0) throw new PlotCsvImportRejectedError("取り込む行がありません。");
+
+  const supabase = createSupabaseServerClient();
+  const updateRows = rows.filter((row) => row.id !== null);
+  const insertRows = rows.filter((row) => row.id === null);
+
+  if (updateRows.length > 0) {
+    const ids = updateRows.map((row) => row.id as string);
+    const { data: existing, error } = await supabase
+      .from("castle_plots")
+      .select("id, castle_id, status")
+      .in("id", ids);
+    if (error) throw error;
+
+    const existingById = new Map((existing ?? []).map((r) => [r.id as string, r]));
+    const missing = updateRows.filter((row) => !existingById.has(row.id as string));
+    if (missing.length > 0) {
+      throw new PlotCsvImportRejectedError(
+        `存在しないidが指定されています(${missing.map((r) => `${r.lineNumber}行目`).join(", ")})。新規作成したい場合はid欄を空にしてください。`
+      );
+    }
+
+    const otherCastle = updateRows.filter((row) => existingById.get(row.id as string)?.castle_id !== castleId);
+    if (otherCastle.length > 0) {
+      throw new PlotCsvImportRejectedError(
+        `別の城の区画idが含まれています(${otherCastle.map((r) => `${r.lineNumber}行目`).join(", ")})。`
+      );
+    }
+
+    // 既存行が進行中・成約済みなら、CSVからは触らせない。
+    const locked = updateRows.filter(
+      (row) =>
+        !(PLOT_CSV_ASSIGNABLE_STATUSES as readonly string[]).includes(
+          existingById.get(row.id as string)?.status as string
+        )
+    );
+    if (locked.length > 0) {
+      const detail = locked
+        .map((row) => `${row.lineNumber}行目(現在の状態: ${existingById.get(row.id as string)?.status})`)
+        .join(", ");
+      throw new PlotCsvImportRejectedError(
+        `予約・入金待ち・販売済みの区画はCSVから変更できません(${detail})。管理画面の個別操作で行ってください。`
+      );
+    }
+  }
+
+  const toColumns = (row: PlotCsvRow) => ({
+    castle_id: castleId,
+    plot_code: row.plot_code,
+    name: row.name,
+    block_label: row.block_label,
+    price_yen: row.price_yen,
+    status: row.status,
+    display_order: row.display_order,
+    description: row.description,
+    main_image_url: row.main_image_url,
+  });
+
+  if (insertRows.length > 0) {
+    const { error } = await supabase.from("castle_plots").insert(insertRows.map(toColumns));
+    if (error) throw error;
+  }
+
+  const nowIso = new Date().toISOString();
+  for (const row of updateRows) {
+    const { error } = await supabase
+      .from("castle_plots")
+      .update({ ...toColumns(row), updated_at: nowIso })
+      .eq("id", row.id as string);
+    if (error) throw error;
+  }
+
+  await logAdminAction(
+    actorName,
+    "castle_plot_csv_import",
+    `castle_id=${castleId} created=${insertRows.length} updated=${updateRows.length}`,
+    { targetType: "castle", targetId: castleId, after: { created: insertRows.length, updated: updateRows.length } }
+  );
+
+  return { created: insertRows.length, updated: updateRows.length };
 }

@@ -3,6 +3,7 @@ import { getPlotSalesSummaryByCastle } from "@/lib/castle-plots";
 import { isCastleUnlocked, type CastleUnlockLevel } from "@/lib/castle-unlock";
 import { regionCompleteAchievementType } from "@/lib/regions";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import type { CastleCsvRow } from "@/modules/castle/domain/castle-csv";
 import type { PlotScarcitySummary } from "@/modules/castle/domain/plot-presentation";
 
 export type CastleStatus = "draft" | "recruiting" | "published" | "hidden";
@@ -177,4 +178,89 @@ export async function setCastlePrimaryProvince(
     targetId: castleId,
     after: { primaryProvinceId: provinceId },
   });
+}
+
+// ============================================================
+// CSV取り込み・エクスポート(管理画面)
+// ============================================================
+
+export async function getAllCastlesForAdmin(): Promise<Castle[]> {
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase.from("castles").select("*").order("display_order", { ascending: true });
+  if (error) throw error;
+  return data ?? [];
+}
+
+export class CsvImportRejectedError extends Error {}
+
+export type CastleImportResult = { created: number; updated: number };
+
+// CSVの取り込み。行の検証は呼び出し側(parseCastleCsvRecords)で済ませてある前提で、
+// ここでは「idで指定された城が実在するか」だけを追加で確認してから書き込む。
+//
+// 注意: Supabase JSクライアントから複数文へのトランザクションは張れないため、
+// 更新はN文に分かれる。途中で失敗すると一部だけ反映された状態になりうる。
+// 事前検証を通してから書き込むことで失敗確率を下げているが、完全な原子性は無い。
+// マスタデータであり同じCSVを再取り込みすれば収束するため、この方式を選んでいる。
+export async function importCastlesFromCsv(
+  rows: CastleCsvRow[],
+  actorName: string | null
+): Promise<CastleImportResult> {
+  if (rows.length === 0) throw new CsvImportRejectedError("取り込む行がありません。");
+
+  const supabase = createSupabaseServerClient();
+  const updateRows = rows.filter((row) => row.id !== null);
+  const insertRows = rows.filter((row) => row.id === null);
+
+  if (updateRows.length > 0) {
+    const ids = updateRows.map((row) => row.id as string);
+    const { data: existing, error } = await supabase.from("castles").select("id").in("id", ids);
+    if (error) throw error;
+    const existingIds = new Set((existing ?? []).map((r) => r.id as string));
+    const missing = updateRows.filter((row) => !existingIds.has(row.id as string));
+    if (missing.length > 0) {
+      const lines = missing.map((row) => `${row.lineNumber}行目`).join(", ");
+      throw new CsvImportRejectedError(
+        `存在しないidが指定されています(${lines})。新規作成したい場合はid欄を空にしてください。`
+      );
+    }
+  }
+
+  const toColumns = (row: CastleCsvRow) => ({
+    name: row.name,
+    prefecture: row.prefecture,
+    region: row.region,
+    status: row.status,
+    unlock_level: row.unlock_level,
+    historical_review_status: row.historical_review_status,
+    display_order: row.display_order,
+    lord_plan_price_yen: row.lord_plan_price_yen,
+    description: row.description,
+    historical_lord_summary: row.historical_lord_summary,
+    main_image_url: row.main_image_url,
+  });
+
+  if (insertRows.length > 0) {
+    const { error } = await supabase.from("castles").insert(insertRows.map(toColumns));
+    if (error) throw error;
+  }
+
+  const nowIso = new Date().toISOString();
+  for (const row of updateRows) {
+    const { error } = await supabase
+      .from("castles")
+      .update({ ...toColumns(row), updated_at: nowIso })
+      .eq("id", row.id as string);
+    if (error) throw error;
+  }
+
+  // 一括操作で対象が単一の城ではないため、targetを渡さず件数だけを残す
+  // (AdminActionTargetはtargetIdが必須で、複数対象を表現できないため)。
+  await logAdminAction(
+    actorName,
+    "castle_csv_import",
+    `created=${insertRows.length} updated=${updateRows.length}`
+  );
+
+  return { created: insertRows.length, updated: updateRows.length };
 }
