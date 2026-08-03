@@ -10,12 +10,19 @@ export class SupabaseUserRepository implements UserRepository {
     this.supabase = supabase;
   }
 
-  async findReferralSessionKey(userId: string): Promise<string | null> {
+  async findReferralAttribution(userId: string): Promise<{ sessionKey: string | null; token: string | null }> {
     // 移設元(src/lib/purchase-grants.ts旧confirmReferralForPurchase())は取得エラー時も
     // 「紹介経由ではない」ケースと同様にnullを返す(例外を投げない)実装だったため、
     // 挙動を変えないよう本メソッドでもエラーを握りつぶす。
-    const { data, error } = await this.supabase.from("users").select("referral_session_key").eq("id", userId).maybeSingle();
-    if (error || !data?.referral_session_key) return null;
-    return data.referral_session_key as string;
+    const { data, error } = await this.supabase
+      .from("users")
+      .select("referral_session_key, referral_token")
+      .eq("id", userId)
+      .maybeSingle();
+    if (error || !data) return { sessionKey: null, token: null };
+    return {
+      sessionKey: (data.referral_session_key as string | null) ?? null,
+      token: (data.referral_token as string | null) ?? null,
+    };
   }
 }

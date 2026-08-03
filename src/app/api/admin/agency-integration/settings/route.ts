@@ -38,6 +38,11 @@ export async function PUT(request: NextRequest) {
     sso_issuer_url: typeof body.sso_issuer_url === "string" && body.sso_issuer_url ? body.sso_issuer_url : existing.sso_issuer_url,
     sso_jwks_url: typeof body.sso_jwks_url === "string" && body.sso_jwks_url ? body.sso_jwks_url : existing.sso_jwks_url,
     sso_audience: typeof body.sso_audience === "string" && body.sso_audience ? body.sso_audience : existing.sso_audience,
+    // 空欄は「送らない」の意味なのでnullへ倒す(先方回答 2026-08-03 Q3: project_keyは任意)。
+    default_project_key:
+      typeof body.default_project_key === "string" && body.default_project_key.trim().length > 0
+        ? body.default_project_key.trim()
+        : null,
     updated_at: new Date().toISOString(),
   };
   // 空欄のまま保存した場合は「変更しない」扱いにする(payment_settingsと同じ運用)。

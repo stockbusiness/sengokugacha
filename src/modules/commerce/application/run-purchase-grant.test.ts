@@ -8,7 +8,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // オーケストレーション(呼び出し順序・分岐)のみを検証する)。
 
 const { confirmReferralMock, notifyPlotPurchaseMock, completePlotPurchaseMock, postLandSaleCommissionMock } = vi.hoisted(() => ({
-  confirmReferralMock: vi.fn(async () => true),
+  // 呼び出し内容を検証するテストがあるため、引数の型を持つ関数として作る。
+  confirmReferralMock: vi.fn((input: Record<string, unknown>, idempotencyKey?: string) =>
+    Promise.resolve(Boolean(input) || Boolean(idempotencyKey))
+  ),
   notifyPlotPurchaseMock: vi.fn(async () => true),
   completePlotPurchaseMock: vi.fn(async () => {}),
   postLandSaleCommissionMock: vi.fn(async () => {}),
@@ -101,8 +104,9 @@ class FakeOutboxGateway implements PurchaseOutboxGateway {
 
 class FakeUserRepository implements UserRepository {
   referralSessionKey: string | null = null;
-  async findReferralSessionKey(): Promise<string | null> {
-    return this.referralSessionKey;
+  referralToken: string | null = null;
+  async findReferralAttribution(): Promise<{ sessionKey: string | null; token: string | null }> {
+    return { sessionKey: this.referralSessionKey, token: this.referralToken };
   }
 }
 
@@ -184,16 +188,36 @@ describe("runPurchaseGrant", () => {
     expect(confirmReferralMock).toHaveBeenCalledTimes(1);
   });
 
-  it("does not call confirmReferral when there is no referral session key", async () => {
+  it("does not call confirmReferral when there is neither a session key nor a token", async () => {
     const purchaseRepo = new FakePurchaseRepository();
     const stepRepo = new FakeStepRepository();
     const outbox = new FakeOutboxGateway();
     const userRepo = new FakeUserRepository();
     userRepo.referralSessionKey = null;
+    userRepo.referralToken = null;
 
     await runPurchaseGrant(purchaseRepo, stepRepo, outbox, userRepo, "purchase-1");
 
     expect(confirmReferralMock).not.toHaveBeenCalled();
     expect(outbox.enqueued).toHaveLength(0);
+  });
+
+  // captureが失敗してsession_keyを得られなかった利用者でも、生のトークンが
+  // 残っていれば紹介確定できる(先方回答 2026-08-03 Q4)。
+  it("falls back to the raw referral token when the capture step never produced a session key", async () => {
+    const purchaseRepo = new FakePurchaseRepository();
+    const stepRepo = new FakeStepRepository();
+    const outbox = new FakeOutboxGateway();
+    const userRepo = new FakeUserRepository();
+    userRepo.referralSessionKey = null;
+    userRepo.referralToken = "rt_fallback";
+
+    await runPurchaseGrant(purchaseRepo, stepRepo, outbox, userRepo, "purchase-1");
+
+    expect(confirmReferralMock).toHaveBeenCalledTimes(1);
+    expect(confirmReferralMock.mock.calls[0][0]).toMatchObject({
+      referralSessionKey: null,
+      referralToken: "rt_fallback",
+    });
   });
 });

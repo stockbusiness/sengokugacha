@@ -106,12 +106,14 @@ async function confirmReferralForPurchase(
   purchaseId: string,
   itemType: string,
   amountYen: number,
-  referralSessionKey: string | null
+  attribution: { sessionKey: string | null; token: string | null }
 ) {
-  if (!referralSessionKey) return;
+  // session_keyが無くても生のトークンがあれば確定できる(先方回答 2026-08-03 Q4)。
+  if (!attribution.sessionKey && !attribution.token) return;
 
   const input = {
-    referralSessionKey,
+    referralSessionKey: attribution.sessionKey,
+    referralToken: attribution.token,
     externalUserId: userId,
     referralSource: "purchase" as const,
     metadata: { purchase_id: purchaseId, item_type: itemType, amount: amountYen },
@@ -205,14 +207,14 @@ export async function runPurchaseGrant(
     }
 
     await runStep(stepRepository, purchase.id, "referral_confirmed", async () => {
-      const referralSessionKey = await userRepository.findReferralSessionKey(purchase.user_id);
+      const referralAttribution = await userRepository.findReferralAttribution(purchase.user_id);
       await confirmReferralForPurchase(
         outboxGateway,
         purchase.user_id,
         purchase.id,
         purchase.item_type,
         amountReceivedYen,
-        referralSessionKey
+        referralAttribution
       );
     });
 

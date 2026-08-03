@@ -20,6 +20,9 @@ export type AgencyIntegrationSettings = {
   sso_issuer_url: string;
   sso_jwks_url: string;
   sso_audience: string;
+  // 紹介系APIへ添える案件識別子(sengoku-ai.com側 projects[].slug と同じ値)。
+  // 未設定なら送らない(先方の既定動作=referral_tokenに紐づく案件へ記録、に委ねる)。
+  default_project_key: string | null;
 };
 
 const DEFAULT_SETTINGS: AgencyIntegrationSettings = {
@@ -33,6 +36,7 @@ const DEFAULT_SETTINGS: AgencyIntegrationSettings = {
   sso_issuer_url: "https://sengoku-ai.com",
   sso_jwks_url: "https://sengoku-ai.com/api/sso/jwks.php",
   sso_audience: "sengoku-passport",
+  default_project_key: null,
 };
 
 export async function getAgencyIntegrationSettings(): Promise<AgencyIntegrationSettings> {

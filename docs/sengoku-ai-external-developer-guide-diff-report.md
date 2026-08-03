@@ -8,6 +8,21 @@
 > - `/api/integrations/agencies`の`common_user.merged`・`common_user.assigned_agent.updated`は実装済み(PR#101、`src/lib/agency-events.ts`)。`lead_created`は引き続き未対応(200受理・無視)。§2-3は部分的に解消。
 > - 新規エンドポイント`POST /api/integrations/sen-no-kuni-hub`(PR#103・#104)では、`{ "ok": false, "error": { "code", "message" } }`形式・`Idempotency-Key`ヘッダーの双方に対応済み(§2-4・§2-5)。ただし**既存の`/api/integrations/agencies`(sengoku-ai.com向け)自体の形式は変更していない**。sengoku-ai.com側がこの新形式・新エンドポイントを採用する予定があるかは別途確認が必要。
 
+> **【2026-08-13 追記】** 「外部システム連携セットアップ手順(2026-08-03版)」の受領を機に再突合し、
+> 見つかった4点をsengoku-ai.com開発者へ照会。同日回答を得て実装へ反映した。
+> 回答内容と対応は `docs/SENGOKU_AI_INTEGRATION_ANSWERS_20260803.md` に記録している。
+>
+> - **§1の「代理店階層取得API 一致」判定は誤りだった。** レスポンスの識別子は `code`(および `agency_id`)、
+>   階層は `level`、連絡先は `contact` の入れ子であり、実装が読んでいた `agent_code` / `role_level` /
+>   `contact_email` は現行の標準項目ではない。**ガイド通りのレスポンスでは1件も同期されない状態だった。**
+>   新旧どちらの名前でも取り込めるよう修正済み(先方から両対応の了承あり)。
+> - `POST /api/v2/common-users/resolve`(セットアップ手順の記載)は**資料側の誤記**と回答があり、
+>   現行実装の `/api/common-users/resolve` が正。**実装変更は不要**だった。
+> - `project_key` は任意だが送信推奨との回答。管理画面から設定できる形で追加(未設定なら送らない)。
+> - `referrals/capture` は継続利用可。加えて `confirm` へ `referral_token` を直接渡す経路が
+>   正式にサポートされていることが確認できたため、captureが失敗した利用者の紹介確定を
+>   救済するフォールバックとして実装した。
+
 ---
 
 ## 0. 総論

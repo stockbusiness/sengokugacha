@@ -82,6 +82,10 @@ export async function findOrCreateUserByLineId(
       display_name: displayName,
       referring_agent_id: referringAgentId,
       referral_session_key: referralSessionKey,
+      // 生の紹介トークンも残す。captureが失敗してreferral_session_keyを得られなかった
+      // 場合に、referrals/confirmへトークンを直接渡して紹介確定するためのフォールバック
+      // (先方回答 2026-08-03 Q4でこの経路が正式サポートと確認済み)。
+      referral_token: referralCode,
     })
     .select("id")
     .single();
@@ -98,7 +102,7 @@ export async function syncCommonUserHub(userId: string, displayName: string | nu
   const supabase = createSupabaseServerClient();
   const { data: user, error } = await supabase
     .from("users")
-    .select("common_user_id, referral_session_key")
+    .select("common_user_id, referral_session_key, referral_token")
     .eq("id", userId)
     .maybeSingle();
   if (error || !user) return;
@@ -113,13 +117,16 @@ export async function syncCommonUserHub(userId: string, displayName: string | nu
     }
   }
 
-  if (isNewUser && user.referral_session_key) {
+  // session_keyが無くてもトークンがあれば確定できる(先方回答 2026-08-03 Q4)。
+  // 従来はsession_keyが無いと何もせず、captureが落ちた利用者の紹介が失われていた。
+  if (isNewUser && (user.referral_session_key || user.referral_token)) {
     // 千ノ国パスポート PR #147マージ前最終修正指示§4。isNewUserの新規登録確定は
     // ユーザーごとに一度きりのイベントのため、userIdから安定したidempotency keyを渡す
     // (ログインAPIがネットワーク再試行された場合でも同じキーになる)。
     await confirmReferral(
       {
         referralSessionKey: user.referral_session_key,
+        referralToken: user.referral_token,
         externalUserId: userId,
         referralSource: "registration",
       },
