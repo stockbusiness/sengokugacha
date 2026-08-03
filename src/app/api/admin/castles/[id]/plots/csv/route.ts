@@ -2,12 +2,27 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
 import { getPlotsForCastle, importPlotsFromCsv, PlotCsvImportRejectedError } from "@/lib/castle-plots";
 import { parseCsvWithHeader, toCell, toCsv } from "@/lib/csv";
-import { parsePlotCsvRecords, PLOT_CSV_HEADER } from "@/modules/castle/domain/castle-csv";
+import { parsePlotCsvRecords, PLOT_CSV_HEADER, PLOT_CSV_SAMPLE_ROWS } from "@/modules/castle/domain/castle-csv";
+
+function csvResponse(csv: string, filename: string): NextResponse {
+  return new NextResponse(csv, {
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Cache-Control": "no-store",
+    },
+  });
+}
 
 // 城1件分の区画をCSVで出力する。取り込みと同じ列・同じ順序。
-export async function GET(_request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!(await getAdminSession())) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  // ?sample=1 は記入例(城の指定に依らず同じ内容を返す)。
+  if (request.nextUrl.searchParams.get("sample") === "1") {
+    return csvResponse(toCsv([...PLOT_CSV_HEADER], PLOT_CSV_SAMPLE_ROWS), "castle_plots_sample.csv");
   }
 
   const { id } = await params;
@@ -24,16 +39,10 @@ export async function GET(_request: NextRequest, { params }: { params: Promise<{
     toCell(plot.main_image_url),
   ]);
 
-  const csv = toCsv([...PLOT_CSV_HEADER], rows);
-  const filename = `castle_plots_${id.slice(0, 8)}_${new Date().toISOString().slice(0, 10)}.csv`;
-
-  return new NextResponse(csv, {
-    headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${filename}"`,
-      "Cache-Control": "no-store",
-    },
-  });
+  return csvResponse(
+    toCsv([...PLOT_CSV_HEADER], rows),
+    `castle_plots_${id.slice(0, 8)}_${new Date().toISOString().slice(0, 10)}.csv`
+  );
 }
 
 // 区画のCSV取り込み。既存の「下書き区画をまとめて作成」が連番+同一価格しか作れないのに対し、
