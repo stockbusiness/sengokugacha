@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { parseCsvWithHeader, toCell, toCsv } from "@/lib/csv";
-import { CASTLE_CSV_HEADER, parseCastleCsvRecords, parsePlotCsvRecords } from "./castle-csv";
+import {
+  CASTLE_CSV_HEADER,
+  CASTLE_CSV_SAMPLE_ROWS,
+  parseCastleCsvRecords,
+  parsePlotCsvRecords,
+  PLOT_CSV_HEADER,
+  PLOT_CSV_SAMPLE_ROWS,
+} from "./castle-csv";
 
 function record(lineNumber: number, values: Record<string, string>) {
   return { lineNumber, values };
@@ -175,5 +182,47 @@ describe("城マスタCSVの往復", () => {
     expect(errors).toEqual([]);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject(castle);
+  });
+});
+
+// 記入例が仕様からずれると、それを信じて書いた利用者が必ずエラーになる。
+// 配布物である以上、列の並びと検証通過をテストで固定しておく。
+describe("記入例(サンプルCSV)", () => {
+  it("城の記入例はヘッダーと列数が一致する", () => {
+    for (const row of CASTLE_CSV_SAMPLE_ROWS) {
+      expect(row).toHaveLength(CASTLE_CSV_HEADER.length);
+    }
+  });
+
+  it("区画の記入例はヘッダーと列数が一致する", () => {
+    for (const row of PLOT_CSV_SAMPLE_ROWS) {
+      expect(row).toHaveLength(PLOT_CSV_HEADER.length);
+    }
+  });
+
+  it("城の記入例はそのまま取り込める(検証エラーが出ない)", () => {
+    const { records } = parseCsvWithHeader(toCsv([...CASTLE_CSV_HEADER], CASTLE_CSV_SAMPLE_ROWS));
+    const { rows, errors } = parseCastleCsvRecords(records);
+    expect(errors).toEqual([]);
+    expect(rows).toHaveLength(CASTLE_CSV_SAMPLE_ROWS.length);
+  });
+
+  it("区画の記入例はそのまま取り込める(検証エラーが出ない)", () => {
+    const { records } = parseCsvWithHeader(toCsv([...PLOT_CSV_HEADER], PLOT_CSV_SAMPLE_ROWS));
+    const { rows, errors } = parsePlotCsvRecords(records);
+    expect(errors).toEqual([]);
+    expect(rows).toHaveLength(PLOT_CSV_SAMPLE_ROWS.length);
+  });
+
+  it("記入例は全行が新規作成(id空欄)になっている", () => {
+    const idIndex = CASTLE_CSV_HEADER.indexOf("id");
+    for (const row of CASTLE_CSV_SAMPLE_ROWS) expect(row[idIndex]).toBe("");
+    for (const row of PLOT_CSV_SAMPLE_ROWS) expect(row[PLOT_CSV_HEADER.indexOf("id")]).toBe("");
+  });
+
+  it("記入例と分かる名前になっている(消せないため誤取り込みを識別できるように)", () => {
+    const nameIndex = CASTLE_CSV_HEADER.indexOf("name");
+    for (const row of CASTLE_CSV_SAMPLE_ROWS) expect(row[nameIndex]).toContain("記入例");
+    for (const row of PLOT_CSV_SAMPLE_ROWS) expect(row[PLOT_CSV_HEADER.indexOf("name")]).toContain("記入例");
   });
 });

@@ -1,10 +1,26 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CsvPanel } from "@/components/admin/CsvPanel";
+import { CsvPanel, type CsvColumnHelp } from "@/components/admin/CsvPanel";
 import { useParams } from "next/navigation";
 
 type CastleStatus = "draft" | "recruiting" | "published" | "hidden";
+
+const PLOT_CSV_COLUMNS: CsvColumnHelp[] = [
+  { name: "id", required: false, note: "空欄なら新規作成。値があるとその区画の更新。ダウンロードしたCSVには自動で入っています" },
+  { name: "plot_code", required: true, note: "区画コード。城の中で重複しない値（例: GIFU-001）" },
+  { name: "name", required: true, note: "区画名" },
+  { name: "block_label", required: false, note: "街区名。同じ値の区画がユーザー向け画面でまとめて表示されます（例: 一番街区）" },
+  { name: "price_yen", required: true, note: "価格（円）。0以上の整数。空欄はエラーになります" },
+  {
+    name: "status",
+    required: false,
+    note: "draft(下書き) / available(販売中) / cancelled(取消) / suspended(一時停止) のみ。空欄ならdraft。予約中・入金待ち・販売済みはCSVからは指定できず、現にその状態の区画も更新できません",
+  },
+  { name: "display_order", required: false, note: "並び順。0以上の整数。空欄なら0" },
+  { name: "description", required: false, note: "区画の説明文。改行やカンマを含めるときは値全体を \"…\" で囲む" },
+  { name: "main_image_url", required: false, note: "画像のパス。通常は空欄のままにしてください" },
+];
 type CastleUnlockLevel = "PUBLIC" | "PROVINCE_CONQUEST_REQUIRED" | "REGION_CONQUEST_REQUIRED" | "UNPUBLISHED";
 type CastleHistoricalReviewStatus = "unreviewed" | "reviewed";
 
@@ -449,6 +465,7 @@ function CastlePlotsSection({ castleId }: { castleId: string }) {
         endpoint={`/api/admin/castles/${castleId}/plots/csv`}
         title="区画をCSVで一括登録・更新"
         description="下の一括作成は連番と同一価格しか作れません。実測量データのように区画ごとに名称・街区・価格が異なる場合はCSVを使ってください。予約・入金待ち・販売済みの区画はCSVからは変更できません。"
+        columns={PLOT_CSV_COLUMNS}
         onImported={fetchPlots}
       />
 

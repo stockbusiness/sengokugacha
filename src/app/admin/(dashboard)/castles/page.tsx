@@ -2,9 +2,33 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { CsvPanel } from "@/components/admin/CsvPanel";
+import { CsvPanel, type CsvColumnHelp } from "@/components/admin/CsvPanel";
 
 type CastleStatus = "draft" | "recruiting" | "published" | "hidden";
+
+// CSVにはコメントを書けないため、列の意味と取りうる値は画面側で示す。
+const CASTLE_CSV_COLUMNS: CsvColumnHelp[] = [
+  { name: "id", required: false, note: "空欄なら新規作成。値があるとその城の更新。ダウンロードしたCSVには自動で入っています" },
+  { name: "name", required: true, note: "城名" },
+  { name: "prefecture", required: false, note: "都道府県（例: 岐阜県）" },
+  { name: "region", required: false, note: "地方（例: 中部）" },
+  {
+    name: "status",
+    required: false,
+    note: "draft(下書き) / recruiting(城主募集中) / published(公開中) / hidden(非公開)。空欄ならdraft",
+  },
+  {
+    name: "unlock_level",
+    required: false,
+    note: "PUBLIC(常に公開) / PROVINCE_CONQUEST_REQUIRED(主要国の制圧で解放) / REGION_CONQUEST_REQUIRED(地方コンプで解放) / UNPUBLISHED(未解放固定)。空欄ならPUBLIC",
+  },
+  { name: "historical_review_status", required: false, note: "unreviewed(未監修) / reviewed(監修済み)。空欄ならunreviewed" },
+  { name: "display_order", required: false, note: "並び順。0以上の整数。空欄なら0" },
+  { name: "lord_plan_price_yen", required: false, note: "この城だけの城主プラン料金（円）。空欄なら「城主プラン設定」の共通金額を使う" },
+  { name: "description", required: false, note: "城の説明文。改行やカンマを含めるときは値全体を \"…\" で囲む" },
+  { name: "historical_lord_summary", required: false, note: "史実の城主。公式城主パートナーとは別枠で表示されます" },
+  { name: "main_image_url", required: false, note: "画像のパス。通常は空欄のままにし、画像は各城の編集画面から差し替えてください" },
+];
 
 type Castle = {
   id: string;
@@ -88,6 +112,7 @@ export default function CastlesPage() {
         endpoint="/api/admin/castles/csv"
         title="CSVで一括登録・更新"
         description="城を数十件まとめて登録したり、公開状態や城主プラン料金をまとめて書き換えたいときに使います。ダウンロードしたCSVをExcelで編集して取り込み直せます。"
+        columns={CASTLE_CSV_COLUMNS}
         onImported={reload}
       />
 

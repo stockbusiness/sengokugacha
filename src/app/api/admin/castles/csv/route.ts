@@ -2,13 +2,29 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
 import { CsvImportRejectedError, getAllCastlesForAdmin, importCastlesFromCsv } from "@/lib/castles";
 import { parseCsvWithHeader, toCell, toCsv } from "@/lib/csv";
-import { CASTLE_CSV_HEADER, parseCastleCsvRecords } from "@/modules/castle/domain/castle-csv";
+import { CASTLE_CSV_HEADER, CASTLE_CSV_SAMPLE_ROWS, parseCastleCsvRecords } from "@/modules/castle/domain/castle-csv";
+
+function csvResponse(csv: string, filename: string): NextResponse {
+  return new NextResponse(csv, {
+    headers: {
+      "Content-Type": "text/csv; charset=utf-8",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Cache-Control": "no-store",
+    },
+  });
+}
 
 // 城マスタのCSVエクスポート。取り込みと同じ列・同じ順序で出力するため、
 // 出力したものを編集してそのまま取り込み直せる(idが入っているので更新になる)。
-export async function GET() {
+export async function GET(request: NextRequest) {
   if (!(await getAdminSession())) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  // ?sample=1 は記入例。まだ1件も登録が無いと現物をエクスポートできず、
+  // 列の並びや各列に何を書くのかが分からないため。
+  if (request.nextUrl.searchParams.get("sample") === "1") {
+    return csvResponse(toCsv([...CASTLE_CSV_HEADER], CASTLE_CSV_SAMPLE_ROWS), "castles_sample.csv");
   }
 
   const castles = await getAllCastlesForAdmin();
@@ -27,16 +43,7 @@ export async function GET() {
     toCell(castle.main_image_url),
   ]);
 
-  const csv = toCsv([...CASTLE_CSV_HEADER], rows);
-  const filename = `castles_${new Date().toISOString().slice(0, 10)}.csv`;
-
-  return new NextResponse(csv, {
-    headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${filename}"`,
-      "Cache-Control": "no-store",
-    },
-  });
+  return csvResponse(toCsv([...CASTLE_CSV_HEADER], rows), `castles_${new Date().toISOString().slice(0, 10)}.csv`);
 }
 
 // 城マスタのCSV取り込み。1行でも不正があれば何も書き込まず、全ての不正行を返す

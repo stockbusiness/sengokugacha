@@ -4,6 +4,9 @@ import { useRef, useState } from "react";
 
 type ImportError = { lineNumber: number; column: string; message: string };
 
+// 列の意味と取りうる値の一覧。CSVにはコメントを書けないため、画面側で示す。
+export type CsvColumnHelp = { name: string; required: boolean; note: string };
+
 // 管理画面のCSVエクスポート・取り込みパネル。城マスタと区画で共通に使う。
 // エクスポートと取り込みで同じ列順にしてあるため、「出力 → Excelで編集 → 取り込み」
 // という往復が成立する。
@@ -11,12 +14,14 @@ export function CsvPanel({
   endpoint,
   title,
   description,
+  columns,
   onImported,
 }: {
-  // GETでエクスポート、POSTで取り込みを行う同一URL。
+  // GETでエクスポート、POSTで取り込みを行う同一URL。?sample=1 で記入例。
   endpoint: string;
   title: string;
   description: string;
+  columns?: CsvColumnHelp[];
   onImported?: () => void;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -68,6 +73,14 @@ export function CsvPanel({
         >
           CSVをダウンロード
         </a>
+        {/* まだ1件も登録が無いと現物をエクスポートできず、列の並びが分からない。
+            記入例があれば、そこから書き始められる。 */}
+        <a
+          href={`${endpoint}${endpoint.includes("?") ? "&" : "?"}sample=1`}
+          className="rounded-lg border border-zinc-300 px-3 py-1.5 text-sm text-zinc-700 hover:border-zinc-500 dark:border-zinc-700 dark:text-zinc-200"
+        >
+          記入例をダウンロード
+        </a>
         <button
           type="button"
           onClick={() => fileInputRef.current?.click()}
@@ -92,6 +105,38 @@ export function CsvPanel({
         id列が空の行は新規作成、値がある行はその行の更新になります。1行でも誤りがあると
         何も書き込まずに中断します。ファイルはUTF-8で保存してください。
       </p>
+      <p className="mt-1 text-xs text-amber-700 dark:text-amber-500">
+        記入例は書き方の見本です。中身を書き換えずに取り込むと「(記入例)〜」がそのまま登録され、
+        管理画面からは削除できません(非公開にするしかありません)。必ず自分のデータに置き換えてください。
+      </p>
+
+      {columns && columns.length > 0 && (
+        <details className="mt-3">
+          <summary className="cursor-pointer text-xs font-medium text-zinc-600 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-zinc-100">
+            列の説明を見る
+          </summary>
+          <div className="mt-2 overflow-x-auto">
+            <table className="w-full min-w-[36rem] text-left text-xs">
+              <thead className="text-zinc-500 dark:text-zinc-400">
+                <tr>
+                  <th className="py-1 pr-3 font-medium">列名</th>
+                  <th className="py-1 pr-3 font-medium">必須</th>
+                  <th className="py-1 font-medium">内容</th>
+                </tr>
+              </thead>
+              <tbody className="text-zinc-700 dark:text-zinc-300">
+                {columns.map((column) => (
+                  <tr key={column.name} className="border-t border-zinc-100 dark:border-zinc-800">
+                    <td className="py-1 pr-3 align-top font-mono">{column.name}</td>
+                    <td className="py-1 pr-3 align-top whitespace-nowrap">{column.required ? "必須" : "任意"}</td>
+                    <td className="py-1 align-top">{column.note}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
 
       {message && (
         <p
