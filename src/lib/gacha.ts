@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { notifyCastlesUnlocked } from "@/lib/castle-notifications";
 import { selectAnimationForDraw, type SelectedAnimation } from "@/lib/gacha-animations";
 import { getGachaRateTiers } from "@/lib/gacha-rate-tiers";
 import { getLoginStreak, getStreakBonusDraws } from "@/lib/login-streak";
@@ -229,6 +230,22 @@ async function performDraw(
     const newConqueredCount = conqueredCount + 1;
     minoUnlocked = didJustUnlockMino(conqueredCount, newConqueredCount, allProvinces);
     tenkaToitsuTriggered = chosenProvince.is_final_province;
+  }
+
+  // 国の制圧・地方の制覇で解放された城をLINEで知らせる。動画演出の選定と同じく
+  // 原子的トランザクションのコミット後のベストエフォート処理であり、失敗しても
+  // ガチャ自体は成功させる(通知は残高・権利・報酬に一切影響しない)。
+  if (drawResult.province_conquered) {
+    await notifyCastlesUnlocked(userId, { kind: "province_conquest", provinceId }).catch((error) => {
+      console.error("城の解放通知(国の制圧)に失敗しました", error);
+    });
+  }
+  if (drawResult.region_completed) {
+    await notifyCastlesUnlocked(userId, { kind: "region_completion", region: drawResult.region_completed }).catch(
+      (error) => {
+        console.error("城の解放通知(地方の制覇)に失敗しました", error);
+      }
+    );
   }
 
   const province = warlord.provinces as unknown as { id: string; name: string };

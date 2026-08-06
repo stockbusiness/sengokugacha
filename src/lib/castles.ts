@@ -1,6 +1,7 @@
 import { logAdminAction } from "@/lib/admin-audit-log";
 import { getPlotSalesSummaryByCastle } from "@/lib/castle-plots";
 import { isCastleUnlocked, type CastleUnlockLevel } from "@/lib/castle-unlock";
+import { getUnlockProgressByCastle, type CastleUnlockProgress } from "@/lib/castle-unlock-progress";
 import { regionCompleteAchievementType } from "@/lib/regions";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import type { CastleCsvRow } from "@/modules/castle/domain/castle-csv";
@@ -62,9 +63,11 @@ export async function getCastleById(castleId: string): Promise<Castle | null> {
 
 // plotSalesはunlocked=falseの城では常にnull(解放前は区画情報自体を見せない、
 // 城詳細の /api/castles/[id]/plots が空配列を返すのと同じ方針)。
+// unlockProgressはその逆で、未解放の城にだけ入る「解放まであと◯」の表示用。
 export type CastleWithUnlockStatus = Castle & {
   unlocked: boolean;
   plotSales: PlotScarcitySummary | null;
+  unlockProgress: CastleUnlockProgress | null;
 };
 
 // 一般公開する城一覧+ユーザーごとの解放状態(実装指示書v1.0 6-6)。
@@ -118,9 +121,7 @@ export async function getPublishedCastlesForUser(userId: string): Promise<Castle
   if (achievementsError) throw achievementsError;
   const conqueredRegionTypes = new Set((achievements ?? []).map((a) => a.achievement_type as string));
 
-  const plotSalesByCastleId = await getPlotSalesSummaryByCastle(castleIds);
-
-  return castles.map((c) => {
+  const withUnlockState = castles.map((c) => {
     const castleId = c.id as string;
     const provinceId = provinceIdByCastleId.get(castleId) ?? null;
     const region = provinceId ? regionByProvinceId.get(provinceId) : undefined;
@@ -129,8 +130,31 @@ export async function getPublishedCastlesForUser(userId: string): Promise<Castle
       provinceConquered: provinceId ? conqueredProvinceIds.has(provinceId) : false,
       regionConquered: region ? conqueredRegionTypes.has(regionCompleteAchievementType(region)) : false,
     });
-    return { ...c, unlocked, plotSales: unlocked ? (plotSalesByCastleId.get(castleId) ?? null) : null };
+    return { castle: c, castleId, provinceId, unlocked };
   });
+
+  // 解放済みの城には販売中の区画を、未解放の城には解放までの残りを出す。
+  // どちらも「未解放の城は伏せる」方針を崩さない範囲の情報に留めている。
+  const [plotSalesByCastleId, unlockProgressByCastleId] = await Promise.all([
+    getPlotSalesSummaryByCastle(castleIds),
+    getUnlockProgressByCastle(
+      userId,
+      withUnlockState
+        .filter((entry) => !entry.unlocked)
+        .map((entry) => ({
+          castleId: entry.castleId,
+          unlockLevel: entry.castle.unlock_level as CastleUnlockLevel,
+          provinceId: entry.provinceId,
+        }))
+    ),
+  ]);
+
+  return withUnlockState.map(({ castle, castleId, unlocked }) => ({
+    ...castle,
+    unlocked,
+    plotSales: unlocked ? (plotSalesByCastleId.get(castleId) ?? null) : null,
+    unlockProgress: unlocked ? null : (unlockProgressByCastleId.get(castleId) ?? null),
+  }));
 }
 
 // ============================================================

@@ -2,6 +2,7 @@ import { getLineSettings } from "@/lib/line-settings";
 import { pushMessage } from "@/lib/line-push";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 import type { ContractStatus } from "@/lib/castle-lord-contracts";
+import { buildCastleUnlockedMessage } from "@/modules/castle/domain/castle-unlock-progress";
 
 // LINE通知の送信失敗は本来の処理(契約遷移・決済確定等)を失敗させない
 // (pushAgentToExternalの「外部連携はベストエフォート」という既存方針を踏襲)。
@@ -93,4 +94,88 @@ export async function notifyCommissionReversed(recipientUserId: string): Promise
   const lineUserId = await getLineUserIdByUserId(recipientUserId);
   if (!lineUserId) return;
   await sendBestEffort(lineUserId, "【戦国パスポート】返金に伴い、一部の土地販売報酬が取り消されました。ダッシュボードからご確認いただけます。");
+}
+
+// 国の制圧・地方の制覇で城が解放された瞬間に、その城が開いたことを本人へ通知する。
+//
+// 城の解放はガチャの副次的な結果でしかなく、ユーザーがそれに気づく導線が
+// これまで無かった(城一覧を自分で開き直すしかない)。解放は「販売中の区画を
+// 見られるようになった」瞬間でもあるので、ここで一度だけ知らせる。
+//
+// 送信そのものに冪等キーは無い(line-push.tsのコメント参照)ため、
+// castle_unlock_notificationsのunique (user_id, castle_id)で二重送信を防ぐ。
+// 先に台帳へ入れてから送るので、送信に失敗した城は再送されない(通知は
+// ベストエフォート、残高・権利には一切影響しない、という既存方針に合わせる)。
+export async function notifyCastlesUnlocked(
+  userId: string,
+  trigger: { kind: "province_conquest"; provinceId: string } | { kind: "region_completion"; region: string }
+): Promise<void> {
+  const lineUserId = await getLineUserIdByUserId(userId);
+  if (!lineUserId) return;
+
+  const supabase = createSupabaseServerClient();
+
+  // 解放されうる城 = 主要国が対象の国(または対象の地方に属する国)で、
+  // かつ解放条件が今回満たした条件と一致する、公開中の城。
+  const provinceIds =
+    trigger.kind === "province_conquest" ? [trigger.provinceId] : await getProvinceIdsInRegion(trigger.region);
+  if (provinceIds.length === 0) return;
+
+  const unlockLevel = trigger.kind === "province_conquest" ? "PROVINCE_CONQUEST_REQUIRED" : "REGION_CONQUEST_REQUIRED";
+
+  const { data: relations, error: relationsError } = await supabase
+    .from("castle_province_relations")
+    .select("castle_id, province_id")
+    .eq("is_primary", true)
+    .in("province_id", provinceIds);
+  if (relationsError) throw relationsError;
+
+  const castleIds = (relations ?? []).map((r) => r.castle_id as string);
+  if (castleIds.length === 0) return;
+
+  const { data: castles, error: castlesError } = await supabase
+    .from("castles")
+    .select("id, name")
+    .in("id", castleIds)
+    .eq("unlock_level", unlockLevel)
+    .in("status", ["recruiting", "published"]);
+  if (castlesError) throw castlesError;
+  if (!castles || castles.length === 0) return;
+
+  // 未通知の城だけを台帳に確保する。ignoreDuplicates付きのupsertは
+  // 既に行がある城を返さないので、返ってきた行=今回初めて通知する城になる。
+  const { data: claimed, error: claimError } = await supabase
+    .from("castle_unlock_notifications")
+    .upsert(
+      castles.map((c) => ({ user_id: userId, castle_id: c.id as string, trigger_kind: trigger.kind })),
+      { onConflict: "user_id,castle_id", ignoreDuplicates: true }
+    )
+    .select("castle_id");
+  if (claimError) throw claimError;
+
+  const claimedIds = new Set((claimed ?? []).map((r) => r.castle_id as string));
+  if (claimedIds.size === 0) return;
+
+  const requirementLabel =
+    trigger.kind === "province_conquest"
+      ? `${await getProvinceName(trigger.provinceId)}の制圧`
+      : `${trigger.region}地方の制覇`;
+
+  for (const castle of castles) {
+    if (!claimedIds.has(castle.id as string)) continue;
+    await sendBestEffort(lineUserId, buildCastleUnlockedMessage(castle.name as string, requirementLabel));
+  }
+}
+
+async function getProvinceIdsInRegion(region: string): Promise<string[]> {
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase.from("provinces").select("id").eq("region", region);
+  if (error) throw error;
+  return (data ?? []).map((r) => r.id as string);
+}
+
+async function getProvinceName(provinceId: string): Promise<string> {
+  const supabase = createSupabaseServerClient();
+  const { data } = await supabase.from("provinces").select("name").eq("id", provinceId).maybeSingle();
+  return data?.name ?? "国";
 }

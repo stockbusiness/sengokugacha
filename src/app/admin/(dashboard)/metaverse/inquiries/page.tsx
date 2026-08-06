@@ -13,8 +13,20 @@ type Inquiry = {
   users: { display_name: string | null } | null;
   agents: { name: string } | null;
   metaverse_properties: { name: string } | null;
+  castle_plots: { name: string; castles: { name: string } | null } | null;
   metaverse_inquiry_histories: { id: string; note: string; created_at: string }[];
 };
+
+// 相談の対象。城の区画からの相談(案1)とメタバース物件からの相談が同じ一覧に並ぶので、
+// どちらについての相談かが一目で分かるようにする。
+function formatInquiryTarget(inquiry: Inquiry): string {
+  if (inquiry.castle_plots) {
+    const castleName = inquiry.castle_plots.castles?.name;
+    return `🏯 ${castleName ? `${castleName} / ` : ""}${inquiry.castle_plots.name}`;
+  }
+  if (inquiry.metaverse_properties) return inquiry.metaverse_properties.name;
+  return "対象未指定";
+}
 
 const STATUS_LABEL: Record<Inquiry["status"], string> = {
   new: "新規",
@@ -73,7 +85,8 @@ export default function MetaverseInquiriesPage() {
         </Link>
         <h1 className="mt-1 text-xl font-bold text-zinc-900 dark:text-zinc-50">問い合わせ管理({inquiries.length}件)</h1>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          LIFF内の相談申込フォームから送られた問い合わせの一覧です。ユーザーの紹介元代理店(登録済みの場合)へ自動で紐づきます。
+          LIFF内の相談申込フォームから送られた問い合わせの一覧です。メタバース物件からの相談と、城の区画(🏯)からの相談が同じ一覧に並びます。
+          ユーザーの紹介元代理店(登録済みの場合)へ自動で紐づき、紹介元が無いユーザーの相談は「-」のまま残るので本部で割り振ってください。
           対応状況はここから更新できます。
         </p>
       </div>
@@ -87,8 +100,8 @@ export default function MetaverseInquiriesPage() {
                   {inquiry.users?.display_name ?? "(未設定)"} — {inquiry.inquiry_type}
                 </p>
                 <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                  {inquiry.metaverse_properties?.name ?? "物件未指定"} / 紹介元代理店: {inquiry.agents?.name ?? "-"} /
-                  希望連絡方法: {inquiry.preferred_contact}
+                  {formatInquiryTarget(inquiry)} / 紹介元代理店: {inquiry.agents?.name ?? "-"} / 希望連絡方法:{" "}
+                  {inquiry.preferred_contact}
                 </p>
                 <p className="text-xs text-zinc-400">{new Date(inquiry.created_at).toLocaleString("ja-JP")}</p>
               </div>
