@@ -15,6 +15,14 @@ type PlotSales = {
   isLowStock: boolean;
 };
 
+type UnlockProgress = {
+  requirementLabel: string;
+  remaining: number;
+  unit: "warlord" | "province";
+  label: string;
+  ratio: number;
+};
+
 type Castle = {
   id: string;
   name: string;
@@ -25,6 +33,7 @@ type Castle = {
   main_image_url: string | null;
   unlocked: boolean;
   plotSales: PlotSales | null;
+  unlockProgress: UnlockProgress | null;
 };
 
 const STATUS_LABEL: Record<string, string> = {
@@ -84,6 +93,23 @@ function CastleListItem({ castle }: { castle: Castle }) {
                   </span>
                 )}
               </p>
+            )}
+
+            {/* 未解放の城は「🔒」だけでは何をすれば開くのか分からなかった。
+                城の中身は伏せたまま、解放までの距離だけを示す */}
+            {!castle.unlocked && castle.unlockProgress && (
+              <div className="mt-1.5">
+                <p className="text-xs text-parchment-dim">
+                  <span className="font-semibold text-gold-soft">{castle.unlockProgress.label}</span>
+                  <span className="ml-1.5">({castle.unlockProgress.requirementLabel})</span>
+                </p>
+                <div className="mt-1 h-1 w-full overflow-hidden rounded-full bg-ink">
+                  <div
+                    className="h-full rounded-full bg-gold-soft/70"
+                    style={{ width: `${Math.round(castle.unlockProgress.ratio * 100)}%` }}
+                  />
+                </div>
+              </div>
             )}
           </div>
         </div>

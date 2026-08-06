@@ -11,7 +11,7 @@ export async function GET() {
   const { data, error } = await supabase
     .from("metaverse_inquiries")
     .select(
-      "*, users(display_name), agents(name), metaverse_properties(name), metaverse_inquiry_histories(id, note, created_at)"
+      "*, users(display_name), agents(name), metaverse_properties(name), castle_plots(name, castles(name)), metaverse_inquiry_histories(id, note, created_at)"
     )
     .order("created_at", { ascending: false });
 

@@ -25,6 +25,8 @@ export type CastlePlot = {
   price_yen: number;
   status: PlotStatus;
   display_order: number;
+  // 内覧用のメタバース物件。nullならこの区画には内覧コンテンツが無い。
+  property_id: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -109,6 +111,43 @@ export async function getPublicPlotById(plotId: string): Promise<CastlePlot | nu
     .maybeSingle();
   if (error) throw error;
   return data ?? null;
+}
+
+// 区画に紐づけられた内覧物件(案3: 内覧システムと区画の接続)。
+// 既存のメタバース内覧は metaverse_properties を軸に3Dシーン・ホットスポット・
+// お気に入り・閲覧ログが揃っているので、区画側から物件IDを1本持たせるだけで
+// その体験をそのまま再利用できる。
+//
+// 下書き(draft)・非表示(hidden)の物件はLIFF側の内覧導線に一切出てこないため、
+// 区画に紐づいていても内覧ボタンは出さない(押しても物件が見つからないため)。
+const TOUR_VISIBLE_PROPERTY_STATUSES = ["published", "coming_soon"] as const;
+
+export type PlotTourProperty = {
+  id: string;
+  name: string;
+  propertyCode: string;
+  status: "published" | "coming_soon";
+};
+
+export async function getTourPropertyForPlot(propertyId: string | null): Promise<PlotTourProperty | null> {
+  if (!propertyId) return null;
+
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("metaverse_properties")
+    .select("id, property_code, name, status")
+    .eq("id", propertyId)
+    .in("status", TOUR_VISIBLE_PROPERTY_STATUSES)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+
+  return {
+    id: data.id as string,
+    name: data.name as string,
+    propertyCode: data.property_code as string,
+    status: data.status as PlotTourProperty["status"],
+  };
 }
 
 // 管理画面から、城の物理区画をまとめて下書き登録する(実際の測量データを想定した事前登録)。

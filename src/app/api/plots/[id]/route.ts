@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getPublicPlotById } from "@/lib/castle-plots";
+import { getPublicPlotById, getTourPropertyForPlot } from "@/lib/castle-plots";
 import { getCastleById } from "@/lib/castles";
 import { getSession } from "@/lib/session";
 
@@ -18,5 +18,8 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
 
-  return NextResponse.json({ ...plot, castleName: castle.name });
+  // 内覧物件が紐づいていれば、区画詳細から既存の内覧導線へ送れるようにする。
+  const tourProperty = await getTourPropertyForPlot(plot.property_id);
+
+  return NextResponse.json({ ...plot, castleName: castle.name, tourProperty });
 }
