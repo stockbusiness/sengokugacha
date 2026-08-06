@@ -327,7 +327,14 @@ type CastlePlot = {
   name: string;
   price_yen: number;
   status: PlotStatus;
+  // 内覧用のメタバース物件。nullならこの区画に内覧ボタンは出ない。
+  property_id: string | null;
 };
+
+// 内覧に出せる物件だけを選択肢にする(下書き・非表示の物件はLIFF側の内覧導線に
+// 出てこないため、紐づけても区画詳細に内覧ボタンが出ない)。
+type TourPropertyOption = { id: string; name: string; property_code: string; status: string };
+const TOUR_LINKABLE_PROPERTY_STATUSES = ["published", "coming_soon"];
 
 // 区画の購入は外部ショップシステムで代理店がクロージングする運用のため、
 // このアプリからは直接購入させない。成約後は本部担当者がここで「販売済み」に反映する。
@@ -352,6 +359,7 @@ const PLOT_STATUS_LABEL: Record<PlotStatus, string> = {
 
 function CastlePlotsSection({ castleId }: { castleId: string }) {
   const [plots, setPlots] = useState<CastlePlot[]>([]);
+  const [tourProperties, setTourProperties] = useState<TourPropertyOption[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [count, setCount] = useState(10);
   const [codePrefix, setCodePrefix] = useState("A");
@@ -423,8 +431,38 @@ function CastlePlotsSection({ castleId }: { castleId: string }) {
 
   useEffect(() => {
     fetchPlots();
+    // 内覧物件の一覧は区画の紐付け先の選択肢。取得に失敗しても区画管理自体は使えるので、
+    // ここでは画面をエラーにせず、紐付けのプルダウンだけが出ない状態にする。
+    fetch("/api/admin/metaverse/properties")
+      .then((res) => (res.ok ? res.json() : []))
+      .then((data: TourPropertyOption[]) => {
+        setTourProperties(
+          (Array.isArray(data) ? data : []).filter((p) => TOUR_LINKABLE_PROPERTY_STATUSES.includes(p.status))
+        );
+      })
+      .catch(() => setTourProperties([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [castleId]);
+
+  // 区画に内覧物件を紐づける・解除する(案3: 内覧システムと区画の接続)。
+  async function handleLinkProperty(plot: CastlePlot, propertyId: string) {
+    setUpdatingId(plot.id);
+    setMessage(null);
+    try {
+      const res = await fetch(`/api/admin/castle-plots/${plot.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ property_id: propertyId || null }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "更新に失敗しました。");
+      fetchPlots();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "更新に失敗しました。");
+    } finally {
+      setUpdatingId(null);
+    }
+  }
 
   async function handleBulkCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -458,6 +496,7 @@ function CastlePlotsSection({ castleId }: { castleId: string }) {
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
           事前に区画を「下書き」として登録しておくと、城主契約が有効化された際に販売枠の分だけ自動的に「販売可能」へ昇格します。
           区画の購入手続きはアプリ内では行わず、外部ショップシステムで代理店が成約します。成約したら「販売済みにする(外部成約)」で反映してください。
+          各区画の「内覧」から既存のメタバース内覧物件を紐づけると、区画詳細に「内覧を見る」ボタンが出ます。
         </p>
       </div>
 
@@ -517,12 +556,30 @@ function CastlePlotsSection({ castleId }: { castleId: string }) {
           {plots.map((p) => (
             <div
               key={p.id}
-              className="flex items-center justify-between rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-950"
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm dark:border-zinc-800 dark:bg-zinc-950"
             >
               <span>
                 {p.plot_code} <span className="text-zinc-500 dark:text-zinc-400">{p.name}</span>
               </span>
-              <span className="flex items-center gap-3">
+              <span className="flex flex-wrap items-center gap-3">
+                {tourProperties.length > 0 && (
+                  <label className="flex items-center gap-1 text-xs text-zinc-500 dark:text-zinc-400">
+                    内覧
+                    <select
+                      value={p.property_id ?? ""}
+                      onChange={(e) => handleLinkProperty(p, e.target.value)}
+                      disabled={updatingId === p.id}
+                      className="max-w-[14rem] rounded border border-zinc-300 bg-white px-1.5 py-1 text-xs disabled:opacity-50 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-50"
+                    >
+                      <option value="">紐付けなし</option>
+                      {tourProperties.map((property) => (
+                        <option key={property.id} value={property.id}>
+                          {property.property_code} {property.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 <span className="text-zinc-500 dark:text-zinc-400">{p.price_yen.toLocaleString()}円</span>
                 <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-semibold text-zinc-700 dark:bg-zinc-800 dark:text-zinc-300">
                   {PLOT_STATUS_LABEL[p.status]}

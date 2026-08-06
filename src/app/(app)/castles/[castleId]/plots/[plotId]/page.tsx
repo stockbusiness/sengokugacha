@@ -8,8 +8,16 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { LinkButton, TextLink } from "@/components/ui/Button";
 import { PlotStatusBadge } from "@/components/castle/PlotStatusBadge";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
+import { readReferralCode } from "@/lib/client/referral-code";
 import { toDisplayUrl } from "@/lib/image-url";
 import { getPlotStatusPresentation } from "@/modules/castle/domain/plot-presentation";
+
+type TourProperty = {
+  id: string;
+  name: string;
+  propertyCode: string;
+  status: "published" | "coming_soon";
+};
 
 type PlotDetail = {
   id: string;
@@ -22,6 +30,8 @@ type PlotDetail = {
   price_yen: number;
   status: string;
   castleName: string;
+  // 内覧物件が紐づいていない区画ではnull。
+  tourProperty: TourProperty | null;
 };
 
 type Status = "loading" | "ready" | "error";
@@ -39,6 +49,9 @@ function PlotDetailPageInner() {
   const [status, setStatus] = useState<Status>("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [plot, setPlot] = useState<PlotDetail | null>(null);
+  // 代理店が発行した区画の紹介URL(?ref=代理店コード)から来た場合、その代理店が
+  // 相談を受け持つ。相談フォームへ引き継ぐためここで読んでおく。
+  const [referralCode, setReferralCode] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -46,6 +59,7 @@ function PlotDetailPageInner() {
     ensureLiffSession()
       .then((session) => {
         if (cancelled || session.status === "redirecting") return;
+        setReferralCode(readReferralCode());
         return fetch(`/api/plots/${plotId}`)
           .then((res) => {
             if (!res.ok) throw new Error("区画情報の取得に失敗しました。");
@@ -115,12 +129,40 @@ function PlotDetailPageInner() {
             <Card className="text-sm leading-relaxed text-parchment-dim">{plot.description}</Card>
           )}
 
+          {/* 内覧物件が紐づいていれば、既存のメタバース内覧(3Dシーン・ホットスポット)へ送る。
+              「見てから相談する」の順にしたいので、相談カードより上に置く */}
+          {plot.tourProperty && (
+            <Card className="space-y-3">
+              <div>
+                <p className="text-sm font-semibold text-parchment">この区画を内覧する</p>
+                <p className="mt-1 text-xs leading-relaxed text-parchment-dim">
+                  {plot.tourProperty.status === "coming_soon"
+                    ? "内覧コンテンツを準備中です。現在の公開範囲をご覧いただけます。"
+                    : "メタバース上の完成予定イメージを、その場で見て回れます。"}
+                </p>
+              </div>
+              <LinkButton href={`/metaverse-tour/properties/${plot.tourProperty.id}`}>内覧を見る</LinkButton>
+            </Card>
+          )}
+
           {plot.status === "available" ? (
-            <Card className="space-y-3 text-center">
-              <p className="text-sm leading-relaxed text-parchment">
-                この区画のご購入・お申込みは、担当代理店を通じたお手続きとなります。
-              </p>
-              <LinkButton href="/legal/support">お問い合わせはこちら</LinkButton>
+            <Card className="space-y-3">
+              <div>
+                <p className="text-sm font-semibold text-parchment">この区画について相談する</p>
+                <p className="mt-1 text-xs leading-relaxed text-parchment-dim">
+                  ご購入・お申込みは担当代理店を通じたお手続きとなります。相談内容を送ると、担当代理店から改めてご連絡します。
+                </p>
+              </div>
+              <LinkButton
+                href={`/metaverse-tour/inquiries/new?castlePlotId=${plot.id}${
+                  referralCode ? `&ref=${encodeURIComponent(referralCode)}` : ""
+                }`}
+              >
+                相談を申し込む
+              </LinkButton>
+              <div className="text-center">
+                <TextLink href="/legal/support">その他のお問い合わせ</TextLink>
+              </div>
             </Card>
           ) : (
             <Card className="text-xs leading-relaxed text-parchment-dim">

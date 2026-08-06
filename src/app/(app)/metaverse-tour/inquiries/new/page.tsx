@@ -7,6 +7,7 @@ import { LoadingSpinner } from "@/components/ui/LoadingSpinner";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Button } from "@/components/ui/Button";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
+import { readReferralCode } from "@/lib/client/referral-code";
 
 const INQUIRY_TYPES = [
   "詳しい説明を聞きたい",
@@ -23,9 +24,16 @@ function NewInquiryForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const propertyId = searchParams.get("propertyId");
+  // 城の区画からの相談。区画詳細の「相談を申し込む」から渡ってくる。
+  const castlePlotId = searchParams.get("castlePlotId");
 
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [plotLabel, setPlotLabel] = useState<string | null>(null);
+  // 「その区画を紹介した代理店」を相談の担当にするための代理店コード。
+  // 区画詳細から ?ref= で引き継がれるが、直接この画面に来た場合に備えて
+  // sessionStorageの退避分も見る(readReferralCodeが両方を見る)。
+  const [referralCode, setReferralCode] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
 
@@ -44,6 +52,20 @@ function NewInquiryForm() {
       .then((session) => {
         if (cancelled || session.status === "redirecting") return;
         setStatus("ready");
+        setReferralCode(readReferralCode());
+        // 「何について相談しているのか」を画面上で確認できるようにする。
+        // 取得に失敗しても相談自体は送れるので、フォームの表示は止めない。
+        if (castlePlotId) {
+          fetch(`/api/plots/${castlePlotId}`)
+            .then((res) => (res.ok ? res.json() : null))
+            .then((plot: { name: string; castleName: string } | null) => {
+              if (cancelled || !plot) return;
+              setPlotLabel(`${plot.castleName} / ${plot.name}`);
+            })
+            .catch(() => {
+              /* 対象区画名の表示は補助情報 */
+            });
+        }
       })
       .catch((error) => {
         if (cancelled) return;
@@ -53,7 +75,7 @@ function NewInquiryForm() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [castlePlotId]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -71,6 +93,8 @@ function NewInquiryForm() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           propertyId,
+          castlePlotId,
+          ref: referralCode,
           inquiryType,
           preferredContact,
           consentPersonalInfo,
@@ -112,6 +136,13 @@ function NewInquiryForm() {
       <PageHeader title="相談申込" subtitle="担当代理店から改めてご連絡します。" />
 
       <form onSubmit={handleSubmit} className="space-y-4">
+        {plotLabel && (
+          <Card>
+            <p className="text-xs text-parchment-dim">相談する区画</p>
+            <p className="mt-0.5 text-sm font-semibold text-gold-soft">{plotLabel}</p>
+          </Card>
+        )}
+
         <Card>
           <label className="block">
             <span className="mb-1 block text-sm font-medium text-parchment">相談種別</span>

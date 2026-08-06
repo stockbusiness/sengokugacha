@@ -838,6 +838,8 @@ export type InquiryInput = {
   userId: string;
   agentId: string | null;
   propertyId: string | null;
+  // 城の区画(castle_plots)についての相談。メタバース物件からの相談ではnull。
+  castlePlotId?: string | null;
   inquiryType: string;
   preferredContact: string;
   consentPersonalInfo: boolean;
@@ -860,6 +862,7 @@ export async function createInquiry(input: InquiryInput): Promise<string> {
       user_id: input.userId,
       agent_id: input.agentId,
       property_id: input.propertyId,
+      castle_plot_id: input.castlePlotId ?? null,
       inquiry_type: input.inquiryType,
       preferred_contact: input.preferredContact,
       consent_personal_info: input.consentPersonalInfo,
@@ -876,11 +879,22 @@ export async function createInquiry(input: InquiryInput): Promise<string> {
   return data.id;
 }
 
+type CastlePlotNameRow = { name: string; castles: { name: string } | null } | null;
+
+// 「岐阜城 / 一番区画」。城が引けない場合は区画名だけを出す。
+function formatCastlePlotName(row: CastlePlotNameRow): string | null {
+  if (!row) return null;
+  const castleName = row.castles?.name;
+  return castleName ? `${castleName} / ${row.name}` : row.name;
+}
+
 export type InquirySummary = {
   id: string;
   inquiryType: string;
   status: "new" | "contacted" | "in_progress" | "closed";
   propertyName: string | null;
+  // 城の区画についての相談なら「岐阜城 / 一番区画」のような表示名。
+  castlePlotName: string | null;
   createdAt: string;
 };
 
@@ -888,7 +902,7 @@ export async function getInquiriesForUser(userId: string): Promise<InquirySummar
   const supabase = createSupabaseServerClient();
   const { data, error } = await supabase
     .from("metaverse_inquiries")
-    .select("id, inquiry_type, status, created_at, metaverse_properties(name)")
+    .select("id, inquiry_type, status, created_at, metaverse_properties(name), castle_plots(name, castles(name))")
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
 
@@ -899,6 +913,7 @@ export async function getInquiriesForUser(userId: string): Promise<InquirySummar
     inquiryType: r.inquiry_type,
     status: r.status as InquirySummary["status"],
     propertyName: (r.metaverse_properties as unknown as { name: string } | null)?.name ?? null,
+    castlePlotName: formatCastlePlotName(r.castle_plots as unknown as CastlePlotNameRow | null),
     createdAt: r.created_at,
   }));
 }

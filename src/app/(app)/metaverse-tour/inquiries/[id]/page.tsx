@@ -13,6 +13,7 @@ type Inquiry = {
   inquiryType: string;
   status: "new" | "contacted" | "in_progress" | "closed";
   propertyName: string | null;
+  castlePlotName: string | null;
   createdAt: string;
 };
 
@@ -70,7 +71,9 @@ export default function MetaverseInquiryStatusPage() {
         <div className="space-y-4">
           <Card className="text-center">
             <p className="text-sm text-parchment">{inquiry.inquiryType}</p>
-            {inquiry.propertyName && <p className="mt-1 text-xs text-parchment-dim">{inquiry.propertyName}</p>}
+            {(inquiry.castlePlotName ?? inquiry.propertyName) && (
+              <p className="mt-1 text-xs text-parchment-dim">{inquiry.castlePlotName ?? inquiry.propertyName}</p>
+            )}
             <p className="mt-3 text-sm font-semibold text-gold-soft">{STATUS_LABEL[inquiry.status]}</p>
           </Card>
           <p className="text-center text-xs text-parchment-dim">
@@ -83,8 +86,13 @@ export default function MetaverseInquiryStatusPage() {
         <Card className="text-center text-sm text-parchment-dim">相談情報が見つかりませんでした。</Card>
       )}
 
+      {/* 城の区画からの相談は内覧トップではなく城一覧へ戻す(そこから来ているため) */}
       <div className="mt-8 text-center">
-        <TextLink href="/metaverse-tour">← 内覧トップに戻る</TextLink>
+        {inquiry?.castlePlotName ? (
+          <TextLink href="/castles">← お城一覧に戻る</TextLink>
+        ) : (
+          <TextLink href="/metaverse-tour">← 内覧トップに戻る</TextLink>
+        )}
       </div>
     </div>
   );

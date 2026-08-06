@@ -28,6 +28,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if ("block_label" in body) fields.block_label = body.block_label || null;
   if ("description" in body) fields.description = body.description || null;
   if ("main_image_url" in body) fields.main_image_url = body.main_image_url || null;
+  // 内覧物件との紐付け(案3)。空文字・nullで解除できる。
+  if ("property_id" in body) fields.property_id = body.property_id || null;
   if (Number.isFinite(body.price_yen)) fields.price_yen = body.price_yen;
   if (Number.isFinite(body.display_order)) fields.display_order = body.display_order;
   if (typeof body.status === "string" && EDITABLE_STATUSES.includes(body.status)) {

@@ -1,5 +1,7 @@
 "use client";
 
+import { REFERRAL_CODE_STORAGE_KEY } from "@/lib/client/referral-code";
+
 // リッチメニュー等からホーム画面(/)を経由せず直接サブページへ来た場合でも
 // ログインセッションを確立できるよう、各ページ共通で呼び出す初期化処理。
 export type EnsureSessionResult = { status: "ready" } | { status: "redirecting" };
@@ -18,7 +20,7 @@ export async function ensureLiffSession(): Promise<EnsureSessionResult> {
   // に反映され、既存ユーザーには影響しない)。
   const refFromUrl = new URLSearchParams(window.location.search).get("ref");
   if (refFromUrl) {
-    sessionStorage.setItem("sengoku_ref_code", refFromUrl);
+    sessionStorage.setItem(REFERRAL_CODE_STORAGE_KEY, refFromUrl);
 
     // sengoku-ai.com側への流入記録(EXTERNAL_DEVELOPER_GUIDE 10.1章)。URLに
     // ref付きで新規に到達した時点でのみ呼ぶ(ページ遷移のたびには呼ばない)。
@@ -37,7 +39,7 @@ export async function ensureLiffSession(): Promise<EnsureSessionResult> {
       // 紹介流入記録の失敗はログイン処理を止めない。
     }
   }
-  const refCode = refFromUrl ?? sessionStorage.getItem("sengoku_ref_code");
+  const refCode = refFromUrl ?? sessionStorage.getItem(REFERRAL_CODE_STORAGE_KEY);
   const referralSessionKey = sessionStorage.getItem("sengoku_referral_session_key");
 
   const liff = (await import("@line/liff")).default;
