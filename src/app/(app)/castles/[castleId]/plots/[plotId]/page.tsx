@@ -8,6 +8,7 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { LinkButton, TextLink } from "@/components/ui/Button";
 import { PlotStatusBadge } from "@/components/castle/PlotStatusBadge";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
+import { readReferralCode } from "@/lib/client/referral-code";
 import { toDisplayUrl } from "@/lib/image-url";
 import { getPlotStatusPresentation } from "@/modules/castle/domain/plot-presentation";
 
@@ -48,6 +49,9 @@ function PlotDetailPageInner() {
   const [status, setStatus] = useState<Status>("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [plot, setPlot] = useState<PlotDetail | null>(null);
+  // 代理店が発行した区画の紹介URL(?ref=代理店コード)から来た場合、その代理店が
+  // 相談を受け持つ。相談フォームへ引き継ぐためここで読んでおく。
+  const [referralCode, setReferralCode] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -55,6 +59,7 @@ function PlotDetailPageInner() {
     ensureLiffSession()
       .then((session) => {
         if (cancelled || session.status === "redirecting") return;
+        setReferralCode(readReferralCode());
         return fetch(`/api/plots/${plotId}`)
           .then((res) => {
             if (!res.ok) throw new Error("区画情報の取得に失敗しました。");
@@ -148,7 +153,13 @@ function PlotDetailPageInner() {
                   ご購入・お申込みは担当代理店を通じたお手続きとなります。相談内容を送ると、担当代理店から改めてご連絡します。
                 </p>
               </div>
-              <LinkButton href={`/metaverse-tour/inquiries/new?castlePlotId=${plot.id}`}>相談を申し込む</LinkButton>
+              <LinkButton
+                href={`/metaverse-tour/inquiries/new?castlePlotId=${plot.id}${
+                  referralCode ? `&ref=${encodeURIComponent(referralCode)}` : ""
+                }`}
+              >
+                相談を申し込む
+              </LinkButton>
               <div className="text-center">
                 <TextLink href="/legal/support">その他のお問い合わせ</TextLink>
               </div>
