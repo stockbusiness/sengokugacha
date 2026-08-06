@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { resolveAgentIdByReferralCode } from "@/lib/agents";
 import { getPublicPlotById } from "@/lib/castle-plots";
 import { createInquiry } from "@/lib/metaverse";
 import { getSession } from "@/lib/session";
@@ -32,11 +33,22 @@ export async function POST(request: NextRequest) {
     .eq("id", session.userId)
     .maybeSingle();
 
+  // 相談の担当は「その区画を紹介した代理店」を最優先にする。
+  //
+  // 代理店は /agency/plots で区画ごとに紹介URL・QR(?ref=代理店コード)を発行して
+  // 商談に使う。そのURLから来た相談は、登録時の紹介元(users.referring_agent_id)が
+  // 誰であれ、実際にその区画を紹介した代理店が受けるべきなので、refを先に見る。
+  // 予約(reservePlot)が selling_agent_id を決めるときと同じ考え方。
+  //
+  // refが無い・コードが一致しない場合のみ登録時の紹介元へ、それも無ければ
+  // 未割り当てのままにして本部が管理画面で割り振る。
+  const referralCode = typeof body.ref === "string" && body.ref.trim() ? body.ref.trim() : null;
+  const referringAgentId = await resolveAgentIdByReferralCode(referralCode);
+
   try {
     const id = await createInquiry({
       userId: session.userId,
-      // 紹介元代理店が分かっていればそこへ、分からなければ未割り当て(本部が管理画面で割り振る)。
-      agentId: userRow?.referring_agent_id ?? null,
+      agentId: referringAgentId ?? userRow?.referring_agent_id ?? null,
       propertyId: typeof body.propertyId === "string" ? body.propertyId : null,
       castlePlotId,
       inquiryType: body.inquiryType,

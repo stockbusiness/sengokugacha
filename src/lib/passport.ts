@@ -1,3 +1,4 @@
+import { resolveAgentIdByReferralCode } from "@/lib/agents";
 import { getDailyMissionStatus } from "@/lib/daily-missions";
 import { getLoginStreak } from "@/lib/login-streak";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
@@ -31,22 +32,6 @@ export type PassportData = {
   isNationBuilder: boolean;
   nationBuilderPlan: string | null;
 };
-
-// 04_mvp_spec 3.3: 紹介リンク(?ref=AGENT_CODE)経由の代理店を解決する。
-// 一致する代理店が無い場合(コード誤り・直接登録)は null を返し、直販扱いにする。
-async function resolveAgentIdByReferralCode(referralCode: string | null): Promise<string | null> {
-  if (!referralCode) return null;
-
-  const supabase = createSupabaseServerClient();
-  const { data, error } = await supabase
-    .from("agents")
-    .select("id")
-    .eq("referral_code", referralCode)
-    .maybeSingle();
-
-  if (error) throw error;
-  return data?.id ?? null;
-}
 
 // LINEユーザーIDからパスポートユーザーを取得、なければ新規登録する。
 // 登録済みユーザーの display_name は更新しない(ユーザーがLINE側で表示名を変えても

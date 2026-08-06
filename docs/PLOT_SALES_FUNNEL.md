@@ -29,11 +29,27 @@
 
 ### 対応者(誰が相談を受けるか)
 
-**紹介元代理店へ自動で割り当て、紹介元が分からないユーザーの相談は未割り当てのまま残して本部が割り振る。**
+**「その区画を紹介した代理店」が受ける。**(2026-08-14 確定)
 
-これは既存のメタバース相談申込と同じ挙動(`users.referring_agent_id` を `metaverse_inquiries.agent_id` に入れる)で、
-新しい振り分けルールは作っていない。城主へ割り当てる運用にしたい場合は
-`src/app/api/metaverse/inquiries/route.ts` の `agentId` の決め方を変えるだけで切り替えられる。
+代理店は `/agency/plots` で区画ごとに紹介URL・QRを発行して商談に使う。
+
+```
+https://liff.line.me/{liffId}/castles/{castleId}/plots/{plotId}?ref={代理店コード}
+```
+
+この `ref` を相談申込まで引き継ぎ、`agents.referral_code` から代理店を解決して
+`metaverse_inquiries.agent_id` に入れる。予約(`reservePlot`)が `selling_agent_id` を
+決めるときと同じ考え方で、**登録時の紹介元が誰であっても、実際にその区画を紹介した代理店が受ける**。
+
+割り当ての優先順位:
+
+1. 区画の紹介URLの `ref`(= その区画を紹介した代理店)
+2. ユーザーの登録時の紹介元代理店 `users.referring_agent_id`(紹介URL経由でない場合)
+3. 未割り当て(本部が管理画面 `/admin/metaverse/inquiries` で割り振る)
+
+`ref` はLINEログインのリダイレクトでURLから消えるため、`ensure-liff-session.ts` が
+sessionStorage へ退避している分も見る(`src/lib/client/referral-code.ts`)。
+`agents.referral_code` に一致しないコードは無視して次の優先順位へ落ちる。
 
 ### 画面
 
@@ -41,7 +57,7 @@
 - 相談フォーム: 冒頭に「相談する区画 / 岐阜城 / 一番区画」を表示
 - 受付完了画面: 区画名を表示し、戻り先を城一覧にする
 - 管理画面 `/admin/metaverse/inquiries`: 城の区画からの相談は `🏯 岐阜城 / 一番区画` と表示され、
-  メタバース物件からの相談と同じ一覧に並ぶ
+  メタバース物件からの相談と同じ一覧に並ぶ。担当が付かなかった相談は「未割り当て」と表示される
 
 ---
 

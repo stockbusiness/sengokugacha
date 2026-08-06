@@ -9,6 +9,25 @@ export { resolveRank };
 export type { AgencySyncPayload, HierarchyNode };
 export { flattenHierarchy };
 
+// 04_mvp_spec 3.3: 紹介リンク(?ref=AGENT_CODE)経由の代理店を解決する。
+// 一致する代理店が無い場合(コード誤り・直接登録)は null を返し、直販扱いにする。
+//
+// 登録時のアトリビューション(users.referring_agent_id)と、区画の紹介URL経由の
+// 相談・予約で「その区画を紹介した代理店」を特定する処理の両方から使う。
+export async function resolveAgentIdByReferralCode(referralCode: string | null): Promise<string | null> {
+  if (!referralCode) return null;
+
+  const supabase = createSupabaseServerClient();
+  const { data, error } = await supabase
+    .from("agents")
+    .select("id")
+    .eq("referral_code", referralCode)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data?.id ?? null;
+}
+
 export type AgencyIntegrationSettings = {
   id: string | null;
   inbound_api_key_hash: string | null;

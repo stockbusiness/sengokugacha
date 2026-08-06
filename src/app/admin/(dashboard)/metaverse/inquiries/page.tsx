@@ -86,7 +86,8 @@ export default function MetaverseInquiriesPage() {
         <h1 className="mt-1 text-xl font-bold text-zinc-900 dark:text-zinc-50">問い合わせ管理({inquiries.length}件)</h1>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
           LIFF内の相談申込フォームから送られた問い合わせの一覧です。メタバース物件からの相談と、城の区画(🏯)からの相談が同じ一覧に並びます。
-          ユーザーの紹介元代理店(登録済みの場合)へ自動で紐づき、紹介元が無いユーザーの相談は「-」のまま残るので本部で割り振ってください。
+          担当代理店は「その区画を紹介した代理店」(代理店が発行した区画の紹介URL・QR経由)を最優先に自動で割り当てます。
+          紹介URL経由でない場合はユーザーの登録時の紹介元代理店へ、それも無ければ「未割り当て」のまま残るので本部で割り振ってください。
           対応状況はここから更新できます。
         </p>
       </div>
@@ -100,7 +101,7 @@ export default function MetaverseInquiriesPage() {
                   {inquiry.users?.display_name ?? "(未設定)"} — {inquiry.inquiry_type}
                 </p>
                 <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                  {formatInquiryTarget(inquiry)} / 紹介元代理店: {inquiry.agents?.name ?? "-"} / 希望連絡方法:{" "}
+                  {formatInquiryTarget(inquiry)} / 担当代理店: {inquiry.agents?.name ?? "未割り当て"} / 希望連絡方法:{" "}
                   {inquiry.preferred_contact}
                 </p>
                 <p className="text-xs text-zinc-400">{new Date(inquiry.created_at).toLocaleString("ja-JP")}</p>
