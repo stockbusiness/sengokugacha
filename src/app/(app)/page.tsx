@@ -9,6 +9,7 @@ import { NationalIdCard } from "@/components/dashboard/NationalIdCard";
 import { NationBuildingRateCard } from "@/components/dashboard/NationBuildingRateCard";
 import { NationContributionCategoryCard } from "@/components/hubs/NationContributionCategoryCard";
 import { AtmosphereBackground } from "@/components/home/AtmosphereBackground";
+import { JourneyEntryCard } from "@/components/home/JourneyEntryCard";
 import { MetaverseTourEntryCard } from "@/components/home/MetaverseTourEntryCard";
 import { CastleLordEntryCard } from "@/components/home/CastleLordEntryCard";
 import { PriorityQuickActions } from "@/components/home/PriorityQuickActions";
@@ -185,6 +186,7 @@ export default function Home() {
           </div>
 
           <NationContributionCategoryCard />
+          <JourneyEntryCard />
           <MetaverseTourEntryCard />
           <CastleLordEntryCard />
 

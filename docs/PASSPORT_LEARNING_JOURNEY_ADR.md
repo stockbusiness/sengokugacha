@@ -510,8 +510,8 @@ src/modules/learning-journey/
 | PR | 内容 | 前提 |
 |---|---|---|
 | PR1 | 現状調査書・本ADR。コード変更・マイグレーションなし | — |
-| **PR2（完了）** | ミッション基盤（11テーブル・ドメイン純粋関数・採点・完了判定・単体テスト）+ `learning_journey_settings`（全フラグOFF）+ ADR-10の監査ログ3列 | — |
-| PR3 | 参加者画面 | PR2 |
+| PR2 | ミッション基盤（11テーブル・ドメイン純粋関数・採点・完了判定・単体テスト）+ `learning_journey_settings`（全フラグOFF）+ ADR-10の監査ログ3列 | — |
+| **PR3（完了）** | 参加者画面5枚 + 参加者向けAPI6本 + 入口（ホーム・SideMenu） | — |
 | PR4 | 管理画面・監査ログ表示 | PR2 |
 | PR5 | Wallet・共通ID連携、付与上限、LIMIT_HELD、outbox連携 | **§19.0の法務確認 + §8.1の方針承認 + Wallet仕様の確定** |
 | PR6 | 興味・相談・LINE連携 | PR3・PR4 |
