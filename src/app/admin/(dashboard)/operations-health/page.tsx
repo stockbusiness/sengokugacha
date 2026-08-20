@@ -15,9 +15,24 @@ const CATEGORY_LABEL: Record<Finding["category"], string> = {
   integration: "連携",
 };
 
+// マイグレーションの適用漏れ。手動適用運用のため、SQLを流し忘れるとコードだけが
+// 先に本番へ出て「列が無い」というエラーが利用者側で起きる。CIの migration-test は
+// まっさらなDBへ全件を適用するので、この状態は構造上検知できない。
+type MigrationStatus =
+  | {
+      available: true;
+      expectedCount: number;
+      appliedCount: number;
+      drift: { missing: string[]; unexpected: string[] };
+      hasDrift: boolean;
+      messages: string[];
+    }
+  | { available: false; reason: string };
+
 export default function OperationsHealthPage() {
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [findings, setFindings] = useState<Finding[]>([]);
+  const [migrations, setMigrations] = useState<MigrationStatus | null>(null);
   const [checkedAt, setCheckedAt] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -26,10 +41,11 @@ export default function OperationsHealthPage() {
       .then(async (res) => {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "読み込みに失敗しました");
-        return data as { findings: Finding[]; checkedAt: string };
+        return data as { findings: Finding[]; migrations: MigrationStatus | null; checkedAt: string };
       })
       .then((data) => {
         setFindings(data.findings);
+        setMigrations(data.migrations ?? null);
         setCheckedAt(data.checkedAt);
         setStatus("ready");
       })
@@ -73,6 +89,41 @@ export default function OperationsHealthPage() {
       {status === "ready" && (
         <>
           {checkedAt && <p className="text-xs text-zinc-400">最終チェック: {new Date(checkedAt).toLocaleString("ja-JP")}</p>}
+
+          {/* 適用漏れは他の異常の原因になりうるので最上部に置く */}
+          <section className="space-y-3">
+            <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">マイグレーションの適用状況</h2>
+            {migrations === null && (
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">確認していません。</p>
+            )}
+            {migrations && !migrations.available && (
+              <div className="rounded-xl border border-zinc-300 bg-zinc-50 p-4 text-xs text-zinc-700 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300">
+                <p className="font-semibold">確認できませんでした</p>
+                <p className="mt-1">{migrations.reason}</p>
+                <p className="mt-1">
+                  20260816000001 がこのDBへ未適用の場合もここに出ます。適用すると確認できるようになります。
+                </p>
+              </div>
+            )}
+            {migrations?.available && !migrations.hasDrift && (
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">
+                {migrations.expectedCount}件すべて適用済みです。
+              </p>
+            )}
+            {migrations?.available &&
+              migrations.hasDrift &&
+              migrations.messages.map((message) => (
+                <div
+                  key={message}
+                  className="rounded-xl border border-red-300 bg-red-50 p-4 text-xs text-red-900 dark:border-red-800 dark:bg-red-950/40 dark:text-red-200"
+                >
+                  <p className="font-semibold">
+                    リポジトリ {migrations.expectedCount}件 / DB {migrations.appliedCount}件
+                  </p>
+                  <p className="mt-1 leading-relaxed">{message}</p>
+                </div>
+              ))}
+          </section>
 
           <section className="space-y-3">
             <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">要対応({anomalies.length}件)</h2>
