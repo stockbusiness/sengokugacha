@@ -126,13 +126,19 @@ BottomNav は5枠（パスポート / 武将登用 / 図鑑 / 地図 / 購入）
 
 ## ADR-5: OVE付与は「送信アダプタ差し替え式」にし、初期実証は付与OFFで進める
 
-### 事実（現状調査 §10）
+### 事実（現状調査 §10・§12）
 
 - **このリポジトリに OVE の台帳は存在しない**
 - `OveWalletCard.tsx` は明示的なモックで、`users.contribution_points` を1:1で
   「OVE移行予定ポイント（準備中）」として表示しているだけ
 - コード内に「呼び出し元やDBには『OVE』という語を焼き込まない」という設計判断が明記されている
-- `ovewwallet` の正式API・認証・共通ID対応・staging可否は**未確認**
+- **OVEW Wallet の正式APIは確認済み**（2026-08-20、リポジトリ public 化により調査）。
+  `POST /api/v1/rewards/grant` / `/transactions/debit` / `/transactions/{id}/reverse` /
+  `GET /api/v1/service/accounts/{externalUserId}/balance`。HMAC-SHA256署名認証
+- ただし **`service_integrations` の `SENGOKU_PASSPORT` 行（APIキー・署名鍵・上限額）は
+  運用担当者の手動発行が必要**で、発行済みかどうかは未確認
+- ウォレットの動作確認用デプロイは **`AUTH_MODE=mock`** で起動しており、
+  **戦国パスポートSSOはモック実装**（相手方のAPI仕様が未確定のため）
 
 ### 決定
 
@@ -142,7 +148,7 @@ BottomNav は5枠（パスポート / 武将登用 / 図鑑 / 地図 / 購入）
    | 実装 | 用途 |
    |---|---|
    | `NoopRewardDispatcher` | `MISSION_REWARDS_ENABLED` OFF。要求を `PENDING` のまま置く |
-   | `WalletRewardDispatcher` | 正式接続後。**[保留]** 仕様未確認のため未実装 |
+   | `WalletRewardDispatcher` | `POST /api/v1/rewards/grant`（HMAC署名）。**API仕様は確定したが、`SENGOKU_PASSPORT` のAPIキー発行待ちのため [保留]** |
    | `ProvisionalRewardDispatcher` | 運営承認済みの暫定付与先。**[保留]** 承認前は未実装 |
 
 3. **初期実証は指示書§8.1の選択肢2（`MISSION_REWARDS_ENABLED` OFF）を既定とする。**
@@ -160,7 +166,84 @@ BottomNav は5枠（パスポート / 武将登用 / 図鑑 / 地図 / 購入）
 
 ---
 
-## ADR-6: 冪等キーは「完了イベントID」を基底にする
+## ADR-6: `external_user_id` には `users.id` を送る [保留]
+
+### 事実（現状調査 §12）
+
+Wallet の `POST /api/v1/rewards/grant` は **`common_user_id` を受け付けない**。
+`RewardGrantRequestSchema` にそのフィールドは無く、`service_code` + `external_user_id` の組で
+アカウントを解決する（未登録なら自動作成）。
+
+`OveAccount.common_user_id` という列はウォレット側に存在するが、これはウォレットが
+sengoku-ai.com の `POST /api/common-users/resolve` を**呼び出す側**として自分で解決・保存する
+ためのもので、外部サービスからの付与時の識別子ではない。
+
+これは指示書§2(3)「ユーザーの基準識別子には共通ID基盤の `common_user_id` を使用する」と
+噛み合わない。パスポート側の内部識別子と、ウォレットへ送る識別子を**分けて考える必要がある**。
+
+### 決定（案）
+
+| 用途 | 識別子 |
+|---|---|
+| パスポート内部（進捗・回答・完了イベント） | `users.id`（uuid） |
+| ウォレットへ送る `external_user_id` | **`users.id`** |
+| 付与要求に併記して記録する | `common_user_id`（解決済みの場合） |
+
+`users.id` を推す理由:
+
+- 不変で、必ず存在する（`common_user_id` は解決に失敗しうる）
+- `uq_users_common_user_id` により1つの共通IDに対しパスポートユーザーは1人なので、
+  後から共通IDへ寄せ直す必要が生じても対応関係が一意に決まる
+- ウォレット側は `external_user_id` を255文字までの任意文字列として扱うため制約に合う
+
+### [保留] 運営・ウォレット側との合意が必要
+
+**一度送った `external_user_id` は後から変更できない**（ウォレット側でアカウントが自動作成され、
+以後その値で解決されるため）。実証を始める前に確定させること。§19.1 に**追加すべき項目**。
+
+なお指示書§9「共通IDを取得できない場合は付与を行わず進捗を安全に保留する」は、
+`external_user_id` に `users.id` を使う場合でも**方針として維持する**
+（共通IDが解決できていないユーザーは、他システムとの突合ができないため）。
+
+---
+
+## ADR-7: 既存付与の重複防止は「照会」ではなく「取込」で行う [保留]
+
+### 事実（現状調査 §12・§12-b）
+
+指示書§8.4は重複防止判定の手段を2つ挙げているが、**(1) は現状実現できない**。
+
+- **外部サービス向けの取引履歴照会APIが存在しない。** 外部から呼べるのは
+  `GET /api/v1/service/accounts/{externalUserId}/balance` で、返るのは残高と
+  `lifetime_credited` / `lifetime_debited` といった**集計値のみ**。
+  `reasonType` / `reasonId` での検索はできない
+- 取引履歴 `GET /api/v1/me/transactions` は**OVE独自セッション認証の本人向けAPI**で、
+  外部サービスからは呼べない（横断照会できない設計）
+
+さらに、そもそも**旧3,000 OVE はまだ1件も確定付与されていない**可能性が高い。
+ウォレットは新規登録時に `wallet_referral_benefits` を `PENDING`（3,000 OVE）で作るが、
+確定付与するコード自体が未実装で「常に `PENDING` のまま保留される」と明記されている。
+
+### 決定
+
+- **指示書§8.4(2) を採る。** 運営が提供する正式な付与済みデータを、
+  出所・取込日時・更新履歴付きで判定テーブルへ取り込む
+- 取込データが無い場合は**付与を保留**する（推測で付与済み判定を作らない）
+- 判定テーブルは `learning_journey_` 接頭辞ではなく、機能横断で使えるよう別名にする
+  （「はじまりの旅」以外の付与でも同じ判定が要るため）。命名は取込データの形が決まってから
+
+### [保留] 先に確定が必要
+
+1. `wallet_referral_benefits` が本当に全件 `PENDING` なのか（ウォレット管理画面 `/wallet-referrals` で確認）
+2. `PENDING` のままなら、**そもそも「既存参加者は3,000 OVE受領済み」という前提が崩れる**。
+   指示書§9.2「既存参加者の付与済みOVEを維持する」「新規向け3,000 OVE相当の重複取得を防止する」の
+   対象者が誰なのかを§19.1(5)で定義し直す必要がある
+3. ウォレット側に外部サービス向けの取引履歴照会APIを追加してもらう選択肢もある。
+   その場合は§8.4(1) に戻れる
+
+---
+
+## ADR-8: 冪等キーは「完了イベントID」を基底にする
 
 ### 決定
 
@@ -170,9 +253,16 @@ mission_completion:{completionEventId}
 
 `learning_journey_reward_requests.idempotency_key` に **UNIQUE制約**を張る。
 
-Wallet側が完了イベントIDを受理できない場合の代替は、指示書§8.2のとおり
-`{courseId}:{missionId}:{commonUserId}:{enrollmentId}` とし、**必ず `enrollmentId` を含める**
-（再登録で同一ミッションを再提供したときにキーが衝突しないため）。
+**Wallet側の実装と整合することを確認済み**（現状調査§12）:
+
+- `idempotency_key` は **HTTPヘッダーではなくリクエストボディのフィールド**（ウォレット独自規約）。
+  代理店システムの `Idempotency-Key` ヘッダー方式とは別物なので混同しないこと
+- 同一キーの再送は新規取引を作らず**既存取引をそのまま返す**（エラーにならない）。
+  タイムアウト時に安全に再送できる
+- 長さ上限 **255文字**。UUID1個なら余裕がある
+
+代替形式（指示書§8.2）を使う場合も `{courseId}:{missionId}:{externalUserId}:{enrollmentId}` とし、
+**必ず `enrollmentId` を含める**（再登録で同一ミッションを再提供したときにキーが衝突しないため）。
 
 ### `integration_outbox_events` との関係
 
@@ -190,7 +280,7 @@ Vercel の `CRON_SECRET` が未設定のため、**outboxの自動再送は現�
 
 ---
 
-## ADR-7: 機能フラグは環境変数ではなく設定テーブルにする
+## ADR-9: 機能フラグは環境変数ではなく設定テーブルにする
 
 ### 事実
 
@@ -221,7 +311,7 @@ Vercel の `CRON_SECRET` が未設定のため、**outboxの自動再送は現�
 
 ---
 
-## ADR-8: 監査ログは `admin_audit_logs` に3列追加して再利用する
+## ADR-10: 監査ログは `admin_audit_logs` に3列追加して再利用する
 
 ### 事実
 
@@ -254,7 +344,7 @@ alter table admin_audit_logs add column operation_reason text;
 
 ## DB設計
 
-すべて `learning_journey_` 接頭辞。既存テーブルへの変更は ADR-8 の3列のみ。
+すべて `learning_journey_` 接頭辞。既存テーブルへの変更は ADR-10 の3列のみ。
 
 ### テーブル一覧
 
@@ -370,7 +460,7 @@ src/modules/learning-journey/
 | PR | 内容 | 前提 |
 |---|---|---|
 | **PR1（本PR）** | 現状調査書・本ADR。**コード変更・マイグレーションなし** | — |
-| PR2 | ミッション基盤（テーブル・ドメイン・採点・完了判定・単体テスト）+ `learning_journey_settings`（全フラグOFF）+ ADR-8の監査ログ3列 | 本ADRの承認 |
+| PR2 | ミッション基盤（テーブル・ドメイン・採点・完了判定・単体テスト）+ `learning_journey_settings`（全フラグOFF）+ ADR-10の監査ログ3列 | 本ADRの承認 |
 | PR3 | 参加者画面 | PR2 |
 | PR4 | 管理画面・監査ログ表示 | PR2 |
 | PR5 | Wallet・共通ID連携、付与上限、LIMIT_HELD、outbox連携 | **§19.0の法務確認 + §8.1の方針承認 + Wallet仕様の確定** |
@@ -385,8 +475,10 @@ src/modules/learning-journey/
 | # | 項目 | 誰が決めるか |
 |---|---|---|
 | 1 | OVEの法的位置付け（§19.0） | 専門家 |
-| 2 | Wallet正式接続の可否と仕様 | 運営 / `ovewwallet` 側 |
-| 3 | 旧3,000 OVE の正本と付与済み判定 | 運営（他システム横断確認） |
+| 2 | `service_integrations` の `SENGOKU_PASSPORT` 行（APIキー・署名鍵・上限額）の発行 | ウォレット運用担当者（手動作業） |
+| 2-b | 「はじまりの旅」用の `transaction_type` と `reward_rules` を新設するか、既存の汎用種別を使うか | 運営 / ウォレット側 |
+| 3 | 旧3,000 OVE が全件 `PENDING` のままか。`PENDING` なら§9.2の対象者定義をやり直す | 運営（ウォレット管理画面で確認） |
+| 3-b | `external_user_id` に何を送るか（ADR-6。一度送ると変更不可） | 運営 / ウォレット側 |
 | 4 | 7本それぞれの付与数・付与総量上限 | 運営 |
 | 5 | 「本日の任務」との二重特典の扱い | 運営 |
 | 6 | `project_key` に入れる値 | 運営 |
