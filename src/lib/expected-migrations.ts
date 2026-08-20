@@ -94,4 +94,5 @@ export const EXPECTED_MIGRATION_VERSIONS: string[] = [
   "20260814000001", // castle_plot_sales_hooks
   "20260815000001", // learning_journey_foundation
   "20260816000001", // applied_migration_versions
+  "20260817000001", // commission_write_settings
 ];

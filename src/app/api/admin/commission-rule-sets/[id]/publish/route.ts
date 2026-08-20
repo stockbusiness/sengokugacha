@@ -3,15 +3,23 @@ import { logAdminAction } from "@/lib/admin-audit-log";
 import { getAdminActorName, getAdminSession, requireManagerRole } from "@/lib/admin-session";
 import { validateRuleSetRates } from "@/lib/castle-commission-engine";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { rejectIfCommissionWriteDisabled } from "@/lib/commission-write-guard";
 
 // 14.4「公開後のルールは編集せず、新バージョンを作成する」。公開は本部管理者のみ。
 export async function POST(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   if (!(await getAdminSession())) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+
   if (!(await requireManagerRole())) {
     return NextResponse.json({ error: "報酬ルールの公開は本部管理者のみ実行できます" }, { status: 403 });
   }
+
+  // PR-P1a。報酬ルールの編集はAgencyへ移管済み。既定では停止している。
+  // 権限判定の後に置く。operatorには403(権限が無い)を返すのが正確で、
+  // 権限の無い相手へ移管状況を伝える必要も無い。
+  const blocked = await rejectIfCommissionWriteDisabled("commission_rule_set");
+  if (blocked) return blocked;
 
   const { id } = await params;
   const supabase = createSupabaseServerClient();

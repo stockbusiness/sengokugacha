@@ -4,6 +4,7 @@ import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
 import { validateRuleSetRates } from "@/lib/castle-commission-engine";
 import { getRuleSets } from "@/lib/commission-rule-sets";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { rejectIfCommissionWriteDisabled } from "@/lib/commission-write-guard";
 
 export async function GET() {
   if (!(await getAdminSession())) {
@@ -18,6 +19,10 @@ export async function POST(request: NextRequest) {
   if (!(await getAdminSession())) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+
+  // PR-P1a。報酬ルールの編集はAgencyへ移管済み。既定では停止している。
+  const blocked = await rejectIfCommissionWriteDisabled("commission_rule_set");
+  if (blocked) return blocked;
 
   const body = await request.json().catch(() => null);
   if (!body) return NextResponse.json({ error: "invalid body" }, { status: 400 });

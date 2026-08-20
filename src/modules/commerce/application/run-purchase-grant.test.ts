@@ -147,6 +147,49 @@ describe("runPurchaseGrant", () => {
     expect(outbox.enqueued).toContainEqual({ table: "notification_outbox_events", eventType: "notification.plot_purchased" });
   });
 
+  // PR-P1a。報酬計上を停止しても、決済済みの利用者が区画を受け取れなくなってはいけない
+  // (実施順序書§4「同期API失敗で購入や返金を失敗させない」)。停止は
+  // postLandSaleCommission()内の早期returnとして実装しており、ここからは
+  // 「何もせず正常終了する呼び出し」に見える。
+  it("報酬計上が停止中(スキップ)でも土地購入は完走する", async () => {
+    const purchaseRepo = new FakePurchaseRepository();
+    purchaseRepo.context = { ...purchaseRepo.context, item_type: "land_plot", grant_amount: 0, plot_id: "plot-1" };
+    const stepRepo = new FakeStepRepository();
+    const outbox = new FakeOutboxGateway();
+    const userRepo = new FakeUserRepository();
+    // 停止中の挙動: 例外を投げず、何もせずresolveする。
+    postLandSaleCommissionMock.mockResolvedValue(undefined);
+
+    await runPurchaseGrant(purchaseRepo, stepRepo, outbox, userRepo, "purchase-1");
+
+    expect(purchaseRepo.markCompletedCalls).toEqual(["purchase-1"]);
+    expect(purchaseRepo.markGrantFailedCalls).toEqual([]);
+    expect(stepRepo.failedSteps).toEqual([]);
+    // 区画の所有権確定と通知は停止の影響を受けない。
+    expect(completePlotPurchaseMock).toHaveBeenCalledWith("purchase-1");
+    expect(notifyPlotPurchaseMock).toHaveBeenCalledWith("user-1", "plot-1");
+  });
+
+  // 上のテストの裏返し。停止を例外として実装すると何が起きるかを固定しておく。
+  // 決済は済んでいるのに purchases が grant_failed になり、区画も通知も届かない。
+  // PR-P1aのガードを将来throwへ書き換えてはいけない理由がこれ。
+  it("報酬計上が例外を投げると土地購入ごと失敗する(=停止をthrowで実装してはいけない)", async () => {
+    const purchaseRepo = new FakePurchaseRepository();
+    purchaseRepo.context = { ...purchaseRepo.context, item_type: "land_plot", grant_amount: 0, plot_id: "plot-1" };
+    const stepRepo = new FakeStepRepository();
+    const outbox = new FakeOutboxGateway();
+    const userRepo = new FakeUserRepository();
+    postLandSaleCommissionMock.mockRejectedValue(new Error("報酬計上は停止中です"));
+
+    await expect(runPurchaseGrant(purchaseRepo, stepRepo, outbox, userRepo, "purchase-1")).rejects.toThrow(
+      "報酬計上は停止中です"
+    );
+
+    expect(purchaseRepo.markCompletedCalls).toEqual([]);
+    expect(purchaseRepo.markGrantFailedCalls).toHaveLength(1);
+    expect(notifyPlotPurchaseMock).not.toHaveBeenCalled();
+  });
+
   it("skips an already_completed step without re-running its side effect", async () => {
     const purchaseRepo = new FakePurchaseRepository();
     purchaseRepo.context = { ...purchaseRepo.context, item_type: "land_plot", grant_amount: 0, plot_id: "plot-1" };
