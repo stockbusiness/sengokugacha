@@ -10,6 +10,9 @@ type MenuItem = { href: string; icon: string; label: string } | { href: null; ic
 const MENU_ITEMS: MenuItem[] = [
   { href: "/announcements", icon: "📯", label: "お知らせ" },
   { href: "/", icon: "📝", label: "本日の任務" },
+  // 「はじまりの旅」は既存の「本日の任務」とは別概念(指示書§4.3)。
+  // 機能フラグOFFの間はページ側が「準備中」を出す。
+  { href: "/journey", icon: "🧭", label: "はじまりの旅" },
   { href: null, icon: "🎁", label: "プレゼント" },
   { href: "/ranking", icon: "🏆", label: "国家ランキング" },
   // 城一覧への入口はホーム画面のカードだけで、メニューから辿り着けなかった。
