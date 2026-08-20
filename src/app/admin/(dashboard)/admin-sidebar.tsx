@@ -53,6 +53,17 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
+    // 「はじまりの旅」は既存の「本日の任務」とは別機能(指示書§4.3)。
+    // 設定・教材・進捗・特典をこのグループにまとめる。
+    title: "はじまりの旅",
+    items: [
+      { href: "/admin/journey", label: "設定・緊急停止" },
+      { href: "/admin/journey/courses", label: "コース・教材" },
+      { href: "/admin/journey/enrollments", label: "ユーザー別進捗" },
+      { href: "/admin/journey/rewards", label: "特典の付与状況" },
+    ],
+  },
+  {
     title: "コンテンツ・導線",
     items: [
       { href: "/admin/links", label: "送客導線" },
