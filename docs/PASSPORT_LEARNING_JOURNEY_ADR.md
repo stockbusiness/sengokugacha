@@ -139,6 +139,8 @@ BottomNav は5枠（パスポート / 武将登用 / 図鑑 / 地図 / 購入）
   運用担当者の手動発行が必要**で、発行済みかどうかは未確認
 - ウォレットの動作確認用デプロイは **`AUTH_MODE=mock`** で起動しており、
   **戦国パスポートSSOはモック実装**（相手方のAPI仕様が未確定のため）
+- **OVEウォレット自体が開発中で本番稼働していない**（2026-08-20、運営より確認）。
+  接続テストは現時点で実施できない
 
 ### 決定
 
@@ -151,8 +153,9 @@ BottomNav は5枠（パスポート / 武将登用 / 図鑑 / 地図 / 購入）
    | `WalletRewardDispatcher` | `POST /api/v1/rewards/grant`（HMAC署名）。**API仕様は確定したが、`SENGOKU_PASSPORT` のAPIキー発行待ちのため [保留]** |
    | `ProvisionalRewardDispatcher` | 運営承認済みの暫定付与先。**[保留]** 承認前は未実装 |
 
-3. **初期実証は指示書§8.1の選択肢2（`MISSION_REWARDS_ENABLED` OFF）を既定とする。**
-   これが外部依存なしに進められる唯一の選択肢
+3. **初期実証は指示書§8.1の選択肢2（`MISSION_REWARDS_ENABLED` OFF）とする。**
+   ウォレットが未稼働である以上、これは「既定」ではなく**唯一の選択肢**。
+   付与要求レコードは作って `PENDING` のまま保留し、ウォレット稼働後に送信できる構造にする
 4. 暫定付与先として国家貢献ポイントを採用する場合も、
    **`users.contribution_points` を直接加算しない**。
    必ず `learning_journey_reward_requests` を経由し、`recordContribution()` と同じ
@@ -475,7 +478,7 @@ src/modules/learning-journey/
 | # | 項目 | 誰が決めるか |
 |---|---|---|
 | 1 | OVEの法的位置付け（§19.0） | 専門家 |
-| 2 | `service_integrations` の `SENGOKU_PASSPORT` 行（APIキー・署名鍵・上限額）の発行 | ウォレット運用担当者（手動作業） |
+| 2 | **OVEウォレットの稼働時期**。および `service_integrations` の `SENGOKU_PASSPORT` 行（APIキー・署名鍵・上限額）の発行 | ウォレット側（`docs/WALLET_INTEGRATION_QUESTIONS.md` §10・§4） |
 | 2-b | 「はじまりの旅」用の `transaction_type` と `reward_rules` を新設するか、既存の汎用種別を使うか | 運営 / ウォレット側 |
 | 3 | 旧3,000 OVE が全件 `PENDING` のままか。`PENDING` なら§9.2の対象者定義をやり直す | 運営（ウォレット管理画面で確認） |
 | 3-b | `external_user_id` に何を送るか（ADR-6。一度送ると変更不可） | 運営 / ウォレット側 |

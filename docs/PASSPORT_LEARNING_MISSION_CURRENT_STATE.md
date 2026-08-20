@@ -360,7 +360,20 @@ X-OVE-Signature: HMAC-SHA256(signing_secret, "<timestamp>.<nonce>.<method>:<path
 外部APIは `@nestjs/throttler` のグローバル既定（60秒120リクエスト、**IPアドレス単位**）のみ。
 APIキー単位の専用バケットは未実装。
 
-#### staging環境 — [要接続]
+#### 稼働状況 — [確認：未稼働]
+
+**OVEウォレットは現在開発中であり、本番稼働していない**（2026-08-20、運営より確認）。
+
+したがって以下がすべて確定する:
+
+- 千ノ国パスポート用の `service_integrations` 行（APIキー・署名鍵）は**未発行**
+- staging・本番いずれの接続テストも**現時点では実施できない**
+- **指示書§8.1の選択肢2（`MISSION_REWARDS_ENABLED` をOFFにして学習部分だけを検証）が、
+  選択肢ではなく唯一の進め方になる**
+
+確認したい事項は `docs/WALLET_INTEGRATION_QUESTIONS.md` に整理した。
+
+#### デプロイ状況 — [要接続]
 
 `docs/deployment.md` によれば Railway + Vercel への**動作確認用デプロイは完了**しているが、
 そのデプロイは以下の制約付き:
@@ -517,7 +530,8 @@ GitHub Actions（`ci.yml`、1本のみ）のジョブ:
 
 | # | 内容 | 影響 |
 |---|---|---|
-| 1 | **OVEの実体が無い**（`OveWalletCard` はモック、台帳なし、DBに `ove` を含む列なし） | PR5の前提。§8.1の3方針から運営承認が必須。現時点で進められるのは選択肢2（`MISSION_REWARDS_ENABLED` OFF） |
+| 0 | **OVEウォレット自体が開発中・未稼働** | PR5は着手不可。付与OFFでの実証が唯一の進め方。確認事項は `docs/WALLET_INTEGRATION_QUESTIONS.md` |
+| 1 | **OVEの実体が無い**（`OveWalletCard` はモック、台帳なし、DBに `ove` を含む列なし） | PR5の前提。§8.1の3方針のうち、選択肢2（`MISSION_REWARDS_ENABLED` OFF）以外は現時点で選べない |
 | 2 | **旧3,000 OVE は「未確定のPENDING」だった**（正本はウォレットの `wallet_referral_benefits`。確定付与するコードがまだ無い） | 「既存参加者は3,000 OVE受領済み」という前提が成立していない可能性が高い。§9.2・§19.1(4)(5)の再検討が必要 |
 | 3 | **Wallet の付与APIは `common_user_id` を受け付けない**（`service_code` + `external_user_id` で解決） | 指示書§2(3)「基準識別子に common_user_id を使用する」とAPI仕様が噛み合わない。`external_user_id` に何を送るかの決定が必要 |
 | 3-b | **外部サービス向けの取引履歴照会APIが存在しない**（残高の集計値のみ） | 指示書§8.4(1) が現状実現不可。(2) の移行データ取込か、ウォレットへのAPI追加依頼になる |
@@ -538,7 +552,7 @@ GitHub Actions（`ci.yml`、1本のみ）のジョブ:
 
 | # | 項目 | 区分 | 解消方法 |
 |---|---|---|---|
-| 1 | OVEW Wallet の正式API・認証・共通ID対応・staging可否 | [要接続] | `ovewwallet` リポジトリの参照許可、または運営からの仕様提供 |
+| 1 | OVEW Wallet の稼働時期、APIキー発行、取引履歴照会APIの追加可否、`external_user_id` の合意 | [要接続] | `docs/WALLET_INTEGRATION_QUESTIONS.md` の回答待ち（API仕様自体はリポジトリ調査で確認済み） |
 | 2 | 旧3,000 OVE 付与の主体と正本 | [要接続] | Wallet / 代理店 / AIアート教室 / 移行データの横断確認 |
 | 3 | 共通IDハブ（sen-no-kuni HUB）への疎通 | [設定なし][要接続] | staging での接続テスト |
 | 4 | 代理店システム（sengoku-ai.com）への疎通 | [設定なし][要接続] | staging での接続テスト |
