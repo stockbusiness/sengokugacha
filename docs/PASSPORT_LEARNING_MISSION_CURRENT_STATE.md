@@ -227,29 +227,171 @@ map  market  metaverse-tour  my-land  purchase  ranking  regions  tenka-toitsu
 - 一方で「暫定付与先として国家貢献ポイントを使う」場合、`OveWalletCard` が `contribution_points` を1:1でOVEとして見せている以上、**利用者からは区別がつかない**。この表示をどう扱うかが運営判断事項になる（§19.1(6)(7)）。
 - **§8.1の選択肢2（`MISSION_REWARDS_ENABLED` をOFFにして学習部分だけ検証）が、現時点で外部依存なしに進められる唯一の選択肢。**
 
-### 11. 3,000 OVE 一括付与処理の実装場所 — [確認：存在しない]
+### 11. 3,000 OVE 一括付与処理の実装場所 — [確認：本リポジトリには無い]
 
 `src`・`docs`・`supabase/migrations` を横断検索したが、**3,000 OVE の一括付与処理はこのリポジトリに存在しない**（`3000` / `3,000` と OVE を結びつける記述なし）。
 
 指示書§3.1(11) の留保「本リポジトリ内に存在しない可能性がある」は**正しかった**。
 
-**[要接続]** 付与主体と記録の正本の特定には、以下の横断確認が必要（本リポジトリからは確認不可）:
-OVEW Wallet / 代理店システム / AIアート教室 / CSV・手動付与・移行データ
+**正本は OVEW Wallet 側にあった。** 詳細は下の「12-b」を参照。要点だけ先に書くと、
+ウォレットは新規登録時に `wallet_referral_benefits` を `PENDING`（3,000 OVE）で作るが、
+**確定付与するコード自体がまだ無く、全件 `PENDING` のまま保留されている**。
 
-**このリポジトリ内で「付与済み」を判定できる材料は無い。** 指示書§8.4のとおり、照会APIも正式な移行データも無い状態では付与を保留するしかない。
+### 12. 別リポジトリ `stockbusiness/ovewwallet` — [確認] / [要接続]
 
-### 12. 別リポジトリ `stockbusiness/ovewwallet` — [要接続]
+2026年8月20日にリポジトリが public 化されたため調査した（調査時点のHEAD: `5a702c2`）。
+以下はすべて `ovewwallet` のソース・ドキュメントから読み取った事実で、推測は含まない。
 
-**未確認。** 本セッションのGitHubアクセスは `stockbusiness/sengokugacha` にスコープされており、`ovewwallet` は参照できていない。
+#### 構成
 
-推測でエンドポイント・認証方式・項目名を作らない方針（指示書§3.2・§8.2末尾）に従い、以下はすべて未確認のままとする:
+pnpm モノレポ。`apps/api`（NestJS 10 / REST / Swagger `/api/docs`）、
+`apps/user-wallet`・`apps/admin-wallet`（Next.js 14）、`packages/{database,ledger,auth,shared-types,config}`。
+DBは PostgreSQL + Prisma。デプロイは Railway（API）+ Vercel（画面）。
 
-- 正式API（付与 / 取消 / 取引履歴照会）のエンドポイントと項目名
-- 認証方式
-- 共通ID（`common_user_id`）対応の有無
-- staging環境の利用可否
+台帳は**取引の直接UPDATE/DELETEを行わない設計**（訂正は必ずREVERSALで記録）。
 
-> リポジトリを本セッションへ追加すれば調査できる。必要であれば `ovewwallet` の閲覧許可をいただきたい。
+#### 正式API（外部サービス向け）
+
+| メソッド / パス | 用途 |
+|---|---|
+| `POST /api/v1/rewards/grant` | ポイント付与 |
+| `POST /api/v1/transactions/debit` | ポイント利用（減算） |
+| `POST /api/v1/transactions/{transactionId}/reverse` | 取消 |
+| `GET /api/v1/service/accounts/{externalUserId}/balance` | 残高照会 |
+
+`service_code` は `ServiceCode` enum の値。**千ノ国パスポートは `SENGOKU_PASSPORT`** が定義済み。
+
+#### 認証（HMAC署名）
+
+```
+X-OVE-Api-Key: ovk_...
+X-OVE-Timestamp: <UNIXエポックミリ秒>
+X-OVE-Nonce: <リクエストごとのランダム文字列>
+X-OVE-Signature: HMAC-SHA256(signing_secret, "<timestamp>.<nonce>.<method>:<path>:<raw body>")
+```
+
+- タイムスタンプ許容ずれ **±5分**
+- nonce は連携先ごとに一度きり（リプレイ拒否）
+- 署名対象は Node.js の `JSON.stringify(body)` と**完全一致**が必要（キー順序・非ASCIIのエスケープ）
+- APIキー・署名鍵の発行は**運用担当者の手動作業のみ**。セルフサービス機能は無い。発行時に一度だけ平文で渡され、再表示不可
+
+#### 付与リクエストの項目（`RewardGrantRequestSchema`）
+
+```json
+{
+  "service_code": "SENGOKU_PASSPORT",
+  "external_user_id": "<連携先システム側のユーザーID>",
+  "event_type": "...",
+  "event_id": "...",
+  "amount": 10000,
+  "transaction_type": "EVENT_REWARD",
+  "display_name": "...",
+  "description": "...",
+  "idempotency_key": "..."
+}
+```
+
+`amount` は正の整数。`external_user_id` が未登録なら**アカウント・ウォレット・連携を自動作成**する。
+
+#### 冪等性 — ★指示書§8.2との差分
+
+**`idempotency_key` はHTTPヘッダーではなくリクエストボディのフィールド。**
+ウォレット独自の規約で、代理店システム側の `Idempotency-Key` ヘッダー方式とは異なる。
+同一キーの再送は新規取引を作らず**既存取引をそのまま返す**（grant/debit/reverse共通、エラーにならない）。
+
+#### `common_user_id` — ★指示書§2(3)との重大な差分
+
+**付与APIは `common_user_id` を受け付けない。** `RewardGrantRequestSchema` に
+そのフィールドは存在せず、`service_code` + `external_user_id` の組でアカウントを解決する。
+
+`OveAccount.common_user_id` という列はスキーマ上存在する（migration `20260720115600`）が、
+これはウォレットが sengoku-ai.com の `POST /api/common-users/resolve` を**呼び出す側**として
+自分で解決・保存するためのもので、外部サービスからの付与時の識別子ではない。
+
+→ **パスポート側は `external_user_id` として何を送るかを決める必要がある**
+（`users.id` か `common_user_id` か）。これは§19.1に**追加すべき運営判断事項**。
+
+#### 取引履歴照会 — ★指示書§8.4の前提が崩れる
+
+**外部サービス向けの取引履歴照会APIは存在しない。**
+外部サービスが呼べるのは `GET /api/v1/service/accounts/{externalUserId}/balance`（**残高のみ**）で、
+返るのは `available_balance` / `pending_balance` / `held_balance` /
+`lifetime_credited` / `lifetime_debited` といった集計値。
+
+取引履歴（`GET /api/v1/me/transactions`）は**OVE独自セッション認証の本人向けAPI**で、
+外部サービスからは呼べない。他サービス利用者の残高を横断照会できない設計になっている
+（旧 `GET /api/v1/wallets/{oveAccountId}/...` は廃止済み）。
+
+→ **指示書§8.4(1)「Walletの取引履歴照会APIを reasonType・reasonId 等で検索する」は現状実現できない。**
+§8.4(2)（運営が提供する正式な付与済みデータの取込）を採るか、ウォレット側にAPI追加を依頼するかになる。
+
+#### 付与ルール（`reward_rules`）による上限
+
+`transaction_type` が `RULE_CODE_BY_TRANSACTION_TYPE` に載っている場合のみ、
+`starts_at`/`ends_at`・`per_user_limit`・`per_event_limit`・`monthly_count_limit`/
+`monthly_amount_limit`（**ルール単位＝全ウォレット横断**）・`global_amount_limit` を検証する。
+
+| `transaction_type` | `rule_code` | 対象サービス |
+|---|---|---|
+| `REGISTRATION_BONUS` | `SENGOKU_REGISTRATION_BONUS` | `SENGOKU_PASSPORT` |
+| `AIART_ATTENDANCE` | `AIART_ATTENDANCE_REWARD` | `AIART` |
+| `SENGOKU_EC_PURCHASE` | `SENGOKU_EC_PURCHASE_REWARD` | `SENGOKU_EC` |
+
+マッピングに無い `transaction_type`（`EVENT_REWARD` 等）では `reward_rules` の上限が
+**一切効かず**、`service_integrations` の1リクエスト上限・1日上限だけが効く。
+
+→ 「はじまりの旅」用に新しい `transaction_type` と `rule_code` を追加してもらうか、
+既存の汎用種別を使って上限を**パスポート側で持つ**か（指示書§8.5はパスポート側の上限を要求している）の判断が要る。
+
+#### エラー形式
+
+```json
+{ "ok": false, "error": { "code": "VALIDATION_ERROR", "message": "..." }, "request_id": "..." }
+```
+
+主なコード: `API_KEY_REQUIRED`(401) / `INVALID_API_KEY`(401) / `VALIDATION_ERROR`(400) /
+`FEATURE_DISABLED`(503) / `NOT_FOUND`(404) / `InsufficientBalanceError`(409) /
+`WalletNotActiveError`(409) / `TransactionNotReversibleError`(409) / `INTERNAL_ERROR`(500)。
+
+残高照会と代理店SSOのみ旧形式（NestJS標準に近い形）。
+
+#### レート制限
+
+外部APIは `@nestjs/throttler` のグローバル既定（60秒120リクエスト、**IPアドレス単位**）のみ。
+APIキー単位の専用バケットは未実装。
+
+#### staging環境 — [要接続]
+
+`docs/deployment.md` によれば Railway + Vercel への**動作確認用デプロイは完了**しているが、
+そのデプロイは以下の制約付き:
+
+- **`AUTH_MODE=mock` で起動**している
+- **戦国パスポートSSOは相手方のAPI仕様が未確定のためモック実装**
+- LINEログインは本番実装のコードはあるが実チャネルでの結合テストが未実施のため `NODE_ENV=production` にしていない
+
+→ **「はじまりの旅」がstagingで疎通確認できるかは、`service_integrations` に
+`SENGOKU_PASSPORT` 行を発行してもらえるか次第。** 発行は運用担当者の手動作業。
+URL・APIキーはこのリポジトリからは分からない（秘密情報のため記載もしない）。
+
+### 12-b. 旧3,000 OVE 一括付与の正本 — [確認] ★重要
+
+**ウォレット側にあった。** ただし「一括付与」ではなく、**まだ1件も確定付与されていない。**
+
+`docs/agency-referral.md`（代理店紹介トークン受け入れ・登録特典 実装指示書 v1.0 Phase 1）:
+
+- 新規登録時に、アカウント作成と同一トランザクションで
+  `wallet_referrals` を `PENDING` へ更新し、**`wallet_referral_benefits` を `PENDING`（3,000 OVE）で作成**する
+- **「3,000 OVEは今回は確定付与されず、常に `PENDING` のまま保留される」**（Phase 2で代理店システムから確認結果を受け取ってから確定する設計）
+- Phase 2（代理店システム接続・確認結果反映・特典確定）と Phase 3（管理者の手動確定・取消・紹介者訂正）は**未実装**
+- 額は環境変数 `REFERRAL_SIGNUP_BONUS_AMOUNT`（既定 `3000`）
+- フラグ `ENABLE_WALLET_REGISTRATION_BONUS` は Phase 1 では**未参照**（確定付与するコード自体が無いため）
+- 対応する取引種別は `REGISTRATION_BONUS` / `rule_code: SENGOKU_REGISTRATION_BONUS`
+
+**含意**:
+- 「既存参加者が3,000 OVEを受け取っている」という前提は、**現時点では成立していない可能性が高い**
+- 正本は `wallet_referral_benefits`（ウォレット側）。**パスポート側には無い**
+- 指示書§8.4の重複防止判定は、外部APIからは照会できない（取引履歴APIが無く、そもそも取引がまだ作られていない）
+- **[要接続]** 実際に `PENDING` のまま残っているのか、別経路で確定付与されたのかは、ウォレット管理画面 `/wallet-referrals` または運営への確認が必要
 
 ### 13. 代理店情報取得APIの有無 — [確認] / [設定なし]
 
@@ -376,8 +518,10 @@ GitHub Actions（`ci.yml`、1本のみ）のジョブ:
 | # | 内容 | 影響 |
 |---|---|---|
 | 1 | **OVEの実体が無い**（`OveWalletCard` はモック、台帳なし、DBに `ove` を含む列なし） | PR5の前提。§8.1の3方針から運営承認が必須。現時点で進められるのは選択肢2（`MISSION_REWARDS_ENABLED` OFF） |
-| 2 | **旧3,000 OVE付与が本リポジトリに無い** | §8.4の付与済み判定材料がゼロ。他システム横断確認が先 |
-| 3 | **`ovewwallet` リポジトリ未参照** | §3.1(12) が未調査のまま。閲覧許可があれば調査可能 |
+| 2 | **旧3,000 OVE は「未確定のPENDING」だった**（正本はウォレットの `wallet_referral_benefits`。確定付与するコードがまだ無い） | 「既存参加者は3,000 OVE受領済み」という前提が成立していない可能性が高い。§9.2・§19.1(4)(5)の再検討が必要 |
+| 3 | **Wallet の付与APIは `common_user_id` を受け付けない**（`service_code` + `external_user_id` で解決） | 指示書§2(3)「基準識別子に common_user_id を使用する」とAPI仕様が噛み合わない。`external_user_id` に何を送るかの決定が必要 |
+| 3-b | **外部サービス向けの取引履歴照会APIが存在しない**（残高の集計値のみ） | 指示書§8.4(1) が現状実現不可。(2) の移行データ取込か、ウォレットへのAPI追加依頼になる |
+| 3-c | **`idempotency_key` はボディのフィールド**（ヘッダーではない） | §8.2の想定と実装が一致。ただし代理店システムの `Idempotency-Key` ヘッダー方式とは別規約なので混同しないこと |
 | 4 | **`admin_audit_logs` に3列不足**（`admin_role` / `request_id` / `operation_reason`） | §7末尾の要求。NULL許容列の追加が必要 |
 | 5 | **`CRON_SECRET` 未設定でoutbox自動再送が停止中** | §8.5でoutboxに載せても自動再送されない。本機能以前からの既存課題 |
 | 6 | **`/passport` 接頭辞が存在しない** | §4.1の想定ルート `/passport/journey/...` は既存規約と不一致。`/journey/...` を推奨（§4.1は「既存ルーティング規約に合わせて最終決定する」としている） |
