@@ -15,7 +15,6 @@ import { CastleLordEntryCard } from "@/components/home/CastleLordEntryCard";
 import { PriorityQuickActions } from "@/components/home/PriorityQuickActions";
 import { ContributionCard } from "@/components/economy/ContributionCard";
 import { ActivityTimelineCard } from "@/components/economy/ActivityTimelineCard";
-import { OveWalletCard } from "@/components/economy/OveWalletCard";
 import { BadgeCard } from "@/components/economy/BadgeCard";
 import { NationNewsCard } from "@/components/economy/NationNewsCard";
 import { ensureLiffSession } from "@/lib/client/ensure-liff-session";
@@ -190,7 +189,6 @@ export default function Home() {
           <MetaverseTourEntryCard />
           <CastleLordEntryCard />
 
-          {economy && <OveWalletCard contributionPoints={economy.contribution.total} entries={economy.activity} />}
           {economy && <ActivityTimelineCard entries={economy.activity.slice(0, 5)} />}
           {economy && <BadgeCard badges={economy.badges} />}
           <NationNewsCard announcements={announcements} />
