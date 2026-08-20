@@ -3,6 +3,7 @@ import { logAdminAction } from "@/lib/admin-audit-log";
 import { getAdminActorName, getAdminSession } from "@/lib/admin-session";
 import { validateRuleSetRates } from "@/lib/castle-commission-engine";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
+import { rejectIfCommissionWriteDisabled } from "@/lib/commission-write-guard";
 
 // 14.4「公開後のルールは編集せず、新バージョンを作成する」。下書き(draft)のみ編集可能
 // (operatorでも可。公開自体は別途/publishでmanager限定)。
@@ -10,6 +11,10 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!(await getAdminSession())) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+
+  // PR-P1a。報酬ルールの編集はAgencyへ移管済み。既定では停止している。
+  const blocked = await rejectIfCommissionWriteDisabled("commission_rule_set");
+  if (blocked) return blocked;
 
   const { id } = await params;
   const body = await request.json().catch(() => null);
@@ -59,6 +64,10 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   if (!(await getAdminSession())) {
     return NextResponse.json({ error: "unauthorized" }, { status: 401 });
   }
+
+  // PR-P1a。報酬ルールの編集はAgencyへ移管済み。既定では停止している。
+  const blocked = await rejectIfCommissionWriteDisabled("commission_rule_set");
+  if (blocked) return blocked;
 
   const { id } = await params;
   const supabase = createSupabaseServerClient();

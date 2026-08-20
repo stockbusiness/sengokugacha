@@ -8,6 +8,7 @@ import {
 import { getCastleLordPlanSettings } from "@/lib/castle-lord-plan-settings";
 import { notifyCommissionConfirmed, notifyCommissionReversed } from "@/lib/castle-notifications";
 import { getCurrentPublishedRuleSet } from "@/lib/commission-rule-sets";
+import { decideCommissionWriteFromSettings } from "@/lib/commission-write-settings";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 // 8.1「入金額」から「報酬計算対象額」への変換。価格は税込表示のため、
@@ -21,6 +22,20 @@ function toBaseAmountYen(amountReceivedYen: number): number {
 // 報酬元帳(commission_ledger)へ必要な明細行を書き込む。冪等性は「purchase.status
 // ガード(webhook側)」+「commission_ledgerの部分ユニークインデックス」の二重で担保する。
 export async function postLandSaleCommission(purchaseId: string): Promise<void> {
+  // PR-P1a。報酬計算の正本はAgencyへ移ったため、既定では新規計上しない。
+  //
+  // ここは必ず「成功扱いのスキップ」にする。例外を投げると runStep() が
+  // markStepFailed() を呼び、runPurchaseGrant() 全体が失敗して purchases が
+  // grant_failed になる。利用者は決済済みなのに区画を受け取れなくなるため、
+  // 停止フラグが購入を壊すという最悪の形になる(実施順序書§4「同期API失敗で
+  // 購入や返金を失敗させない」)。直下の「公開済みルールセットが無い場合」と
+  // 同じ早期returnの形に揃えてある。
+  const decision = await decideCommissionWriteFromSettings("land_sale_commission");
+  if (!decision.allowed) {
+    console.info("報酬計上はAgencyへ移管済みのため、新規計上をスキップしました", { purchaseId });
+    return;
+  }
+
   const supabase = createSupabaseServerClient();
 
   const { data: purchase, error: purchaseError } = await supabase
