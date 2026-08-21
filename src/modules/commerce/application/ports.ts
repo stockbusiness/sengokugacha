@@ -14,7 +14,8 @@ export type GrantStepKey =
   | "commission_posted"
   | "agent_sale_recorded"
   | "referral_confirmed"
-  | "notification_sent";
+  | "notification_sent"
+  | "sales_fact_recorded";
 
 export type ClaimGrantStepResult = {
   claim_outcome: "claimed" | "already_completed" | "in_progress" | "dead";

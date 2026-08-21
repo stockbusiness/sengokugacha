@@ -7,7 +7,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 // 差し替える(これらの単体動作自体は各モジュール側の責務であり、ここではrunPurchaseGrant()の
 // オーケストレーション(呼び出し順序・分岐)のみを検証する)。
 
-const { confirmReferralMock, notifyPlotPurchaseMock, completePlotPurchaseMock, postLandSaleCommissionMock } = vi.hoisted(() => ({
+const {
+  confirmReferralMock,
+  notifyPlotPurchaseMock,
+  completePlotPurchaseMock,
+  postLandSaleCommissionMock,
+  recordSalesFactMock,
+} = vi.hoisted(() => ({
   // 呼び出し内容を検証するテストがあるため、引数の型を持つ関数として作る。
   confirmReferralMock: vi.fn((input: Record<string, unknown>, idempotencyKey?: string) =>
     Promise.resolve(Boolean(input) || Boolean(idempotencyKey))
@@ -15,12 +21,14 @@ const { confirmReferralMock, notifyPlotPurchaseMock, completePlotPurchaseMock, p
   notifyPlotPurchaseMock: vi.fn(async () => true),
   completePlotPurchaseMock: vi.fn(async () => {}),
   postLandSaleCommissionMock: vi.fn(async () => {}),
+  recordSalesFactMock: vi.fn(async () => {}),
 }));
 
 vi.mock("@/lib/common-user-hub", () => ({ confirmReferral: confirmReferralMock }));
 vi.mock("@/lib/castle-notifications", () => ({ notifyPlotPurchase: notifyPlotPurchaseMock }));
 vi.mock("@/lib/plot-reservations", () => ({ completePlotPurchase: completePlotPurchaseMock }));
 vi.mock("@/lib/castle-commissions", () => ({ postLandSaleCommission: postLandSaleCommissionMock }));
+vi.mock("@/lib/sales-fact-outbox", () => ({ recordSalesFact: recordSalesFactMock }));
 
 import { runPurchaseGrant } from "@/modules/commerce/application/run-purchase-grant";
 import type {
@@ -115,6 +123,7 @@ beforeEach(() => {
   notifyPlotPurchaseMock.mockClear().mockResolvedValue(true);
   completePlotPurchaseMock.mockClear().mockResolvedValue(undefined);
   postLandSaleCommissionMock.mockClear().mockResolvedValue(undefined);
+  recordSalesFactMock.mockClear().mockResolvedValue(undefined);
 });
 
 describe("runPurchaseGrant", () => {
@@ -126,7 +135,7 @@ describe("runPurchaseGrant", () => {
 
     await runPurchaseGrant(purchaseRepo, stepRepo, outbox, userRepo, "purchase-1");
 
-    expect(stepRepo.claimedSteps).toEqual(["referral_confirmed"]);
+    expect(stepRepo.claimedSteps).toEqual(["sales_fact_recorded", "referral_confirmed"]);
     expect(purchaseRepo.markCompletedCalls).toEqual(["purchase-1"]);
     expect(completePlotPurchaseMock).not.toHaveBeenCalled();
   });
@@ -140,7 +149,13 @@ describe("runPurchaseGrant", () => {
 
     await runPurchaseGrant(purchaseRepo, stepRepo, outbox, userRepo, "purchase-1");
 
-    expect(stepRepo.claimedSteps).toEqual(["plot_completed", "commission_posted", "notification_sent", "referral_confirmed"]);
+    expect(stepRepo.claimedSteps).toEqual([
+      "plot_completed",
+      "commission_posted",
+      "notification_sent",
+      "sales_fact_recorded",
+      "referral_confirmed",
+    ]);
     expect(completePlotPurchaseMock).toHaveBeenCalledWith("purchase-1");
     expect(postLandSaleCommissionMock).toHaveBeenCalledWith("purchase-1");
     expect(notifyPlotPurchaseMock).toHaveBeenCalledWith("user-1", "plot-1");
@@ -188,6 +203,65 @@ describe("runPurchaseGrant", () => {
     expect(purchaseRepo.markCompletedCalls).toEqual([]);
     expect(purchaseRepo.markGrantFailedCalls).toHaveLength(1);
     expect(notifyPlotPurchaseMock).not.toHaveBeenCalled();
+  });
+
+  // PR-P1c。販売事実の記録。
+  it("土地以外(国高・ガチャチケット)の購入でも販売事実を記録する", async () => {
+    const purchaseRepo = new FakePurchaseRepository();
+    const stepRepo = new FakeStepRepository();
+    const outbox = new FakeOutboxGateway();
+    const userRepo = new FakeUserRepository();
+
+    await runPurchaseGrant(purchaseRepo, stepRepo, outbox, userRepo, "purchase-1");
+
+    // agent_salesを将来止めても販売事実が失われないよう、土地専用にはしない(Q4)。
+    expect(recordSalesFactMock).toHaveBeenCalledWith("purchase-1");
+    expect(purchaseRepo.markCompletedCalls).toEqual(["purchase-1"]);
+  });
+
+  it("土地購入でも販売事実を記録する", async () => {
+    const purchaseRepo = new FakePurchaseRepository();
+    purchaseRepo.context = { ...purchaseRepo.context, item_type: "land_plot", grant_amount: 0, plot_id: "plot-1" };
+    const stepRepo = new FakeStepRepository();
+    const outbox = new FakeOutboxGateway();
+    const userRepo = new FakeUserRepository();
+
+    await runPurchaseGrant(purchaseRepo, stepRepo, outbox, userRepo, "purchase-1");
+
+    expect(recordSalesFactMock).toHaveBeenCalledWith("purchase-1");
+  });
+
+  // 生成フラグOFFのときは recordSalesFact() が何もせずresolveする。購入は完走する。
+  it("販売事実の記録が停止中(スキップ)でも購入は完走する", async () => {
+    const purchaseRepo = new FakePurchaseRepository();
+    const stepRepo = new FakeStepRepository();
+    const outbox = new FakeOutboxGateway();
+    const userRepo = new FakeUserRepository();
+    recordSalesFactMock.mockResolvedValue(undefined);
+
+    await runPurchaseGrant(purchaseRepo, stepRepo, outbox, userRepo, "purchase-1");
+
+    expect(purchaseRepo.markCompletedCalls).toEqual(["purchase-1"]);
+    expect(purchaseRepo.markGrantFailedCalls).toEqual([]);
+    expect(stepRepo.failedSteps).toEqual([]);
+  });
+
+  // 記録済みのステップは再claimされない=同じ購入を何度処理してもOutboxは1件。
+  it("販売事実の記録が完了済みなら再実行しない", async () => {
+    const purchaseRepo = new FakePurchaseRepository();
+    const stepRepo = new FakeStepRepository();
+    stepRepo.claimResultByStep.sales_fact_recorded = {
+      claim_outcome: "already_completed",
+      step_row_id: "x",
+      claim_token: null,
+    };
+    const outbox = new FakeOutboxGateway();
+    const userRepo = new FakeUserRepository();
+
+    await runPurchaseGrant(purchaseRepo, stepRepo, outbox, userRepo, "purchase-1");
+
+    expect(recordSalesFactMock).not.toHaveBeenCalled();
+    expect(purchaseRepo.markCompletedCalls).toEqual(["purchase-1"]);
   });
 
   it("skips an already_completed step without re-running its side effect", async () => {
