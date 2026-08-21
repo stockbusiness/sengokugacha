@@ -18,7 +18,7 @@ export async function POST(_request: Request, { params }: { params: Promise<{ id
   // PR-P1a。報酬ルールの編集はAgencyへ移管済み。既定では停止している。
   // 権限判定の後に置く。operatorには403(権限が無い)を返すのが正確で、
   // 権限の無い相手へ移管状況を伝える必要も無い。
-  const blocked = await rejectIfCommissionWriteDisabled("commission_rule_set");
+  const blocked = await rejectIfCommissionWriteDisabled("commission_rule_set", "route=POST /api/admin/commission-rule-sets/[id]/publish");
   if (blocked) return blocked;
 
   const { id } = await params;

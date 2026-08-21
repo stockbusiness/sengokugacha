@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CommissionMigrationNotice } from "@/components/admin/CommissionMigrationNotice";
+import { EMPTY_STATE_TEXT } from "@/modules/castle/domain/commission-admin-view";
+import { useCommissionAdminNotice } from "@/lib/client/use-commission-admin-notice";
 
 type PayableRecipient = {
   recipientType: string;
@@ -29,6 +32,8 @@ const RECIPIENT_LABEL: Record<string, string> = {
 };
 
 export default function CastlePayoutsPage() {
+  // PR-P1b。新規計上は停止済み。移管前に確定した報酬の清算だけを続ける。
+  const { notice, agencyUrl } = useCommissionAdminNotice("payouts");
   const [recipients, setRecipients] = useState<PayableRecipient[]>([]);
   const [payouts, setPayouts] = useState<Payout[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
@@ -93,8 +98,10 @@ export default function CastlePayoutsPage() {
         </p>
       </div>
 
+      <CommissionMigrationNotice notice={notice ?? { kind: "none" }} agencyUrl={agencyUrl} />
+
       <div>
-        <h2 className="mb-2 text-sm font-semibold text-zinc-600 dark:text-zinc-400">支払待ち(確定済み・未払い)</h2>
+        <h2 className="mb-2 text-sm font-semibold text-zinc-600 dark:text-zinc-400">支払待ち(移管前に確定済み・未払い)</h2>
         {message && <p className="mb-2 text-xs text-red-700 dark:text-red-400">{message}</p>}
         <div className="space-y-1">
           {recipients.map((r) => {
@@ -124,7 +131,7 @@ export default function CastlePayoutsPage() {
             );
           })}
           {recipients.length === 0 && (
-            <p className="text-sm text-zinc-500 dark:text-zinc-400">支払待ちの確定済み報酬はありません。</p>
+            <p className="text-sm text-zinc-500 dark:text-zinc-400">{EMPTY_STATE_TEXT.payouts}</p>
           )}
         </div>
       </div>

@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
   }
 
   // PR-P1a。報酬ルールの編集はAgencyへ移管済み。既定では停止している。
-  const blocked = await rejectIfCommissionWriteDisabled("commission_rule_set");
+  const blocked = await rejectIfCommissionWriteDisabled("commission_rule_set", "route=POST /api/admin/commission-rule-sets");
   if (blocked) return blocked;
 
   const body = await request.json().catch(() => null);

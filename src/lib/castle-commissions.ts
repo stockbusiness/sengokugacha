@@ -8,7 +8,7 @@ import {
 import { getCastleLordPlanSettings } from "@/lib/castle-lord-plan-settings";
 import { notifyCommissionConfirmed, notifyCommissionReversed } from "@/lib/castle-notifications";
 import { getCurrentPublishedRuleSet } from "@/lib/commission-rule-sets";
-import { decideCommissionWriteFromSettings } from "@/lib/commission-write-settings";
+import { decideCommissionWriteFromSettings, recordCommissionWriteBlocked } from "@/lib/commission-write-settings";
 import { createSupabaseServerClient } from "@/lib/supabase-server";
 
 // 8.1「入金額」から「報酬計算対象額」への変換。価格は税込表示のため、
@@ -30,9 +30,12 @@ export async function postLandSaleCommission(purchaseId: string): Promise<void> 
   // 停止フラグが購入を壊すという最悪の形になる(実施順序書§4「同期API失敗で
   // 購入や返金を失敗させない」)。直下の「公開済みルールセットが無い場合」と
   // 同じ早期returnの形に揃えてある。
+  // ここはStripe webhook・管理画面の再実行(retry-grant)いずれも runPurchaseGrant() を
+  // 経由して必ず通る唯一の新規計上口。cron(outbox再送・reconciliation)は報酬に触れない。
+  // 経路ごとにガードを置くのではなく、計上処理本体の入口1箇所で止める(PR-P1b 追加条件4)。
   const decision = await decideCommissionWriteFromSettings("land_sale_commission");
   if (!decision.allowed) {
-    console.info("報酬計上はAgencyへ移管済みのため、新規計上をスキップしました", { purchaseId });
+    await recordCommissionWriteBlocked("land_sale_commission", `purchase_id=${purchaseId}`);
     return;
   }
 

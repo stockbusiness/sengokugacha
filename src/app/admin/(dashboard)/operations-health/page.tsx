@@ -29,10 +29,14 @@ type MigrationStatus =
     }
   | { available: false; reason: string };
 
+// PR-P1b。停止中に報酬計上が呼ばれた件数。
+type CommissionWriteBlocked = { last24h: number; last7d: number; lastBlockedAt: string | null };
+
 export default function OperationsHealthPage() {
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [findings, setFindings] = useState<Finding[]>([]);
   const [migrations, setMigrations] = useState<MigrationStatus | null>(null);
+  const [blocked, setBlocked] = useState<CommissionWriteBlocked | null>(null);
   const [checkedAt, setCheckedAt] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -41,11 +45,17 @@ export default function OperationsHealthPage() {
       .then(async (res) => {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error ?? "読み込みに失敗しました");
-        return data as { findings: Finding[]; migrations: MigrationStatus | null; checkedAt: string };
+        return data as {
+          findings: Finding[];
+          migrations: MigrationStatus | null;
+          commissionWriteBlocked: CommissionWriteBlocked | null;
+          checkedAt: string;
+        };
       })
       .then((data) => {
         setFindings(data.findings);
         setMigrations(data.migrations ?? null);
+        setBlocked(data.commissionWriteBlocked ?? null);
         setCheckedAt(data.checkedAt);
         setStatus("ready");
       })
@@ -123,6 +133,27 @@ export default function OperationsHealthPage() {
                   <p className="mt-1 leading-relaxed">{message}</p>
                 </div>
               ))}
+          </section>
+
+          <section className="space-y-3">
+            <h2 className="text-base font-semibold text-zinc-900 dark:text-zinc-50">報酬計上の停止状況</h2>
+            {blocked === null ? (
+              <p className="text-sm text-zinc-500 dark:text-zinc-400">確認できませんでした。</p>
+            ) : (
+              <div className="rounded-xl border border-zinc-200 bg-white p-4 text-xs text-zinc-700 dark:border-zinc-800 dark:bg-zinc-950 dark:text-zinc-300">
+                <p>
+                  停止中に報酬計上が呼ばれた回数: 直近24時間 <strong>{blocked.last24h}</strong>件 / 直近7日{" "}
+                  <strong>{blocked.last7d}</strong>件
+                </p>
+                <p className="mt-1">
+                  最終: {blocked.lastBlockedAt ? new Date(blocked.lastBlockedAt).toLocaleString("ja-JP") : "なし"}
+                </p>
+                <p className="mt-2 leading-relaxed text-zinc-500 dark:text-zinc-400">
+                  報酬計算はAgencyへ移管済みです。土地が売れるたびにここが増えるのが正常な状態です。
+                  土地販売が動いているのに0件のままなら、ガードを通らない別経路が生まれている疑いがあります。
+                </p>
+              </div>
+            )}
           </section>
 
           <section className="space-y-3">
