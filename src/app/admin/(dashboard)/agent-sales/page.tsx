@@ -89,7 +89,10 @@ export default function AgentSalesPage() {
 
       {unpaidTotalsByAgent.length > 0 && (
         <div className="rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm dark:border-amber-800 dark:bg-amber-950">
-          <p className="mb-2 font-semibold text-amber-800 dark:text-amber-300">代理店別 未払い売上合計</p>
+          <p className="mb-2 font-semibold text-amber-800 dark:text-amber-300">代理店別 売上合計(支払記録未作成分)</p>
+          <p className="mb-2 text-xs text-amber-700 dark:text-amber-400">
+            表示金額は売上総額です。報酬額ではありません。報酬計算はこの画面では行いません。
+          </p>
           <ul className="space-y-1 text-amber-700 dark:text-amber-400">
             {unpaidTotalsByAgent.map((a) => (
               <li key={a.agentName}>

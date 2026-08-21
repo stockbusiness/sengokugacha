@@ -1,5 +1,6 @@
 import { completePlotPurchase } from "@/lib/plot-reservations";
 import { postLandSaleCommission } from "@/lib/castle-commissions";
+import { recordSalesFact } from "@/lib/sales-fact-outbox";
 import { notifyPlotPurchase } from "@/lib/castle-notifications";
 import { confirmReferral } from "@/lib/common-user-hub";
 import type {
@@ -205,6 +206,17 @@ export async function runPurchaseGrant(
       await applyBalanceGrantStep(stepRepository, purchase.id, purchase.user_id, purchase.item_type, purchase.grant_amount);
       await recordAgentSaleStep(stepRepository, purchase.id, purchase.user_id, purchase.item_type, purchase.amount);
     }
+
+    // PR-P1c。販売事実の記録(報酬金額・報酬可否は確定しない)。
+    //
+    // 土地だけでなく全商品を対象にする。Q4で「agent_salesはAgency向け販売成果イベントの
+    // 送信が安定した後に停止する」と決まっており、agent_salesが記録しているのは
+    // kokudaka/gacha_ticketの購入である。土地だけを対象にすると、agent_salesを止めた
+    // 時点でそれらの販売事実が失われ、Q4の段取りが成立しない。
+    //
+    // 生成フラグOFFのときはrecordSalesFact()側が何もせずreturnする。ここで例外を投げると
+    // 購入全体が失敗するため、postLandSaleCommission()と同じく成功扱いで進める。
+    await runStep(stepRepository, purchase.id, "sales_fact_recorded", () => recordSalesFact(purchase.id));
 
     await runStep(stepRepository, purchase.id, "referral_confirmed", async () => {
       const referralAttribution = await userRepository.findReferralAttribution(purchase.user_id);
