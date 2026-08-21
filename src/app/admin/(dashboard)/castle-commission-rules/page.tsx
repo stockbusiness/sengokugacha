@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CommissionMigrationNotice } from "@/components/admin/CommissionMigrationNotice";
+import { EMPTY_STATE_TEXT } from "@/modules/castle/domain/commission-admin-view";
+import { isCommissionWriteAllowed, useCommissionAdminNotice } from "@/lib/client/use-commission-admin-notice";
 
 type RuleSet = {
   id: string;
@@ -91,6 +94,9 @@ function toRatePayload(form: RateForm) {
 }
 
 export default function CastleCommissionRulesPage() {
+  // PR-P1b。報酬ルールの編集はAgencyへ移管済み。停止中は操作UIをDOMごと出さない。
+  const { notice, agencyUrl } = useCommissionAdminNotice("rule_sets");
+  const writeAllowed = isCommissionWriteAllowed(notice);
   const [ruleSets, setRuleSets] = useState<RuleSet[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [form, setForm] = useState<RateForm>(DEFAULT_FORM);
@@ -220,6 +226,9 @@ export default function CastleCommissionRulesPage() {
         </p>
       </div>
 
+      <CommissionMigrationNotice notice={notice ?? { kind: "none" }} agencyUrl={agencyUrl} />
+
+      {writeAllowed && (
       <form
         onSubmit={handleCreate}
         className="space-y-3 rounded-xl border border-zinc-200 bg-white p-4 dark:border-zinc-800 dark:bg-zinc-950"
@@ -246,6 +255,7 @@ export default function CastleCommissionRulesPage() {
         </button>
         {message && <p className="text-xs text-red-700 dark:text-red-400">{message}</p>}
       </form>
+      )}
 
       <div className="space-y-2">
         {ruleSets.map((rs) => (
@@ -306,7 +316,7 @@ export default function CastleCommissionRulesPage() {
                   {Math.round(rs.organization_rate * 100)}% / 地域活動{Math.round(rs.regional_activity_rate * 100)}% /
                   開発積立{Math.round(rs.development_fund_rate * 100)}% / 本部{Math.round(rs.hq_rate * 100)}%
                 </p>
-                {rs.status === "draft" && (
+                {rs.status === "draft" && writeAllowed && (
                   <div className="mt-2 flex items-center gap-2">
                     <button
                       onClick={() => handlePublish(rs.id)}
@@ -335,7 +345,7 @@ export default function CastleCommissionRulesPage() {
           </div>
         ))}
         {ruleSets.length === 0 && (
-          <p className="text-sm text-zinc-500 dark:text-zinc-400">まだルールセットがありません。</p>
+          <p className="text-sm text-zinc-500 dark:text-zinc-400">{EMPTY_STATE_TEXT.rule_sets}</p>
         )}
       </div>
     </div>

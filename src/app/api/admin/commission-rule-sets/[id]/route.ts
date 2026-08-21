@@ -13,7 +13,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   }
 
   // PR-P1a。報酬ルールの編集はAgencyへ移管済み。既定では停止している。
-  const blocked = await rejectIfCommissionWriteDisabled("commission_rule_set");
+  const blocked = await rejectIfCommissionWriteDisabled("commission_rule_set", "route=PATCH /api/admin/commission-rule-sets/[id]");
   if (blocked) return blocked;
 
   const { id } = await params;
@@ -66,7 +66,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: Promis
   }
 
   // PR-P1a。報酬ルールの編集はAgencyへ移管済み。既定では停止している。
-  const blocked = await rejectIfCommissionWriteDisabled("commission_rule_set");
+  const blocked = await rejectIfCommissionWriteDisabled("commission_rule_set", "route=DELETE /api/admin/commission-rule-sets/[id]");
   if (blocked) return blocked;
 
   const { id } = await params;

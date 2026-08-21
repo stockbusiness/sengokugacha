@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CommissionMigrationNotice } from "@/components/admin/CommissionMigrationNotice";
+import { EMPTY_STATE_TEXT } from "@/modules/castle/domain/commission-admin-view";
+import { useCommissionAdminNotice } from "@/lib/client/use-commission-admin-notice";
 
 type LedgerLine = {
   id: string;
@@ -32,6 +35,8 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 export default function CastleCommissionsPage() {
+  // PR-P1b。新規計上は停止済み。既存分の清算だけを続けるため、操作UIは残す。
+  const { notice, agencyUrl } = useCommissionAdminNotice("ledger");
   const [lines, setLines] = useState<LedgerLine[]>([]);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [confirming, setConfirming] = useState(false);
@@ -76,9 +81,11 @@ export default function CastleCommissionsPage() {
       <div>
         <h1 className="text-xl font-bold text-zinc-900 dark:text-zinc-50">土地販売報酬元帳({lines.length}件)</h1>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          区画購入が確定すると自動的に明細が計上されます(保留)。猶予期間(取消・返金期間)経過後に確定操作を行うと、支払対象になります。支払処理は代理店管理・ユーザー検索画面から受取者を特定し、別途実行してください。
+          猶予期間(取消・返金期間)経過後に確定操作を行うと、支払対象になります。支払処理は代理店管理・ユーザー検索画面から受取者を特定し、別途実行してください。
         </p>
       </div>
+
+      <CommissionMigrationNotice notice={notice ?? { kind: "none" }} agencyUrl={agencyUrl} />
 
       <div className="flex items-center gap-3">
         <button
@@ -91,6 +98,7 @@ export default function CastleCommissionsPage() {
         {message && <span className="text-xs text-zinc-500 dark:text-zinc-400">{message}</span>}
       </div>
 
+      <h2 className="text-sm font-semibold text-zinc-600 dark:text-zinc-400">移管前に計上された報酬(清算対象)</h2>
       <div className="space-y-1">
         {lines.map((line) => (
           <div
@@ -111,7 +119,7 @@ export default function CastleCommissionsPage() {
             </span>
           </div>
         ))}
-        {lines.length === 0 && <p className="text-sm text-zinc-500 dark:text-zinc-400">まだ報酬明細がありません。</p>}
+        {lines.length === 0 && <p className="text-sm text-zinc-500 dark:text-zinc-400">{EMPTY_STATE_TEXT.ledger}</p>}
       </div>
     </div>
   );

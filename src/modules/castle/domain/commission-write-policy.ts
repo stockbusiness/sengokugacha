@@ -32,6 +32,25 @@ export const DEFAULT_COMMISSION_WRITE_SETTINGS: CommissionWriteSettings = {
   commissionRuleSetWriteEnabled: false,
 };
 
+// PR-P1b 追加条件4「DBや環境変数の誤設定だけで再開しない」「再開にはコード変更または
+// 明示的な運用承認が必要」。
+//
+// 設定テーブルのフラグだけで再開できると、DBを直接触れる者の操作ミス1つで報酬計上が
+// 復活してしまう。コード側にもう1枚ゲートを置き、両方が揃わないと開かないようにする。
+// 再開する場合は、この定数をtrueにする変更をレビュー・マージしたうえで、設定行を
+// insertする(2つの独立した承認が要る)。
+export const COMMISSION_WRITE_REOPEN_ALLOWED = false;
+
+// DBの設定値へコード側のゲートを掛け合わせた「実際に効く設定」を返す。
+// reopenAllowedがfalseなら、DBが何を言っていても全て停止側に倒す。
+export function resolveEffectiveCommissionWriteSettings(
+  dbSettings: CommissionWriteSettings,
+  reopenAllowed: boolean = COMMISSION_WRITE_REOPEN_ALLOWED
+): CommissionWriteSettings {
+  if (!reopenAllowed) return DEFAULT_COMMISSION_WRITE_SETTINGS;
+  return dbSettings;
+}
+
 const DISABLED_MESSAGE: Record<CommissionWriteTarget, string> = {
   land_sale_commission: "土地販売の報酬計上はAgencyへ移管済みです。新規計上は停止中です。",
   commission_rule_set: "報酬ルールの編集はAgencyへ移管済みです。新規計上は停止中です。",
