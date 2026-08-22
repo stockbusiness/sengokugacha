@@ -9,7 +9,9 @@
 --   3. 同じ判定式が process_entitlement_grant と process_entitlement_revocation の
 --      両方にあり、片方だけ直すと「付与は止まるのに取消では残高が動く」不整合になる
 --
--- 3を根本から断つため、判定を1つの関数へ集約し、両方からそれを呼ぶ。
+-- 3を根本から断つため、種別→残高列の対応表を1つの関数へ集約し、付与・取消の両方が
+-- それを使うようにする。送信元 allowlist を見るのは付与側だけで、取消側は「付与時に
+-- 実際へ入れたか」だけを見る(理由は entitlement_balance_was_applied() のコメント)。
 
 -- ============================================================
 -- 1. 承認済み送信元
@@ -196,7 +198,9 @@ begin
     end if;
   end if;
 
-  -- PR-P2a。判定は entitlement_balance_column() に集約した。取消側も同じ関数を呼ぶ。
+  -- PR-P2a。付与は送信元 allowlist を要求する。取消側は allowlist を再評価せず、
+  -- 共通の対応表 entitlement_balance_column_for_type() と、ここで記録する
+  -- application_decision だけを見る。
   v_column := entitlement_balance_column(v_entitlement.source_system_key, v_entitlement.entitlement_type);
   v_decision := entitlement_application_decision(v_entitlement.source_system_key, v_entitlement.entitlement_type);
 
