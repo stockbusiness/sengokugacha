@@ -1,8 +1,9 @@
-// Passport実装指示書 PR-P2a「Entitlement適用範囲の制限」。
+// Passport実装指示書 PR-P2a「Entitlement適用範囲の制限」+ PR-P2b「商品所有者マップ」。
 //
 // Passportがローカル残高へ適用してよい権利を、明示的な allowlist で表す。
-// 判定の正本はSQL関数 entitlement_balance_column()(付与・取消の両方が呼ぶ)で、
-// ここはその同じ規則をTypeScript側から参照・検証できるようにしたもの。
+// 判定の正本はSQL関数 entitlement_application_decision() で、ここはその同じ規則を
+// TypeScript側から参照・検証できるようにしたもの。
+import { expectedEntitlementTypeFor, isProductCodeProvided } from "./product-ownership";
 
 // 残高へ実効果を持つ権利種別。Passport内ゲーム用途のみ。
 //
@@ -36,6 +37,9 @@ export const FORBIDDEN_ENTITLEMENT_TYPES = ["generic"] as const;
 export type EntitlementApplicationDecision =
   | "APPLIED"
   | "SOURCE_NOT_ALLOWED"
+  | "PRODUCT_CODE_REQUIRED"
+  | "PRODUCT_NOT_OWNED"
+  | "PRODUCT_TYPE_MISMATCH"
   | "TYPE_NOT_APPLICABLE"
   | "USER_UNRESOLVED"
   | "DISMISSED";
@@ -44,16 +48,33 @@ export function isApplicableEntitlementType(entitlementType: string): entitlemen
   return (APPLICABLE_ENTITLEMENT_TYPES as readonly string[]).includes(entitlementType);
 }
 
-// 送信元と種別の両方が一致したときだけ適用する(Q6回答 案d)。
+// 残高へ適用してよいかの唯一の判定口。判定順序はここにだけ存在する(PR-P2b)。
+//
+//   1. 送信元が allowlist にあるか        → SOURCE_NOT_ALLOWED
+//   2. 商品コードが送られているか          → PRODUCT_CODE_REQUIRED
+//   3. 商品コードが Passport の担当か      → PRODUCT_NOT_OWNED
+//   4. 商品コードと種別が一致するか        → PRODUCT_TYPE_MISMATCH
+//   5. 残高適用対象の種別か                → TYPE_NOT_APPLICABLE
+//   6. すべて通過                          → APPLIED
+//
+// 順序に意味がある。送信元が不許可なら商品を見るまでもないし、担当外の商品に
+// 「種別が対象外」と返す必要もない。
 //
 // allowedSourceSystemKeys は entitlement_source_allowlist の内容。既定は空で、
 // その場合はどの送信元からも適用しない。
 export function decideEntitlementApplication(
   sourceSystemKey: string,
+  productCode: string | null | undefined,
   entitlementType: string,
   allowedSourceSystemKeys: readonly string[]
 ): EntitlementApplicationDecision {
   if (!allowedSourceSystemKeys.includes(sourceSystemKey)) return "SOURCE_NOT_ALLOWED";
+  if (!isProductCodeProvided(productCode)) return "PRODUCT_CODE_REQUIRED";
+
+  const expectedType = expectedEntitlementTypeFor(productCode);
+  if (expectedType === null) return "PRODUCT_NOT_OWNED";
+  if (expectedType !== entitlementType) return "PRODUCT_TYPE_MISMATCH";
+
   if (!isApplicableEntitlementType(entitlementType)) return "TYPE_NOT_APPLICABLE";
   return "APPLIED";
 }
@@ -67,10 +88,11 @@ export function resolveBalanceColumnForType(entitlementType: string): "kokudaka"
 // 付与時の残高列。適用対象でなければ null。
 export function resolveBalanceColumn(
   sourceSystemKey: string,
+  productCode: string | null | undefined,
   entitlementType: string,
   allowedSourceSystemKeys: readonly string[]
 ): "kokudaka" | "gacha_tickets" | null {
-  if (decideEntitlementApplication(sourceSystemKey, entitlementType, allowedSourceSystemKeys) !== "APPLIED") {
+  if (decideEntitlementApplication(sourceSystemKey, productCode, entitlementType, allowedSourceSystemKeys) !== "APPLIED") {
     return null;
   }
   return resolveBalanceColumnForType(entitlementType);
@@ -94,13 +116,24 @@ export function wasBalanceApplied(applicationDecision: string | null): boolean {
 // 非適用の理由。DBの application_decision_reason と同じ文言を組み立てる。
 export function describeDecision(
   decision: EntitlementApplicationDecision,
-  context: { sourceSystemKey: string; entitlementType: string; commonUserId?: string | null }
+  context: {
+    sourceSystemKey: string;
+    entitlementType: string;
+    productCode?: string | null;
+    commonUserId?: string | null;
+  }
 ): string | null {
   switch (decision) {
     case "APPLIED":
       return null;
     case "SOURCE_NOT_ALLOWED":
       return `送信元 ${context.sourceSystemKey} は entitlement_source_allowlist に未登録`;
+    case "PRODUCT_CODE_REQUIRED":
+      return "product_code が未指定。承認済み送信元は商品コードの送付が必須";
+    case "PRODUCT_NOT_OWNED":
+      return `商品コード ${context.productCode ?? ""} は Passport の担当商品ではない`;
+    case "PRODUCT_TYPE_MISMATCH":
+      return `商品コード ${context.productCode ?? ""} と種別 ${context.entitlementType} の組み合わせが不正`;
     case "TYPE_NOT_APPLICABLE":
       return `種別 ${context.entitlementType} は残高への実効果を持たない`;
     case "USER_UNRESOLVED":

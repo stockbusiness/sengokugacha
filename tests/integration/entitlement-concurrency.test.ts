@@ -23,6 +23,8 @@ async function insertEntitlement(
       entitlement_id: `test-ent-${crypto.randomUUID()}`,
       common_user_id: "test-common-user",
       entitlement_type: "kokudaka",
+      // PR-P2b。承認済み送信元は product_code の送付が必須になった。
+      product_code: "SPPT_KOKUDAKA",
       quantity: 100,
       source_system_key: TEST_SOURCE_SYSTEM_KEY,
       ...overrides,
@@ -619,5 +621,163 @@ describe.skipIf(!hasIntegrationTestDatabase())("process_entitlement_grant/revoca
     } finally {
       await client.from("entitlement_source_allowlist").delete().eq("source_system_key", "later-approved-system");
     }
+  });
+
+  // ============================================================
+  // PR-P2b 商品所有者マップ
+  // ============================================================
+
+  async function decisionOf(entitlementRowId: string) {
+    const { data, error } = await getTestSupabaseClient()
+      .from("entitlements")
+      .select("application_decision, application_decision_reason, balance_applied_at")
+      .eq("id", entitlementRowId)
+      .single();
+    if (error) throw error;
+    return data;
+  }
+
+  const p2bCases: Array<{ name: string; productCode: string | null; type: string; expected: string }> = [
+    { name: "product_code が null", productCode: null, type: "kokudaka", expected: "PRODUCT_CODE_REQUIRED" },
+    { name: "product_code が空文字", productCode: "", type: "kokudaka", expected: "PRODUCT_CODE_REQUIRED" },
+    { name: "product_code が空白のみ", productCode: "   ", type: "kokudaka", expected: "PRODUCT_CODE_REQUIRED" },
+    { name: "未知のコード", productCode: "KOKU-100", type: "kokudaka", expected: "PRODUCT_NOT_OWNED" },
+    { name: "tenka_pass", productCode: "tenka_pass", type: "kokudaka", expected: "PRODUCT_NOT_OWNED" },
+    { name: "castle_lord_plan", productCode: "castle_lord_plan", type: "kokudaka", expected: "PRODUCT_NOT_OWNED" },
+    { name: "前後空白つき(trimで救済しない)", productCode: " SPPT_KOKUDAKA ", type: "kokudaka", expected: "PRODUCT_NOT_OWNED" },
+    { name: "小文字(自動変換しない)", productCode: "sppt_kokudaka", type: "kokudaka", expected: "PRODUCT_NOT_OWNED" },
+    { name: "コードと種別の不一致", productCode: "SPPT_KOKUDAKA", type: "gacha_ticket", expected: "PRODUCT_TYPE_MISMATCH" },
+    { name: "担当商品だが残高種別でない", productCode: "SPPT_LAND_PLOT", type: "land_plot", expected: "TYPE_NOT_APPLICABLE" },
+  ];
+
+  it.each(p2bCases)("$name → $expected で残高が動かない", async ({ productCode, type, expected }) => {
+    const client = getTestSupabaseClient();
+    const userId = await createTestUser({ kokudaka: 0, gacha_tickets: 0 });
+    createdUserIds.push(userId);
+    const entitlementRowId = await insertEntitlement(client, {
+      user_id: userId,
+      quantity: 100,
+      product_code: productCode,
+      entitlement_type: type,
+    });
+    createdEntitlementIds.push(entitlementRowId);
+
+    const { error } = await client.rpc("process_entitlement_grant", { p_entitlement_row_id: entitlementRowId });
+    if (error) throw error;
+
+    const { data: user, error: userError } = await client
+      .from("users")
+      .select("kokudaka, gacha_tickets")
+      .eq("id", userId)
+      .single();
+    if (userError) throw userError;
+    expect(user.kokudaka).toBe(0);
+    expect(user.gacha_tickets).toBe(0);
+
+    const after = await decisionOf(entitlementRowId);
+    expect(after.application_decision).toBe(expected);
+    expect(after.application_decision_reason).toBeTruthy();
+    // 残高が動いていないので「適用日時」は入らない(成功付与と読めてしまうため)。
+    expect(after.balance_applied_at).toBeNull();
+  });
+
+  it("SPPT_KOKUDAKA + kokudaka は適用され、適用日時が入る", async () => {
+    const client = getTestSupabaseClient();
+    const userId = await createTestUser({ kokudaka: 0 });
+    createdUserIds.push(userId);
+    const entitlementRowId = await insertEntitlement(client, {
+      user_id: userId,
+      quantity: 100,
+      product_code: "SPPT_KOKUDAKA",
+      entitlement_type: "kokudaka",
+    });
+    createdEntitlementIds.push(entitlementRowId);
+
+    const { error } = await client.rpc("process_entitlement_grant", { p_entitlement_row_id: entitlementRowId });
+    if (error) throw error;
+
+    const { data: user, error: userError } = await client.from("users").select("kokudaka").eq("id", userId).single();
+    if (userError) throw userError;
+    expect(user.kokudaka).toBe(100);
+
+    const after = await decisionOf(entitlementRowId);
+    expect(after.application_decision).toBe("APPLIED");
+    expect(after.application_decision_reason).toBeNull();
+    expect(after.balance_applied_at).not.toBeNull();
+  });
+
+  it("SPPT_GACHA_TICKET + gacha_ticket は適用される", async () => {
+    const client = getTestSupabaseClient();
+    const userId = await createTestUser({ gacha_tickets: 0 });
+    createdUserIds.push(userId);
+    const entitlementRowId = await insertEntitlement(client, {
+      user_id: userId,
+      quantity: 3,
+      product_code: "SPPT_GACHA_TICKET",
+      entitlement_type: "gacha_ticket",
+    });
+    createdEntitlementIds.push(entitlementRowId);
+
+    const { error } = await client.rpc("process_entitlement_grant", { p_entitlement_row_id: entitlementRowId });
+    if (error) throw error;
+
+    const { data: user, error: userError } = await client
+      .from("users")
+      .select("gacha_tickets")
+      .eq("id", userId)
+      .single();
+    if (userError) throw userError;
+    expect(user.gacha_tickets).toBe(3);
+    expect((await decisionOf(entitlementRowId)).application_decision).toBe("APPLIED");
+  });
+
+  it("非適用の権利は、取消でも残高を動かさない", async () => {
+    const client = getTestSupabaseClient();
+    const userId = await createTestUser({ kokudaka: 500 });
+    createdUserIds.push(userId);
+    const entitlementRowId = await insertEntitlement(client, {
+      user_id: userId,
+      quantity: 100,
+      product_code: "KOKU-100",
+      entitlement_type: "kokudaka",
+    });
+    createdEntitlementIds.push(entitlementRowId);
+
+    await client.rpc("process_entitlement_grant", { p_entitlement_row_id: entitlementRowId });
+    const { data, error } = await client.rpc("process_entitlement_revocation", {
+      p_entitlement_row_id: entitlementRowId,
+    });
+    if (error) throw error;
+    expect((data as { claim_outcome: string }[])[0].claim_outcome).toBe("reversed_without_balance_change");
+
+    const { data: user, error: userError } = await client.from("users").select("kokudaka").eq("id", userId).single();
+    if (userError) throw userError;
+    expect(user.kokudaka).toBe(500);
+  });
+
+  // PR-P2a の allowlist と同じ危険が商品マップにもある。
+  it("担当外の商品で付与された権利は、後から担当商品に加えても取消で残高を引かない", async () => {
+    const client = getTestSupabaseClient();
+    const userId = await createTestUser({ kokudaka: 300 });
+    createdUserIds.push(userId);
+    // SPPT_LAND_PLOT は担当商品だが残高種別ではないため TYPE_NOT_APPLICABLE になる。
+    // 「担当だが適用されなかった」行が取消で引かれないことを確認する。
+    const entitlementRowId = await insertEntitlement(client, {
+      user_id: userId,
+      quantity: 100,
+      product_code: "SPPT_LAND_PLOT",
+      entitlement_type: "land_plot",
+    });
+    createdEntitlementIds.push(entitlementRowId);
+
+    await client.rpc("process_entitlement_grant", { p_entitlement_row_id: entitlementRowId });
+    expect((await decisionOf(entitlementRowId)).application_decision).toBe("TYPE_NOT_APPLICABLE");
+
+    const { error } = await client.rpc("process_entitlement_revocation", { p_entitlement_row_id: entitlementRowId });
+    if (error) throw error;
+
+    const { data: user, error: userError } = await client.from("users").select("kokudaka").eq("id", userId).single();
+    if (userError) throw userError;
+    expect(user.kokudaka).toBe(300);
   });
 });

@@ -2,11 +2,11 @@ import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import path from "node:path";
 
-// Passport実装指示書 PR-P2a。
+// Passport実装指示書 PR-P2a / PR-P2b。
 //
-// 「判定が1箇所に集約されていること」と「allowlist が画面から書き換えられないこと」を、
-// ソース走査で機械的に担保する。判定が複数箇所に散ると、片方だけ直したときに
-// 「付与は止まるのに取消では残高が動く」不整合が起きる。
+// 「判定が1箇所に集約されていること」と「allowlist・商品マップが画面から書き換えられ
+// ないこと」を、ソース走査で機械的に担保する。判定が複数箇所に散ると、片方だけ直した
+// ときに「付与は止まるのに取消では残高が動く」不整合が起きる。
 
 const MODULES_ROOT = __dirname;
 const SRC_ROOT = path.join(__dirname, "..");
@@ -28,6 +28,17 @@ const rel = (p: string) => path.relative(SRC_ROOT, p);
 const read = (p: string) => readFileSync(p, "utf8");
 
 const LATEST = readFileSync(path.join(MIGRATIONS, "20260820000001_entitlement_allowlist.sql"), "utf8");
+// PR-P2b。付与関数はこちらが最新版になる。
+const P2B = readFileSync(path.join(MIGRATIONS, "20260821000001_product_ownership.sql"), "utf8");
+
+const PRODUCT_MAP = P2B.slice(
+  P2B.indexOf("create or replace function entitlement_product_expected_type"),
+  P2B.indexOf("create or replace function entitlement_application_decision")
+);
+const P2B_DECISION = P2B.slice(
+  P2B.indexOf("create or replace function entitlement_application_decision"),
+  P2B.indexOf("create or replace function entitlement_balance_column(")
+);
 
 const GRANT = LATEST.slice(
   LATEST.indexOf("create or replace function process_entitlement_grant"),
@@ -147,5 +158,109 @@ describe("既存データの保護", () => {
   // application_status は既存ロジックが依存している。値を増やさない。
   it("application_status の CHECK を張り替えていない", () => {
     expect(LATEST).not.toContain("entitlements_application_status_check");
+  });
+});
+
+// ============================================================
+// PR-P2b 商品所有者マップ
+// ============================================================
+
+describe("PR-P2b: 判定順序の集約", () => {
+  // 6段の順序が2箇所にあると、片方だけ直したときにずれる。
+  it("判定順序は entitlement_application_decision() にだけ存在する", () => {
+    for (const decision of ["SOURCE_NOT_ALLOWED", "PRODUCT_CODE_REQUIRED", "PRODUCT_NOT_OWNED", "PRODUCT_TYPE_MISMATCH", "TYPE_NOT_APPLICABLE"]) {
+      // 判定関数の中には必ずある。
+      expect(P2B_DECISION, decision).toContain(decision);
+    }
+    // 付与関数の中で、判定文字列を組み立て直していないこと(理由関数への引数は除く)。
+    const grantOnly = P2B.slice(P2B.indexOf("create or replace function process_entitlement_grant"));
+    expect(grantOnly).not.toContain("PRODUCT_NOT_OWNED");
+    expect(grantOnly).not.toContain("PRODUCT_TYPE_MISMATCH");
+    expect(grantOnly).not.toContain("PRODUCT_CODE_REQUIRED");
+  });
+
+  it("残高列の関数は判定関数を呼ぶだけで、順序を持たない", () => {
+    const balanceColumn = P2B.slice(
+      P2B.indexOf("create or replace function entitlement_balance_column("),
+      P2B.indexOf("create or replace function entitlement_decision_reason")
+    );
+    expect(balanceColumn).toContain("entitlement_application_decision(");
+    expect(balanceColumn).not.toContain("entitlement_source_allowlist");
+    expect(balanceColumn).not.toContain("PRODUCT_NOT_OWNED");
+  });
+
+  // 引数が増えるため create or replace では上書きされず多重定義になる。
+  // 緩い2引数版が残ると、うっかり呼んで商品コードチェックを迂回できてしまう。
+  it("旧2引数版の関数を明示的に drop している", () => {
+    expect(P2B).toContain("drop function if exists entitlement_application_decision(text, text)");
+    expect(P2B).toContain("drop function if exists entitlement_balance_column(text, text)");
+  });
+});
+
+describe("PR-P2b: 取消は商品マップを再評価しない", () => {
+  // 担当商品を後から増やすと「入れていない残高を引く」、減らすと「入れた残高を戻さない」。
+  it("マイグレーションが取消関数を作り直していない", () => {
+    expect(P2B).not.toContain("create or replace function process_entitlement_revocation");
+  });
+
+  it("付与関数が application_decision を必ず記録している", () => {
+    const grantOnly = P2B.slice(P2B.indexOf("create or replace function process_entitlement_grant"));
+    expect(grantOnly).toContain("application_decision = v_decision");
+  });
+});
+
+describe("PR-P2b: 商品所有者マップ", () => {
+  it("担当商品は3つだけ", () => {
+    expect(PRODUCT_MAP).toContain("when 'SPPT_KOKUDAKA' then 'kokudaka'");
+    expect(PRODUCT_MAP).toContain("when 'SPPT_GACHA_TICKET' then 'gacha_ticket'");
+    expect(PRODUCT_MAP).toContain("when 'SPPT_LAND_PLOT' then 'land_plot'");
+    expect((PRODUCT_MAP.match(/when '/g) ?? []).length).toBe(3);
+  });
+
+  // SQL 側と TypeScript 側でずれていないこと。
+  it("TypeScript 側の担当商品と一致している", () => {
+    const ownership = read(path.join(MODULES_ROOT, "entitlements/domain/product-ownership.ts"));
+    expect(ownership).toContain('SPPT_KOKUDAKA: "kokudaka"');
+    expect(ownership).toContain('SPPT_GACHA_TICKET: "gacha_ticket"');
+    expect(ownership).toContain('SPPT_LAND_PLOT: "land_plot"');
+  });
+
+  // Q5「Passport を全システムの商品台帳の正本にはしません」。
+  it("他システムの商品がマイグレーションに現れない", () => {
+    for (const term of ["評議員権", "会員権", "クリエイター作品", "作品シリアル", "作品出品"]) {
+      // コメントでの言及は許容するが、判定関数の中には出てこないこと。
+      expect(P2B_DECISION, term).not.toContain(term);
+      expect(PRODUCT_MAP, term).not.toContain(term);
+    }
+  });
+
+  it("他システムの商品一覧を持つテーブルを作っていない", () => {
+    expect(P2B).not.toMatch(/create table[\s\S]{0,80}product_owner/i);
+    expect(P2B).not.toMatch(/create table[\s\S]{0,80}product_catalog/i);
+  });
+});
+
+describe("PR-P2b: 成功付与と表示しない", () => {
+  // 非適用の行に「適用日時」が入っていると、成功付与と読めてしまう。
+  it("balance_applied_at は残高が動いたときだけ設定される", () => {
+    const grantOnly = P2B.slice(P2B.indexOf("create or replace function process_entitlement_grant"));
+    expect(grantOnly).toContain("balance_applied_at = case when v_column is null then null else now() end");
+    expect(grantOnly).not.toContain("balance_applied_at = now(),");
+  });
+
+  // application_status だけを見て「付与成功」と判断させない。
+  it("entitlements から application_status を読む表示系コードは application_decision も読む", () => {
+    const violations = NON_TEST.filter((file) => {
+      const source = read(file);
+      if (!source.includes('from("entitlements")')) return false;
+      if (!source.includes("application_status")) return false;
+      // 抽出条件として使うだけ(=表示しない)のものは対象外。select 句に入っているものだけ見る。
+      const selects = source.match(/\.select\(\s*[`"'][\s\S]*?[`"']\s*\)/g) ?? [];
+      const showsStatus = selects.some((s) => s.includes("application_status"));
+      if (!showsStatus) return false;
+      return !selects.some((s) => s.includes("application_decision"));
+    }).map(rel);
+
+    expect(violations).toEqual([]);
   });
 });
