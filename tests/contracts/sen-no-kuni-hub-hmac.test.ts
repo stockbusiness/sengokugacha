@@ -117,6 +117,8 @@ describe.skipIf(!hasTestDatabase)("POST /api/integrations/sen-no-kuni-hub(DB接�
       entitlement_id: entitlementId,
       common_user_id: commonUserId,
       entitlement_type: "kokudaka",
+      // PR-P2b。承認済み送信元は product_code の送付が必須。
+      product_code: "SPPT_KOKUDAKA",
       quantity: 300,
     };
     const rawBody = JSON.stringify(body);
@@ -144,6 +146,7 @@ describe.skipIf(!hasTestDatabase)("POST /api/integrations/sen-no-kuni-hub(DB接�
       entitlement_id: entitlementId,
       common_user_id: commonUserId,
       entitlement_type: "kokudaka",
+      product_code: "SPPT_KOKUDAKA",
       quantity: 200,
     };
     const grantRawBody = JSON.stringify(grantBody);
