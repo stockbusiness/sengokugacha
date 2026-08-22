@@ -32,8 +32,13 @@ describe.skipIf(!hasTestDatabase)("POST /api/integrations/sen-no-kuni-hub(DB接�
     return createClient(process.env.SUPABASE_TEST_URL!, process.env.SUPABASE_TEST_SERVICE_ROLE_KEY!);
   }
 
+  const allowlistedSourceSystemKeys: string[] = [];
+
   afterEach(async () => {
     const client = supabase();
+    for (const systemKey of allowlistedSourceSystemKeys.splice(0)) {
+      await client.from("entitlement_source_allowlist").delete().eq("source_system_key", systemKey);
+    }
     for (const keyId of createdSettingsKeyIds.splice(0)) {
       await client.from("sen_no_kuni_hub_used_nonces").delete().eq("key_id", keyId);
       await client.from("sen_no_kuni_hub_settings").delete().eq("key_id", keyId);
@@ -62,6 +67,16 @@ describe.skipIf(!hasTestDatabase)("POST /api/integrations/sen-no-kuni-hub(DB接�
     });
     if (error) throw error;
     createdSettingsKeyIds.push(keyId);
+
+    // PR-P2a。実運用と同じく、残高を動かすには鍵登録(認証を通す)に加えて
+    // entitlement_source_allowlist への登録(残高適用を許可する)が要る。
+    // 片方だけでは動かないため、正常系のテストでは両方を用意する。
+    const { error: allowlistError } = await client
+      .from("entitlement_source_allowlist")
+      .insert({ source_system_key: systemKey, note: "contract test", approved_by: "test" });
+    if (allowlistError) throw allowlistError;
+    allowlistedSourceSystemKeys.push(systemKey);
+
     return { keyId, systemKey, secret };
   }
 
