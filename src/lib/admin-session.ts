@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { signSessionJwt, verifySessionJwt } from "@/shared/auth";
+import { resolveAdminRole, type AdminRole } from "@/modules/operations/domain/admin-role";
 
 export const ADMIN_SESSION_COOKIE_NAME = "sengoku_admin_session";
 const ADMIN_SESSION_MAX_AGE_SECONDS = 60 * 60 * 12; // 12時間
@@ -7,7 +8,8 @@ const ADMIN_SESSION_MAX_AGE_SECONDS = 60 * 60 * 12; // 12時間
 // 城主プランの財務影響操作(契約の入金確定以降の遷移・報酬ルール公開・報酬確定支払・
 // 土地関連の返金等)だけを「本部管理者」に限定するための軽量な2ロール制。個別アカウント
 // 基盤は作らず、既存の共有パスワード方式を踏襲して2つ目の共有パスワードでロールを判定する。
-export type AdminRole = "operator" | "manager";
+// 型の定義は判定と同じ場所(domain)に置く。ここは既存の import 元を保つための再輸出。
+export type { AdminRole };
 
 export async function setAdminSessionCookie(actorName?: string | null, adminRole: AdminRole = "manager") {
   const token = await signSessionJwt(
@@ -51,8 +53,10 @@ export async function clearAdminSessionCookie() {
   cookieStore.delete(ADMIN_SESSION_COOKIE_NAME);
 }
 
-// 旧セッション(2ロール導入前に発行されたCookie)にはadminRoleクレームが無いため、
-// その場合は互換のため「本部管理者」として扱う(以前は全員が同じ権限だったため)。
+// PR-P4 ①。以前は「adminRoleクレームが無ければ互換のため本部管理者として扱う」と
+// していたが、2ロール導入前に発行されたCookieでmanager権限を取得できてしまうため
+// 廃止した。判定は resolveAdminRole() に集約し、managerと明示されている場合だけ
+// managerとする(それ以外はoperatorへ倒すfail-closed)。
 export async function getAdminRole(): Promise<AdminRole | null> {
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE_NAME)?.value;
@@ -60,7 +64,7 @@ export async function getAdminRole(): Promise<AdminRole | null> {
 
   const payload = await verifySessionJwt(token);
   if (!payload || payload.role !== "admin") return null;
-  return payload.adminRole === "operator" ? "operator" : "manager";
+  return resolveAdminRole(payload.adminRole);
 }
 
 export async function requireManagerRole(): Promise<boolean> {
