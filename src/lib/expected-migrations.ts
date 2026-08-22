@@ -96,4 +96,5 @@ export const EXPECTED_MIGRATION_VERSIONS: string[] = [
   "20260816000001", // applied_migration_versions
   "20260817000001", // commission_write_settings
   "20260818000001", // sales_fact_outbox
+  "20260819000001", // wallet_send_foundation
 ];
