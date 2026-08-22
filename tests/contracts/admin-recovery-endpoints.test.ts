@@ -63,6 +63,8 @@ describe.skipIf(!hasTestDatabase)("POST /api/admin/entitlements/retry-resolve(DB
         common_user_id: commonUserId,
         user_id: null,
         entitlement_type: "kokudaka",
+        // PR-P2b。承認済み送信元は product_code の送付が必須。
+        product_code: "SPPT_KOKUDAKA",
         quantity: 150,
         source_system_key: TEST_SOURCE_SYSTEM_KEY,
       })

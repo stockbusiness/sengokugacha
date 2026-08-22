@@ -29,20 +29,45 @@ export async function POST() {
 
   let retriedCount = 0;
   let resolvedCount = 0;
+  let notAppliedCount = 0;
+  const notAppliedReasons: Record<string, number> = {};
+
   for (const row of rows ?? []) {
     retriedCount++;
     try {
       const result = await retryResolveEntitlementGrant(row.id as string);
       // claimed_then_reversed: 解決した時点で既にrevoke済みだったため、grant適用直後に
-      // 自動で取消まで完結したケース(マージ前最終修正指示§1)。resolvedはしているためカウントする。
-      if (result.claim_outcome === "claimed" || result.claim_outcome === "claimed_then_reversed") resolvedCount++;
+      // 自動で取消まで完結したケース(マージ前最終修正指示§1)。処理は完了している。
+      const completed = result.claim_outcome === "claimed" || result.claim_outcome === "claimed_then_reversed";
+      if (!completed) continue;
+
+      // PR-P2b。処理が完了しても残高へ入ったとは限らない(送信元が未許可、商品コードが
+      // 未指定・担当外、種別が対象外など)。これを「解決済み」に数えると、残高が入って
+      // いないものを成功付与として報告してしまう。
+      const { data: after } = await supabase
+        .from("entitlements")
+        .select("application_decision")
+        .eq("id", row.id as string)
+        .single();
+
+      const decision = (after?.application_decision as string | null) ?? null;
+      if (decision === null || decision === "APPLIED") {
+        resolvedCount++;
+      } else {
+        notAppliedCount++;
+        notAppliedReasons[decision] = (notAppliedReasons[decision] ?? 0) + 1;
+      }
     } catch {
       continue; // 未解決のまま残す。次回の再実行に委ねる。
     }
   }
 
   const actorName = await getAdminActorName();
-  await logAdminAction(actorName, "entitlements_retry_resolve", `retried=${retriedCount} resolved=${resolvedCount}`);
+  await logAdminAction(
+    actorName,
+    "entitlements_retry_resolve",
+    `retried=${retriedCount} resolved=${resolvedCount} not_applied=${notAppliedCount}`
+  );
 
-  return NextResponse.json({ ok: true, retriedCount, resolvedCount });
+  return NextResponse.json({ ok: true, retriedCount, resolvedCount, notAppliedCount, notAppliedReasons });
 }
