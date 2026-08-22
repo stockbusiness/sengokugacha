@@ -14,12 +14,23 @@ export type WalletUserRef = {
   externalUserId: string;
 };
 
+// Wallet側の ServiceCode enum の値。2026-08-22の回答で確定。
+//
+// 当初 "passport" と仮置きしていたが、正しくは SENGOKU_PASSPORT。Fakeアダプタは
+// 値を検証しないため誤りに気付きにくい。定数にして1箇所へ集約する。
+export const PASSPORT_SERVICE_CODE = "SENGOKU_PASSPORT";
+
+// 学習ミッション専用の取引種別とルールコード。2026-08-22の回答で確定
+// (ovewwallet PR #10、コミット 59d4ede)。これらを指定することで、他のイベント報酬と
+// 区別された取引として記録される。
+export const LEARNING_JOURNEY_TRANSACTION_TYPE = "LEARNING_JOURNEY_REWARD";
+export const LEARNING_JOURNEY_RULE_CODE = "SENGOKU_LEARNING_JOURNEY_REWARD";
+
 export type WalletGrantRequest = {
   // ボディのフィールドとして送る(ヘッダーではない)。ADR-8。
   idempotencyKey: string;
   user: WalletUserRef;
   amount: number;
-  // 学習ミッション専用の取引種別・ルールコード。値はWallet側の正式回答待ち。
   transactionType: string;
   ruleCode: string;
 };

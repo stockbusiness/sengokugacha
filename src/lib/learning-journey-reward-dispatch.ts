@@ -3,6 +3,9 @@ import { createSupabaseServerClient } from "@/lib/supabase-server";
 import { getWalletAdapterKind } from "@/lib/wallet-adapter-settings";
 import { FakeWalletAdapter } from "@/modules/learning-journey/infrastructure/fake-wallet-adapter";
 import {
+  LEARNING_JOURNEY_RULE_CODE,
+  LEARNING_JOURNEY_TRANSACTION_TYPE,
+  PASSPORT_SERVICE_CODE,
   computeRetryDelaySeconds,
   isRetryable,
   type WalletAdapter,
@@ -67,14 +70,15 @@ export async function dispatchRewardRequest(
     idempotencyKey: request.idempotency_key,
     user: {
       kind: "external_user_id",
-      // service_code と取引種別・rule_code の正式値はWallet側の回答待ち(PR5-b)。
-      // Fake は値を検証しないため、PR5-aでは仮の値で通す。
-      serviceCode: "passport",
+      serviceCode: PASSPORT_SERVICE_CODE,
+      // この値の採番方式は未確定(PR5-b)。users.id をそのまま入れることは禁止されている。
+      // 現状 learning_journey_reward_requests.external_user_id は作成時に確定した値を
+      // そのまま持つだけで、その中身を決めるのは付与要求を作る側の責務。
       externalUserId: request.external_user_id,
     },
     amount: request.amount,
-    transactionType: "LEARNING_JOURNEY_REWARD",
-    ruleCode: "SENGOKU_LEARNING_JOURNEY_REWARD",
+    transactionType: LEARNING_JOURNEY_TRANSACTION_TYPE,
+    ruleCode: LEARNING_JOURNEY_RULE_CODE,
   };
 
   let result;

@@ -1,5 +1,26 @@
 import { describe, expect, it } from "vitest";
-import { classifyHttpStatus, computeRetryDelaySeconds, isRetryable } from "./wallet-contract";
+import {
+  LEARNING_JOURNEY_RULE_CODE,
+  LEARNING_JOURNEY_TRANSACTION_TYPE,
+  PASSPORT_SERVICE_CODE,
+  classifyHttpStatus,
+  computeRetryDelaySeconds,
+  isRetryable,
+} from "./wallet-contract";
+
+// Wallet側から2026-08-22に回答された値。こちらで勝手に変えると送信が通らない、
+// あるいは別種別の取引として記録されるため、定数として固定する。
+describe("Wallet側と合意した識別子", () => {
+  it("service_code は SENGOKU_PASSPORT", () => {
+    // 当初 "passport" と仮置きしていた。Fakeは値を検証しないので気付きにくい。
+    expect(PASSPORT_SERVICE_CODE).toBe("SENGOKU_PASSPORT");
+  });
+
+  it("取引種別とルールコードが Wallet の登録値と一致する", () => {
+    expect(LEARNING_JOURNEY_TRANSACTION_TYPE).toBe("LEARNING_JOURNEY_REWARD");
+    expect(LEARNING_JOURNEY_RULE_CODE).toBe("SENGOKU_LEARNING_JOURNEY_REWARD");
+  });
+});
 
 describe("classifyHttpStatus", () => {
   // 指示書§5.4の表をそのまま写す。PR5-bでHTTPアダプタを書くときの根拠になる。
