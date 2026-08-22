@@ -32,6 +32,10 @@ describe.skipIf(!hasTestDatabase)("POST /api/admin/entitlements/retry-resolve(DB
   const createdUserIds: string[] = [];
   const createdEntitlementIds: string[] = [];
 
+  // PR-P2a。残高への適用は entitlement_source_allowlist に登録された送信元に限られる。
+  // 本テストは「再解決すると残高が付く」ことの検証なので、送信元を登録してから実行する。
+  const TEST_SOURCE_SYSTEM_KEY = "test-system";
+
   afterEach(async () => {
     const client = supabase();
     for (const id of createdEntitlementIds.splice(0)) {
@@ -40,11 +44,17 @@ describe.skipIf(!hasTestDatabase)("POST /api/admin/entitlements/retry-resolve(DB
     for (const userId of createdUserIds.splice(0)) {
       await client.from("users").delete().eq("id", userId);
     }
+    await client.from("entitlement_source_allowlist").delete().eq("source_system_key", TEST_SOURCE_SYSTEM_KEY);
   });
 
   it("manager: user_id未解決のentitlementがcommon_user_id一致で再解決され、残高が付与される", async () => {
     const client = supabase();
     const commonUserId = `common-${crypto.randomUUID()}`;
+
+    const { error: allowlistError } = await client
+      .from("entitlement_source_allowlist")
+      .insert({ source_system_key: TEST_SOURCE_SYSTEM_KEY, note: "contract test", approved_by: "test" });
+    if (allowlistError) throw allowlistError;
 
     const { data: entitlement, error: entitlementError } = await client
       .from("entitlements")
@@ -54,7 +64,7 @@ describe.skipIf(!hasTestDatabase)("POST /api/admin/entitlements/retry-resolve(DB
         user_id: null,
         entitlement_type: "kokudaka",
         quantity: 150,
-        source_system_key: "test-system",
+        source_system_key: TEST_SOURCE_SYSTEM_KEY,
       })
       .select("id")
       .single();

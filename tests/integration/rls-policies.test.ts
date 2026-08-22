@@ -25,6 +25,8 @@ const PROTECTED_TABLES = [
   "purchases",
   "purchase_grant_steps",
   "entitlements",
+  // PR-P2a。ここが読めると「どの送信元なら残高を動かせるか」が外から分かる。
+  "entitlement_source_allowlist",
   "integration_inbox_events",
   "integration_outbox_events",
   "stripe_webhook_events",
