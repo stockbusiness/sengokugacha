@@ -7,6 +7,9 @@ type Group = {
   recipientUserId: string | null;
   recipientAgentId: string | null;
   totalAmountYen: number;
+  // PR-P1d。件数を返す。「3件・12,345円」と「30件・12,345円」は運用上まったく
+  // 違う意味を持ち、件数が無いと確定漏れや二重確定に気づく機会が失われる。
+  lineCount: number;
   displayName: string;
 };
 
@@ -31,12 +34,14 @@ export async function GET() {
     const existing = groups.get(key);
     if (existing) {
       existing.totalAmountYen += line.amount_yen as number;
+      existing.lineCount += 1;
     } else {
       groups.set(key, {
         recipientType: line.recipient_type as string,
         recipientUserId: (line.recipient_user_id as string | null) ?? null,
         recipientAgentId: (line.recipient_agent_id as string | null) ?? null,
         totalAmountYen: line.amount_yen as number,
+        lineCount: 1,
         displayName: "",
       });
     }

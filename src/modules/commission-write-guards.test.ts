@@ -139,14 +139,80 @@ describe("停止フラグの変更経路", () => {
 
 describe("支払処理の二重実行", () => {
   // 「同じ支払処理を再実行しても二重支払にならない」(必須テスト)。
-  // 支払対象の抽出が payout_id is null に限定され、支払時に payout_id を埋めるため、
-  // 2回目は対象0件になり「対象の確定済み報酬がありません」で弾かれる。
+  //
+  // PR-P1d で、対象抽出・payouts作成・ledger更新を DB関数の1トランザクションへ移した。
+  // 以前はこの3手がAPI側に分かれており、同一受取者への同時実行で payouts が
+  // 二重作成され、支払総額が二重計上されえた(C3 の確認で判明)。
+  const PAYOUT_FN = readFileSync(
+    path.join(SRC_ROOT, "..", "supabase/migrations/20260822000001_payout_exclusivity.sql"),
+    "utf8"
+  );
+
   it("支払対象の抽出が未払い行(payout_id is null)に限定されている", () => {
+    expect(PAYOUT_FN).toContain("payout_id is null");
+    expect(PAYOUT_FN).toContain("status = 'confirmed'");
+  });
+
+  // ここが PR-P1d の要。for update が無いと、同時実行で payouts が2行できる
+  // (ローカル実DBで再現: 2セッション交錯で payouts 2件・合計12,000円、ledger 6,000円)。
+  //
+  // コメントアウトを見逃さないよう、行頭から for update だけの行であることを見る。
+  it("対象行を for update でロックしている", () => {
+    expect(PAYOUT_FN).toMatch(/^\s*for update\s*$/m);
+  });
+
+  it("payouts の作成と ledger の更新が同じ関数の中にある(同一トランザクション)", () => {
+    const body = PAYOUT_FN.slice(PAYOUT_FN.indexOf("create or replace function create_payout_for_recipient"));
+    expect(body).toContain("insert into payouts");
+    expect(body).toContain("update commission_ledger");
+    expect(body).toContain("payout_id = v_payout_id");
+  });
+
+  // API側で直接 payouts を作ったり ledger を更新したりすると、排他が効かなくなる。
+  it("支払APIが payouts へ直接 INSERT していない", () => {
     const route = read(path.join(SRC_ROOT, "app/api/admin/payouts/route.ts"));
-    expect(route).toContain('.is("payout_id", null)');
-    // 支払記録の作成と同時に payout_id を埋めるので、同じ行が二度対象にならない。
-    expect(route).toContain("payout_id: payout.id");
+    expect(route).toContain("create_payout_for_recipient");
+    expect(route).not.toMatch(/from\("payouts"\)[\s\S]{0,200}?\.insert\(/);
+  });
+
+  it("支払APIが commission_ledger を直接更新していない", () => {
+    const route = read(path.join(SRC_ROOT, "app/api/admin/payouts/route.ts"));
+    expect(route).not.toMatch(/from\("commission_ledger"\)[\s\S]{0,200}?\.update\(/);
+  });
+
+  it("対象0件のときの応答が残っている", () => {
+    const route = read(path.join(SRC_ROOT, "app/api/admin/payouts/route.ts"));
     expect(route).toContain("対象の確定済み報酬がありません");
+  });
+
+  // 監査ログの失敗を握り潰さず応答へ含める。ただし支払記録自体は成功させる
+  // (止めると業務が止まる)。
+  it("支払APIが監査ログの成否を応答へ含めている", () => {
+    const route = read(path.join(SRC_ROOT, "app/api/admin/payouts/route.ts"));
+    expect(route).toContain("logAdminActionWithResult");
+    expect(route).toContain("auditLogged");
+  });
+
+  // 既存の106箇所へ影響を出さないため、logAdminAction() の握り潰しは維持する。
+  it("logAdminAction() は従来どおり例外を握り潰す", () => {
+    const lib = read(path.join(SRC_ROOT, "lib/admin-audit-log.ts"));
+    const fn = lib.slice(lib.indexOf("export async function logAdminAction("), lib.indexOf("// PR-P1d"));
+    expect(fn).not.toContain("return false");
+    expect(fn).not.toContain("throw");
+  });
+
+  // 清算専用の画面。新しい報酬を作る処理を足さない。
+  it("支払APIが commission_ledger へ行を追加していない", () => {
+    const route = read(path.join(SRC_ROOT, "app/api/admin/payouts/route.ts"));
+    expect(route).not.toMatch(/from\("commission_ledger"\)[\s\S]{0,200}?\.insert\(/);
+    expect(PAYOUT_FN).not.toMatch(/insert\s+into\s+commission_ledger/i);
+  });
+
+  it("確認ダイアログに対象件数が出る", () => {
+    const page = read(path.join(SRC_ROOT, "app/admin/(dashboard)/castle-payouts/page.tsx"));
+    expect(page).toContain("describePayoutConfirmation");
+    const domain = read(path.join(SRC_ROOT, "modules/castle/domain/payout-confirmation.ts"));
+    expect(domain).toContain("対象件数");
   });
 });
 

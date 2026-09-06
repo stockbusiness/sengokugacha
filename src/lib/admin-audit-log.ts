@@ -35,6 +35,27 @@ export async function logAdminAction(
   target?: AdminActionTarget,
   context?: AdminActionContext
 ) {
+  await logAdminActionWithResult(actorName, action, details, target, context);
+}
+
+// PR-P1d。上と同じことをしたうえで、成否を返す。
+//
+// logAdminAction() は例外をすべて握り潰す。106箇所から呼ばれており、失敗時の挙動を
+// 変えると影響範囲が読めないため、あちらの挙動は変えない。
+//
+// ただし金銭に関わる操作(支払記録)では「監査ログが落ちたことに誰も気づかない」のが
+// 問題になる。C6 の調査で私が判断を誤った原因もこれだった(記録が無いのを見て
+// 「処理が走っていない」と考えたが、記録が落ちただけの可能性を排除できていなかった)。
+//
+// 呼び出し側が結果を見て応答へ含められるよう、成否を返す口を分けて用意する。
+// 「監査ログが書けないと本来の操作も失敗する」設計にはしない。逆に業務が止まる。
+export async function logAdminActionWithResult(
+  actorName: string | null,
+  action: string,
+  details?: string,
+  target?: AdminActionTarget,
+  context?: AdminActionContext
+): Promise<boolean> {
   try {
     const supabase = createSupabaseServerClient();
     const { error } = await supabase.from("admin_audit_logs").insert({
@@ -49,8 +70,13 @@ export async function logAdminAction(
       request_id: context?.requestId ?? null,
       operation_reason: context?.operationReason ?? null,
     });
-    if (error) console.error("監査ログの記録に失敗しました", error);
+    if (error) {
+      console.error("監査ログの記録に失敗しました", error);
+      return false;
+    }
+    return true;
   } catch (error) {
     console.error("監査ログの記録に失敗しました", error);
+    return false;
   }
 }
