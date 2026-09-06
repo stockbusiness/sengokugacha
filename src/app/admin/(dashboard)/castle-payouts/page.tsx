@@ -4,12 +4,19 @@ import { useEffect, useState } from "react";
 import { CommissionMigrationNotice } from "@/components/admin/CommissionMigrationNotice";
 import { EMPTY_STATE_TEXT } from "@/modules/castle/domain/commission-admin-view";
 import { useCommissionAdminNotice } from "@/lib/client/use-commission-admin-notice";
+import {
+  canConfirmPayout,
+  describePayoutConfirmation,
+  describePayoutResult,
+  describePayoutTarget,
+} from "@/modules/castle/domain/payout-confirmation";
 
 type PayableRecipient = {
   recipientType: string;
   recipientUserId: string | null;
   recipientAgentId: string | null;
   totalAmountYen: number;
+  lineCount: number;
   displayName: string;
 };
 
@@ -39,6 +46,8 @@ export default function CastlePayoutsPage() {
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [payingKey, setPayingKey] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
+  // PR-P1d。成功時の案内(監査ログ失敗の注意を含む)はエラーと分けて出す。
+  const [notice2, setNotice2] = useState<string | null>(null);
 
   function fetchAll() {
     Promise.all([
@@ -59,11 +68,14 @@ export default function CastlePayoutsPage() {
 
   async function handlePay(recipient: PayableRecipient) {
     const key = `${recipient.recipientType}:${recipient.recipientUserId ?? recipient.recipientAgentId}`;
-    if (!window.confirm(`${recipient.displayName}さんへ${recipient.totalAmountYen.toLocaleString()}円を支払済みにしますか?(実際の振込は別途行ってください)`)) {
-      return;
-    }
+    // PR-P1d。確認ダイアログに対象件数を含める。件数が無いと確定漏れや二重確定に
+    // 気づく機会が失われる。
+    if (!canConfirmPayout(recipient)) return;
+    if (!window.confirm(describePayoutConfirmation(recipient))) return;
+
     setPayingKey(key);
     setMessage(null);
+    setNotice2(null);
     try {
       const res = await fetch("/api/admin/payouts", {
         method: "POST",
@@ -75,7 +87,25 @@ export default function CastlePayoutsPage() {
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error ?? "支払処理に失敗しました。");
+      if (!res.ok) {
+        // 同時実行の2件目は outcome=no_target で返る。1件目は成功しているため、
+        // 「失敗した」ではなく「既に支払済みの可能性」として案内する。
+        if (data.outcome === "no_target") {
+          setNotice2(describePayoutResult({ outcome: "no_target", lineCount: 0, totalAmountYen: 0, auditLogged: true }));
+          setStatus("loading");
+          fetchAll();
+          return;
+        }
+        throw new Error(data.error ?? "支払処理に失敗しました。");
+      }
+      setNotice2(
+        describePayoutResult({
+          outcome: "created",
+          lineCount: data.lineCount ?? 0,
+          totalAmountYen: data.totalAmountYen ?? 0,
+          auditLogged: data.auditLogged !== false,
+        })
+      );
       setStatus("loading");
       fetchAll();
     } catch (error) {
@@ -103,6 +133,11 @@ export default function CastlePayoutsPage() {
       <div>
         <h2 className="mb-2 text-sm font-semibold text-zinc-600 dark:text-zinc-400">支払待ち(移管前に確定済み・未払い)</h2>
         {message && <p className="mb-2 text-xs text-red-700 dark:text-red-400">{message}</p>}
+        {notice2 && (
+          <p className="mb-2 whitespace-pre-line rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300">
+            {notice2}
+          </p>
+        )}
         <div className="space-y-1">
           {recipients.map((r) => {
             const key = `${r.recipientType}:${r.recipientUserId ?? r.recipientAgentId}`;
@@ -118,7 +153,7 @@ export default function CastlePayoutsPage() {
                   </span>
                 </span>
                 <span className="flex items-center gap-3">
-                  <span className="font-semibold">{r.totalAmountYen.toLocaleString()}円</span>
+                  <span className="font-semibold">{describePayoutTarget(r)}</span>
                   <button
                     onClick={() => handlePay(r)}
                     disabled={payingKey === key}

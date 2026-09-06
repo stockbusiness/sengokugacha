@@ -99,4 +99,5 @@ export const EXPECTED_MIGRATION_VERSIONS: string[] = [
   "20260819000001", // wallet_send_foundation
   "20260820000001", // entitlement_allowlist
   "20260821000001", // product_ownership
+  "20260822000001", // payout_exclusivity
 ];
